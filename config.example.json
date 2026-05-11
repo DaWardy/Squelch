@@ -1,0 +1,160 @@
+{
+  "_comment": "Copy this file to config.json and fill in your details. Never commit config.json to git.",
+  "version": "1.0.0",
+  "callsign": "",
+  "grid_square": "",
+  "operator_name": "",
+
+  "rig": {
+    "model": "IC-7100",
+    "hamlib_model": 370,
+    "port": "AUTO",
+    "baud": 19200,
+    "ptt_method": "CAT",
+    "audio_input": "",
+    "audio_output": "",
+    "poll_interval_ms": 500,
+    "preamp": 0,
+    "attenuator": 0,
+    "filter": 1
+  },
+
+  "sdr": {
+    "device": "AUTO",
+    "device_string": "",
+    "sample_rate": 2400000,
+    "gain": 30,
+    "ppm": 0,
+    "waterfall_fps": 20,
+    "fft_size": 4096,
+    "agc": false,
+    "bias_tee": false,
+    "antenna": "RX"
+  },
+
+  "location": {
+    "source": "manual",
+    "format": "grid",
+    "grid": "",
+    "lat": 0.0,
+    "lon": 0.0,
+    "mgrs": "",
+    "gps_port": "",
+    "gps_baud": 4800,
+    "use_rig_gps": true,
+    "search_history": []
+  },
+
+  "apis": {
+    "radioreference_key": "",
+    "radioreference_user": "",
+    "qrz_user": "",
+    "qrz_pass": ""
+  },
+
+  "ft8": {
+    "tx_power_dbm": 37,
+    "auto_sequence": true,
+    "auto_log": true,
+    "tx_even_first": true,
+    "hold_tx_freq": false,
+    "tx_freq_hz": 1500,
+    "max_qso_per_session": 0,
+    "dx_only": false,
+    "target_regions": [],
+    "auto_cq": false,
+    "auto_cq_delay_cycles": 2,
+    "priority_dxcc": [],
+    "log_path": "logs/ft8_log.adi"
+  },
+
+  "wspr": {
+    "tx_power_dbm": 27,
+    "tx_pct": 20,
+    "bands": ["20m"],
+    "upload_to_wsprnet": true,
+    "background_mode": true
+  },
+
+  "js8": {
+    "tcp_host": "127.0.0.1",
+    "tcp_port": 2442,
+    "tx_power_dbm": 37,
+    "speed": "NORMAL"
+  },
+
+  "fldigi": {
+    "xmlrpc_host": "127.0.0.1",
+    "xmlrpc_port": 7362,
+    "tx_power_dbm": 37
+  },
+
+  "vara": {
+    "tcp_host": "127.0.0.1",
+    "vara_hf_port": 8300,
+    "vara_fm_port": 8400,
+    "auto_launch": true
+  },
+
+  "audio": {
+    "vb_cable_input": "",
+    "vb_cable_output": "",
+    "rig_input": "",
+    "rig_output": "",
+    "monitor_volume": 0.5
+  },
+
+  "paths": {
+    "wsjtx": "",
+    "js8call": "",
+    "fldigi": "",
+    "vara_hf": "",
+    "vara_fm": "",
+    "op25": "",
+    "dsdplus": "",
+    "dump1090": "",
+    "hamlib_rigctld": "rigctld",
+    "tqsl": ""
+  },
+
+  "logging": {
+    "db_path": "logs/squelch_log.db",
+    "adif_export_path": "logs/adif_exports/",
+    "lotw_auto_queue": true,
+    "qrz_auto_queue": true
+  },
+
+  "propagation": {
+    "noaa_refresh_minutes": 15,
+    "voacap_tx_power_w": 5,
+    "voacap_antenna": "Dipole",
+    "wspr_bands_monitor": ["40m", "20m", "15m", "10m"]
+  },
+
+  "aprs": {
+    "enabled": true,
+    "beacon_interval_min": 10,
+    "comment": "Squelch Amateur Radio Operations Platform",
+    "symbol": "/[",
+    "aprs_is_host": "rotate.aprs2.net",
+    "aprs_is_port": 14580,
+    "use_rig_aprs": true
+  },
+
+  "ui": {
+    "theme": "dark",
+    "waterfall_palette": "jet",
+    "font_size": 11,
+    "show_tooltips": true,
+    "confirm_tx": false,
+    "startup_tab": "rig"
+  },
+
+  "classroom": {
+    "lab_mode": false,
+    "instructor_callsign": "",
+    "session_logging": true,
+    "lock_settings": false,
+    "log_path": "logs/sessions/"
+  }
+}

@@ -1,0 +1,1 @@
+# Squelch dialogs package

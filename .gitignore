@@ -1,0 +1,56 @@
+# SIGLAB .gitignore
+
+# User config — contains callsign, API keys, personal settings
+config.json
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Logs and session data
+logs/*.db
+logs/*.adi
+logs/adif_exports/
+logs/sessions/
+logs/siglab.log
+
+# IQ recordings — can be very large
+recordings/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Hamlib
+*.log
+
+# Test output
+.pytest_cache/
+htmlcov/
+.coverage

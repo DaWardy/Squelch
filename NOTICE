@@ -1,0 +1,118 @@
+APEX — Amateur Platform for EXperimentation
+Copyright (C) 2026  github.com/dawardy/apex
+
+This software is licensed under the GNU General Public License v3.
+See LICENSE for full terms.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPEN SOURCE COMPONENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PyQt6
+  License: GNU GPL v3
+  Copyright: Riverbank Computing Limited
+  https://riverbankcomputing.com/software/pyqt/
+
+Hamlib
+  License: GNU LGPL v2.1
+  Copyright: The Hamlib Group
+  https://hamlib.sourceforge.net/
+
+SoapySDR
+  License: Boost Software License 1.0
+  Copyright: Pothosware
+  https://github.com/pothosware/SoapySDR
+
+WSJT-X
+  License: GNU GPL v3
+  Copyright: Joe Taylor K1JT and contributors
+  https://wsjt.sourceforge.io/wsjtx.html
+
+Fldigi
+  License: GNU GPL v3
+  Copyright: Dave Freese W1HKJ and contributors
+  https://sourceforge.net/projects/fldigi/
+
+OP25
+  License: GNU GPL v3
+  Copyright: Osmocom contributors
+  https://github.com/osmocom/op25
+
+dump1090-fa
+  License: GNU GPL v2
+  Copyright: FlightAware LLC
+  https://github.com/flightaware/dump1090
+
+NumPy
+  License: BSD 3-Clause
+  Copyright: NumPy Developers
+  https://numpy.org/
+
+SciPy
+  License: BSD 3-Clause
+  Copyright: SciPy Developers
+  https://scipy.org/
+
+folium
+  License: MIT
+  Copyright: python-visualization contributors
+  https://python-visualization.github.io/folium/
+
+geopy
+  License: MIT
+  Copyright: geopy contributors
+  https://github.com/geopy/geopy
+
+maidenhead
+  License: MIT
+  Copyright: space-physics contributors
+  https://github.com/space-physics/maidenhead
+
+requests
+  License: Apache 2.0
+  Copyright: Kenneth Reitz and contributors
+  https://python-requests.org/
+
+pyqtgraph
+  License: MIT
+  Copyright: Luke Campagnola
+  https://pyqtgraph.org/
+
+sounddevice
+  License: MIT
+  Copyright: Matthias Geier
+  https://python-sounddevice.readthedocs.io/
+
+adif-io
+  License: MIT
+  Copyright: adif-io contributors
+  https://github.com/on4kjm/adif-io
+
+CTY.DAT Country Files
+  Copyright: AD1C
+  https://www.country-files.com/
+
+Artemis Signal Database
+  Copyright: Società Italiana Radioascolto (SIRAit)
+  https://github.com/AresValley/Artemis
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROPRIETARY COMPONENTS (separate install — not distributed)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VARA / VARA HF / VARA FM
+  Copyright: EA5HVK (Alfonso Ruiz)
+  Freeware / paid license
+  https://rosmodem.wordpress.com/
+  APEX interfaces via TCP socket only.
+  VARA is not distributed with APEX.
+
+DSD+
+  Freeware
+  https://www.dsdplus.com/
+  APEX interfaces via subprocess only.
+  DSD+ is not distributed with APEX.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+All trademarks are property of their respective owners.
+APEX is not affiliated with ARRL, FCC, or any radio manufacturer.

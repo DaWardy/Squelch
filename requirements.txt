@@ -1,0 +1,49 @@
+# Squelch — Amateur Radio Operations Platform
+# Python 3.11+ required
+# Run bootstrap.bat to install — do not run pip install manually
+
+# ── GUI ───────────────────────────────────────────────────────────────────
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+PyQt6-sip>=13.6.0
+pyqtgraph>=0.13.3
+
+# ── SDR ───────────────────────────────────────────────────────────────────
+# SoapySDR is installed separately — see README
+numpy>=1.26.0
+scipy>=1.11.0
+
+# ── Audio ─────────────────────────────────────────────────────────────────
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# ── Serial / Rig control ──────────────────────────────────────────────────
+pyserial>=3.5
+
+# ── Networking ────────────────────────────────────────────────────────────
+requests>=2.31.0
+aiohttp>=3.9.0
+websockets>=12.0
+
+# ── Mapping / Location ────────────────────────────────────────────────────
+folium>=0.15.0
+geopy>=2.4.0
+maidenhead>=1.0.0
+mgrs>=1.4.4
+
+# ── Data ──────────────────────────────────────────────────────────────────
+adif-io>=0.0.5
+xmltodict>=0.13.0
+python-dateutil>=2.8.2
+
+# ── Ham radio utilities ───────────────────────────────────────────────────
+pyhamtools>=0.6.8
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+appdirs>=1.4.4
+psutil>=5.9.0
+Markdown>=3.5.0
+Pillow>=10.0.0
+pywin32>=306; sys_platform == "win32"
+
+keyring>=24.0.0

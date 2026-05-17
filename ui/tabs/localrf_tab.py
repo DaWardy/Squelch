@@ -1,6 +1,24 @@
 from __future__ import annotations
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 """
 Squelch -- ui/tabs/localrf_tab.py
@@ -203,6 +221,12 @@ class LocalRFTab(QWidget):
         self._chirp_btn.setEnabled(False)
         self._chirp_btn.clicked.connect(self._open_chirp)
         btn_row.addWidget(self._chirp_btn)
+
+        export_btn = QPushButton("📁 Export All → CHIRP")
+        export_btn.setToolTip(
+            "Export all search results to CHIRP CSV format")
+        export_btn.clicked.connect(self._export_all_to_chirp)
+        btn_row.addWidget(export_btn)
         lay.addLayout(btn_row)
 
         return w
@@ -249,18 +273,43 @@ class LocalRFTab(QWidget):
         rl.addWidget(rr_btn)
         lay.addWidget(rr_grp)
 
-        # APRS stub
-        aprs_grp = QGroupBox("APRS")
+        # APRS panel
+        aprs_grp = QGroupBox("APRS-IS")
         al = QVBoxLayout(aprs_grp)
-        aprs_msg = QLabel(
-            "APRS station display and beaconing\n"
-            "coming in v0.7.1.\n\n"
-            "Requires: Direwolf or IC-7100 native APRS")
-        aprs_msg.setStyleSheet(
+
+        self._aprs_status = QLabel("● Not connected")
+        self._aprs_status.setStyleSheet(
+            "color:#555;font-size:10px;"
+            "font-family:'Courier New';")
+        al.addWidget(self._aprs_status)
+
+        self._aprs_count = QLabel("Stations: 0")
+        self._aprs_count.setStyleSheet(
+            "color:#555;font-size:10px;")
+        al.addWidget(self._aprs_count)
+
+        aprs_btns = QHBoxLayout()
+        self._aprs_conn_btn = QPushButton("Connect")
+        self._aprs_conn_btn.setFixedHeight(24)
+        self._aprs_conn_btn.clicked.connect(
+            self._toggle_aprs)
+        aprs_btns.addWidget(self._aprs_conn_btn)
+
+        beacon_btn = QPushButton("Beacon Now")
+        beacon_btn.setFixedHeight(24)
+        beacon_btn.clicked.connect(self._send_beacon)
+        aprs_btns.addWidget(beacon_btn)
+        al.addLayout(aprs_btns)
+
+        aprs_note = QLabel(
+            "APRS-IS: internet receive-only.\n"
+            "RF TX requires Direwolf + TNC.")
+        aprs_note.setStyleSheet(
             "color:#444;font-size:10px;")
-        aprs_msg.setWordWrap(True)
-        al.addWidget(aprs_msg)
+        aprs_note.setWordWrap(True)
+        al.addWidget(aprs_note)
         lay.addWidget(aprs_grp)
+        self._aprs_client = None
 
         lay.addStretch()
         return w
@@ -444,13 +493,69 @@ class LocalRFTab(QWidget):
         rep = self._selected_repeater()
         if not rep:
             return
-        QMessageBox.information(
-            self, "Save to Memory",
-            f"Memory channel import coming in v0.7.1.\n\n"
-            f"Repeater: {rep.callsign}\n"
-            f"Frequency: {rep.output_str} MHz\n"
-            f"Tone: {rep.tone_str or 'None'}\n\n"
-            f"For now, use CHIRP to program this frequency.")
+        from core.memory_channels import MemoryBank
+        from PyQt6.QtWidgets import QFileDialog
+
+        # Build a bank with this repeater
+        bank = MemoryBank()
+        # Load any existing channels from this session
+        if not hasattr(self, "_memory_bank"):
+            self._memory_bank = MemoryBank()
+        ch_num = self._memory_bank.next_free()
+        from core.memory_channels import MemoryChannel
+        ch = MemoryChannel.from_repeater(ch_num, rep)
+        self._memory_bank.add(ch)
+
+        # Ask where to save
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Memory Channels",
+            f"repeaters_{rep.city or 'local'}.csv",
+            "CHIRP CSV (*.csv);;All Files (*)")
+
+        if not path:
+            return
+
+        try:
+            count = self._memory_bank.save_chirp_csv(
+                Path(path))
+            QMessageBox.information(
+                self, "Memory Channels Exported",
+                f"Exported {count} channel(s) to:\n{path}\n\n"
+                f"Open in CHIRP: Radio → Upload To Radio\n"
+                f"Select your radio model, choose the CSV file.")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed",
+                f"Could not export channels:\n{e}")
+
+    def _export_all_to_chirp(self):
+        """Export all search results to CHIRP CSV."""
+        if not self._repeaters:
+            QMessageBox.information(
+                self, "No Repeaters",
+                "Search for repeaters first.")
+            return
+        from core.memory_channels import MemoryBank
+        from PyQt6.QtWidgets import QFileDialog
+
+        bank = MemoryBank()
+        bank.from_repeaters(self._repeaters)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export All to CHIRP",
+            "squelch_repeaters.csv",
+            "CHIRP CSV (*.csv);;All Files (*)")
+        if not path:
+            return
+        try:
+            count = bank.save_chirp_csv(Path(path))
+            QMessageBox.information(
+                self, "Export Complete",
+                f"Exported {count} repeaters to:\n{path}\n\n"
+                f"Open in CHIRP → File → Open to import.")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed", str(e))
 
     def _open_chirp(self):
         from core.launcher import get_launcher
@@ -467,6 +572,98 @@ class LocalRFTab(QWidget):
         from ui.dialogs.paths_dialog import PathsDialog
         dlg = PathsDialog(self.cfg, parent=self)
         dlg.exec()
+
+    def _toggle_aprs(self):
+        """Connect or disconnect from APRS-IS."""
+        # Try to get client from main window
+        if self._aprs_client is None:
+            try:
+                mw = self.window()
+                if hasattr(mw, "_aprs_client"):
+                    self._aprs_client = mw._aprs_client
+                    if self._aprs_client:
+                        self._aprs_client.on_status(
+                            self._on_aprs_status)
+                        self._aprs_client.on_packet(
+                            self._on_aprs_packet)
+            except Exception:
+                pass
+
+        if self._aprs_client is None:
+            from aprs.aprs_client import APRSClient
+            self._aprs_client = APRSClient(self.cfg)
+            self._aprs_client.on_status(
+                self._on_aprs_status)
+            self._aprs_client.on_packet(
+                self._on_aprs_packet)
+
+        if self._aprs_client.is_connected:
+            self._aprs_client.disconnect()
+            self._aprs_conn_btn.setText("Connect")
+        else:
+            ok = self._aprs_client.connect()
+            if ok:
+                self._aprs_conn_btn.setText("Disconnect")
+                self.cfg.set("aprs.auto_connect", True)
+                self.cfg.save()
+            else:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self, "APRS-IS",
+                    "Could not connect to APRS-IS.\n"
+                    "Check internet connection.\n\n"
+                    "Server: rotate.aprs2.net:14580")
+
+    def _on_aprs_status(self, status: str):
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0,
+            lambda s=status: self._apply_aprs_status(s))
+
+    def _apply_aprs_status(self, status: str):
+        colors = {
+            "connected":    "#3fbe6f",
+            "disconnected": "#555",
+            "error":        "#cc4444",
+        }
+        color = colors.get(status, "#888")
+        self._aprs_status.setText(
+            f"● {status.capitalize()}")
+        self._aprs_status.setStyleSheet(
+            f"color:{color};font-size:10px;"
+            "font-family:'Courier New';")
+        if status == "connected":
+            self._aprs_conn_btn.setText("Disconnect")
+        else:
+            self._aprs_conn_btn.setText("Connect")
+
+    def _on_aprs_packet(self, packet):
+        if self._aprs_client:
+            count = self._aprs_client.packet_count
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0,
+                lambda c=count:
+                    self._aprs_count.setText(
+                        f"Stations: {c}"))
+
+    def _send_beacon(self):
+        try:
+            mw = self.window()
+            if hasattr(mw, "_aprs_beacon") and                mw._aprs_beacon:
+                sent = mw._aprs_beacon.send_now()
+                if sent:
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.information(
+                        self, "APRS Beacon",
+                        "Beacon sent via APRS-IS.")
+                else:
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.warning(
+                        self, "APRS Beacon",
+                        "Beacon not sent.\n"
+                        "Connect to APRS-IS first.\n"
+                        "Or set location in top bar.")
+        except Exception as e:
+            log.warning(f"Beacon: {e}")
 
     def _rescan(self):
         self._launch_bar.refresh()

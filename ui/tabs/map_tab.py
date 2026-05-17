@@ -1,6 +1,24 @@
 from __future__ import annotations
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 """
 Squelch -- ui/tabs/map_tab.py
@@ -52,7 +70,8 @@ class MapTab(QWidget):
         self.cfg     = config
         self.log_db  = log_db
         self._timer  = None
-        self._repeaters = []
+        self._repeaters      = []
+        self._aprs_stations  = []
         self._build()
 
     # ── Build ─────────────────────────────────────────────────
@@ -242,6 +261,8 @@ class MapTab(QWidget):
                 config            = self.cfg,
                 log_db            = self.log_db,
                 repeaters         = reps,
+                aprs_stations     = (self._aprs_stations
+                    if self._show_aprs.isChecked() else []),
                 show_grayline     = self._show_gl.isChecked(),
                 show_qso_paths    = self._show_qso.isChecked(),
                 show_adsb         = self._show_adsb.isChecked(),
@@ -292,6 +313,24 @@ class MapTab(QWidget):
         """Called by Local RF tab when search results arrive."""
         self._repeaters = repeaters
         if self._show_rep.isChecked():
+            self._refresh_map()
+
+    def set_aprs_stations(self, stations: list):
+        """Called when APRS packet received — update map."""
+        self._aprs_stations = stations
+        if self._show_aprs.isChecked():
+            # Throttle refreshes — don't rebuild map every packet
+            if not hasattr(self, '_aprs_refresh_pending'):
+                self._aprs_refresh_pending = False
+            if not self._aprs_refresh_pending:
+                self._aprs_refresh_pending = True
+                QTimer.singleShot(
+                    5000,   # Batch updates every 5 seconds
+                    self._refresh_aprs)
+
+    def _refresh_aprs(self):
+        self._aprs_refresh_pending = False
+        if HAS_WEBENGINE:
             self._refresh_map()
 
     def on_location_change(self, loc, _rr=False):

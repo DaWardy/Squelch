@@ -515,6 +515,101 @@ class LogTab(QWidget):
 
     # ── ADIF import ───────────────────────────────────────────────────────
 
+    def _export_cabrillo(self):
+        """Export log in Cabrillo format for contest submission."""
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Cabrillo",
+            f"{self.cfg.callsign or 'log'}.cbr",
+            "Cabrillo (*.cbr *.log);;All Files (*)")
+        if not path:
+            return
+        try:
+            qsos    = self.log_db.recent_qsos(limit=9999)
+            cs      = self.cfg.callsign or "NOCALL"
+            grid    = self.cfg.grid or ""
+            lines   = [
+                "START-OF-LOG: 3.0",
+                f"CALLSIGN: {cs}",
+                f"GRID-LOCATOR: {grid}",
+                "CONTEST: ",
+                f"OPERATORS: {cs}",
+                "CREATED-BY: Squelch v0.9.0-alpha",
+                "",
+            ]
+            for q in qsos:
+                # Cabrillo QSO line format:
+                # QSO: freq mode date time my-call rst-sent exch
+                #      dx-call rst-rcvd exch
+                freq_khz = int(q.freq_hz / 1000)                            if hasattr(q, "freq_hz") and q.freq_hz                            else 14074
+                dt = q.datetime_on[:16].replace("T", " ")                      if "T" in q.datetime_on                      else q.datetime_on[:16]
+                lines.append(
+                    f"QSO: {freq_khz:>5} "
+                    f"{q.mode:<2} "
+                    f"{dt} "
+                    f"{cs:<13} "
+                    f"{q.rst_sent:<3} "
+                    f"{'':>6}  "
+                    f"{q.call:<13} "
+                    f"{q.rst_rcvd:<3} "
+                    f"{'':>6}")
+            lines.append("END-OF-LOG:")
+            Path(path).write_text(
+                "\n".join(lines), encoding="utf-8")
+            QMessageBox.information(
+                self, "Cabrillo Exported",
+                f"Exported {len(qsos)} QSOs to:\n{path}\n\n"
+                "Fill in CONTEST: and exchange fields\n"
+                "before submitting to contest robot.")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed", str(e))
+
+    def _export_csv(self):
+        """Export log as CSV spreadsheet."""
+        import csv
+        import io
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV",
+            f"{self.cfg.callsign or 'log'}_qsos.csv",
+            "CSV (*.csv);;All Files (*)")
+        if not path:
+            return
+        try:
+            qsos = self.log_db.recent_qsos(limit=9999)
+            output = io.StringIO()
+            writer = csv.writer(output)
+            # Header
+            writer.writerow([
+                "Date", "Time UTC", "Callsign",
+                "Band", "Mode", "Freq MHz",
+                "RST Sent", "RST Rcvd",
+                "Their Grid", "Name", "Country",
+                "My Callsign", "My Grid",
+                "LoTW Status", "Comment"])
+            for q in qsos:
+                dt  = q.datetime_on
+                date = dt[:10] if len(dt) >= 10 else dt
+                time = dt[11:16] if len(dt) >= 16 else ""
+                freq = f"{q.freq_hz/1e6:.6f}"                        if hasattr(q, "freq_hz") and q.freq_hz                        else ""
+                writer.writerow([
+                    date, time, q.call,
+                    q.band, q.mode, freq,
+                    q.rst_sent, q.rst_rcvd,
+                    q.grid, q.name,
+                    getattr(q, "country", ""),
+                    q.my_call, q.my_grid,
+                    q.lotw_status, q.comment])
+            Path(path).write_text(
+                output.getvalue(), encoding="utf-8")
+            QMessageBox.information(
+                self, "CSV Exported",
+                f"Exported {len(qsos)} QSOs to:\n{path}")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed", str(e))
+
     def _import_adif(self):
         path, _ = QFileDialog.getOpenFileName(
             self, self.tr("Import ADIF"),
@@ -564,19 +659,85 @@ class LogTab(QWidget):
     # ── LoTW / QRZ queue ─────────────────────────────────────────────────
 
     def _show_lotw_queue(self):
+        from network.lotw_sync import LoTWSync
+        from PyQt6.QtWidgets import QProgressDialog
         pending = self.log_db.lotw_pending()
-        QMessageBox.information(
-            self, self.tr("LoTW Upload Queue"),
-            f"{len(pending)} QSOs pending LoTW upload.\n\n"
-            "LoTW upload via TQSL will be available in Chunk 10.\n"
-            "Export ADIF and upload manually via TQSL for now.")
+        if not pending:
+            QMessageBox.information(
+                self, "LoTW Queue",
+                "No QSOs pending LoTW upload.\n\n"
+                "All logged QSOs have been uploaded.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Upload to LoTW",
+            f"{len(pending)} QSOs pending upload.\n\n"
+            "Upload to LoTW now via TQSL?\n\n"
+            "Requires:\n"
+            "• TQSL installed (tqsl.arrl.org)\n"
+            "• LoTW credentials in Settings → APIs",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Show progress
+        prog = QProgressDialog(
+            "Uploading to LoTW…", "Cancel",
+            0, 100, self)
+        prog.setWindowTitle("LoTW Upload")
+        prog.setWindowModality(
+            Qt.WindowModality.WindowModal)
+        prog.show()
+
+        sync = LoTWSync(self.cfg)
+
+        def _on_progress(msg: str, pct: int):
+            QTimer.singleShot(0, lambda:
+                (prog.setLabelText(msg),
+                 prog.setValue(pct)))
+
+        def _on_complete(result):
+            QTimer.singleShot(0, lambda r=result:
+                self._lotw_done(r, prog))
+
+        sync.on_progress(_on_progress)
+        sync.on_complete(_on_complete)
+        sync.upload_async(self.log_db, pending)
+
+    def _lotw_done(self, result, prog):
+        prog.close()
+        if result.success:
+            QMessageBox.information(
+                self, "LoTW Upload Complete",
+                f"{result.message}\n\n"
+                "LoTW confirmations typically arrive "
+                "within 24-48 hours.")
+            # Mark as uploaded
+            for q in self.log_db.lotw_pending():
+                self.log_db.mark_lotw_uploaded(q)
+            self._load_log()
+        else:
+            QMessageBox.warning(
+                self, "LoTW Upload Failed",
+                f"Upload failed:\n{result.error}\n\n"
+                "Check Settings → APIs for credentials\n"
+                "and Settings → Paths for TQSL location.")
 
     def _show_qrz_queue(self):
+        from network.qrz_lookup import CallsignLookup
         pending = self.log_db.qrz_pending()
+        if not pending:
+            QMessageBox.information(
+                self, "QRZ Queue",
+                "No QSOs pending QRZ sync.")
+            return
         QMessageBox.information(
-            self, self.tr("QRZ Upload Queue"),
+            self, "QRZ Logbook Sync",
             f"{len(pending)} QSOs pending QRZ upload.\n\n"
-            "QRZ logbook sync will be available in Chunk 10.")
+            "QRZ logbook sync requires a QRZ subscription.\n"
+            "Set credentials in Settings → APIs.\n\n"
+            "Full sync coming in v0.9.1.")
 
     # ── Public ────────────────────────────────────────────────────────────
 

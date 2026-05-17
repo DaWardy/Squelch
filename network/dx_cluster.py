@@ -1,5 +1,5 @@
-# APEX — Amateur Platform for EXperimentation
-# Copyright (C) 2026  github.com/dawardy/apex
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -18,7 +18,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-"""APEX -- network/dx_cluster.py
+"""Squelch -- network/dx_cluster.py
 DX cluster and alerting API integrations:
   - PSKReporter (spot feed)
   - DX Watch / DX Summit (cluster spots)
@@ -130,7 +130,7 @@ class PSKReporterClient:
                 PSKREPORTER_URL,
                 params=params,
                 timeout=10,
-                headers={"User-Agent": "APEX/1.0 github.com/dawardy/apex"})
+                headers={"User-Agent": "APEX/1.0 github.com/dawardy/squelch"})
             if len(resp.content) > 100_000:
                 return None  # response too large
             if resp.status_code == 200:

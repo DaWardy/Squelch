@@ -44,14 +44,19 @@ class BandConditionsTab(QWidget):
         super().__init__(parent)
         self.cfg   = config
         self._feed = get_prop_feed()
+        # Start fetching BEFORE building UI so data arrives sooner
         self._feed.on_solar_update(self._on_solar)
         self._feed.on_alert(self._on_alert)
+        if not self._feed._running:
+            self._feed.start()
         self._build()
-        self._feed.start()
-        # Show placeholder data immediately while fetching
-        QTimer.singleShot(200, self._show_fetching_state)
-        # If feed already has data (re-opened tab), show it
-        QTimer.singleShot(500, self._refresh_display)
+        self._show_fetching_state()
+        # If feed already has data (re-opened tab), show immediately
+        if self._feed.solar.sfi > 0:
+            QTimer.singleShot(50, self._refresh_display)
+        else:
+            # Wait for first fetch - check every 2 seconds
+            QTimer.singleShot(2000, self._refresh_display)
 
         # Refresh UI every 60 seconds
         self._timer = QTimer(self)
@@ -434,3 +439,18 @@ class BandConditionsTab(QWidget):
         solar = self._feed.solar
         if solar.sfi > 0:
             self._apply_solar(solar)
+        else:
+            # Still waiting - try again in 3 seconds
+            QTimer.singleShot(3000, self._poll_for_data)
+
+    def _poll_for_data(self):
+        """Keep checking until data arrives."""
+        solar = self._feed.solar
+        if solar.sfi > 0:
+            self._apply_solar(solar)
+        elif self._feed._running:
+            # Still fetching - check again
+            QTimer.singleShot(3000, self._poll_for_data)
+        else:
+            self._summary_lbl.setText(
+                "Could not fetch solar data — check internet connection")

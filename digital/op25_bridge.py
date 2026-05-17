@@ -1,6 +1,24 @@
 from __future__ import annotations
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 """
 Squelch -- digital/op25_bridge.py
@@ -16,6 +34,7 @@ We poll it for decoded talkgroup/call info.
 import sys
 import time
 import logging
+from core.constants import PORT_DUMP1090_HTTP
 import threading
 from typing import Callable
 from dataclasses import dataclass
@@ -45,7 +64,7 @@ class OP25Bridge:
     On Windows, DSD+ is used instead — see dsdplus.py.
     """
 
-    OP25_API = "http://localhost:8080"
+    OP25_API = f"http://localhost:{PORT_DUMP1090_HTTP}"
 
     def __init__(self, config):
         self.cfg      = config

@@ -426,7 +426,7 @@ PRESETS: dict[str, RigPreset] = {
 
     "Xiegu G90": RigPreset(
         name          = "Xiegu G90",
-        hamlib_model  = None,
+        hamlib_model  = 1,       # Generic - use until official model added
         baud          = 19200,
         ptt_method    = "CAT",
         data_mode     = "PKTUSB",
@@ -454,7 +454,7 @@ PRESETS: dict[str, RigPreset] = {
 
     "Xiegu X6100": RigPreset(
         name          = "Xiegu X6100",
-        hamlib_model  = None,
+        hamlib_model  = 1,       # Generic - use until official model added
         baud          = 19200,
         ptt_method    = "CAT",
         data_mode     = "PKTUSB",

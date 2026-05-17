@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         self.location = location
 
         self.setWindowTitle(
-            f"{APP_NAME}  v{VERSION}-alpha  —  {APP_FULL}")
+            f"{APP_NAME}  v{VERSION}  —  {APP_FULL}")
         self.setMinimumSize(900, 600)
 
         # Restore window geometry
@@ -222,6 +222,8 @@ class MainWindow(QMainWindow):
         self._check_first_run()
         self._load_plugins()
         self._apply_saved_font_size()
+        self._init_aprs()
+        self._init_pskreporter()
         QTimer.singleShot(100, self._wire_sdr_to_digital)
         self._auto_detect_software()
         # Populate operator profiles
@@ -297,10 +299,15 @@ class MainWindow(QMainWindow):
             elif key == "map":
                 from ui.tabs.map_tab import MapTab
                 tab = MapTab(self.cfg, self._get_log_db())
-                # Wire location changes to map
                 self.location.on_location_change(
                     tab.on_location_change)
                 return tab
+            elif key == "winlink":
+                from ui.tabs.winlink_tab import WinlinkTab
+                return WinlinkTab(self.cfg, self.rig)
+            elif key == "help":
+                from ui.tabs.help_tab import HelpTab
+                return HelpTab(self.cfg)
             else:
                 from ui.tabs.stub_tab import StubTab
                 return StubTab(label, key, self.cfg)
@@ -557,6 +564,12 @@ class MainWindow(QMainWindow):
     # ── Wire ──────────────────────────────────────────────────────────────
 
     def _wire(self):
+        # Global keyboard shortcuts
+        f1 = QAction(self)
+        f1.setShortcut("F1")
+        f1.triggered.connect(self._open_help)
+        self.addAction(f1)
+
         self.rig.on_state_change(self._on_rig)
         self.location.on_location_change(self._on_loc)
         # Safety alerts
@@ -878,6 +891,14 @@ class MainWindow(QMainWindow):
         self._lock_action.setText(
             f"{icon} {'Lock' if not locked else 'Unlock'} UI Layout")
 
+    def _open_help(self):
+        """Jump to Help tab — F1."""
+        help_tab = self._tab_map.get("help")
+        if help_tab:
+            idx = self.tabs.indexOf(help_tab)
+            if idx >= 0:
+                self.tabs.setCurrentIndex(idx)
+
     def _rearrange_hint(self):
         """Show tab rearrange instructions."""
         locked = self.cfg.get("ui.layout_locked", False)
@@ -1027,7 +1048,7 @@ class MainWindow(QMainWindow):
 
         intro = QLabel(
             f"<b style='font-size:14px'>"
-            f"Welcome to {APP_NAME} v{VERSION}!</b><br><br>"
+            f"Welcome to {APP_NAME} v{VERSION}</b><br><br>"
             "Enter your callsign and location to get started.<br>"
             "Location resolves to a Maidenhead grid square — "
             "the universal reference for amateur radio.<br>"
@@ -1116,9 +1137,30 @@ class MainWindow(QMainWindow):
     # ── Settings ──────────────────────────────────────────────────────────
 
     def _open_settings(self):
-        """Full settings dialog — Chunk 10."""
-        QMessageBox.information(
-            self, "Settings",
+        """Open full settings editor (Ctrl+,)."""
+        from ui.dialogs.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self.cfg, parent=self)
+        if dlg.exec():
+            # Apply any live changes (theme, font, etc.)
+            cs = self.cfg.callsign
+            if cs:
+                self._cs_lbl.setText(cs)
+            grid = self.cfg.grid
+            if grid:
+                self._grid_lbl.setText(grid)
+            # Reload stylesheet if theme changed
+            from core.themes import get_stylesheet
+            from PyQt6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                theme = self.cfg.get("ui.theme", "Dark")
+                fs    = self.cfg.get("ui.font_size", 11)
+                app.setStyleSheet(
+                    get_stylesheet(theme, fs))
+        # placeholder to fix old stub reference
+        if False:
+            QMessageBox.information(
+                self, "Settings",
             "Full in-app settings editor coming in v2.0.\n\n"
             "Current options:\n"
             "• Click callsign or grid in top bar to edit\n"
@@ -1163,9 +1205,13 @@ class MainWindow(QMainWindow):
 
     def _about(self):
         QMessageBox.about(
-            self, f"About {APP_NAME} v{VERSION}",
-            f"<b>{APP_NAME} v{VERSION}</b><br>"
-            f"{APP_FULL}<br><br>"
+            self,
+            f"About {APP_NAME}",
+            f"<b>{APP_NAME}  v{VERSION}</b><br>"
+            f"<i>{APP_FULL}</i><br><br>"
+            f"Amateur radio operations platform.<br>"
+            f"IC-7100 CAT · FT8/FT4/WSPR · QSO logging<br>"
+            f"SDR · P25/DMR · Winlink/VARA · APRS<br><br>"
             "<a href='https://github.com/dawardy/squelch'"
             " style='color:#3fbe6f'>"
             "github.com/dawardy/squelch</a><br><br>"
@@ -1281,6 +1327,60 @@ class MainWindow(QMainWindow):
             # Have callsign but no location — prompt
             self._loc_lbl.setText("No location set — click grid to set")
             self._loc_lbl.setStyleSheet("color:#555;font-size:10px;")
+
+    def _init_aprs(self):
+        """
+        Initialize APRS-IS client as app-level singleton.
+        Auto-connects if APRS was running last session.
+        """
+        try:
+            from aprs.aprs_client import APRSClient
+            from aprs.beacon     import APRSBeacon
+            self._aprs_client = APRSClient(self.cfg)
+            self._aprs_beacon = APRSBeacon(
+                self.cfg, self._aprs_client)
+            # Auto-connect if configured
+            if self.cfg.get("aprs.auto_connect", False):
+                self._aprs_client.connect()
+            # Update map when packets arrive
+            self._aprs_client.on_packet(
+                self._on_aprs_packet)
+            log.info("APRS client initialized")
+        except Exception as e:
+            log.debug(f"APRS init: {e}")
+            self._aprs_client = None
+            self._aprs_beacon = None
+
+    def _init_pskreporter(self):
+        """
+        Start PSKReporter submission if enabled.
+        FT8 decodes from WSJT-X are forwarded here.
+        """
+        try:
+            if not self.cfg.get(
+                    "spotting.pskreporter_enabled",
+                    True):
+                self._pskreporter = None
+                return
+            from network.pskreporter import PSKReporter
+            self._pskreporter = PSKReporter(self.cfg)
+            self._pskreporter.start()
+            log.info("PSKReporter submission started")
+        except Exception as e:
+            log.debug(f"PSKReporter init: {e}")
+            self._pskreporter = None
+
+    def _on_aprs_packet(self, packet):
+        """Update map tab with new APRS station."""
+        try:
+            map_tab = self._tab_map.get("map")
+            if map_tab and hasattr(map_tab, "set_aprs_stations"):
+                stations = self._aprs_client.stations_on_map()
+                QTimer.singleShot(0,
+                    lambda s=stations:
+                        map_tab.set_aprs_stations(s))
+        except Exception:
+            pass
 
     def _apply_saved_font_size(self):
         """Apply saved font size preference on startup."""

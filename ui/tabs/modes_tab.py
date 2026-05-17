@@ -114,7 +114,9 @@ class ModesTab(QWidget):
         self._freq_history: list[int] = []
 
         self._build()
+        self._build_dx_panel()
         self._wire()
+        self._start_dx_cluster()
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -449,6 +451,199 @@ class ModesTab(QWidget):
 
     # ── Wire signals ──────────────────────────────────────────────────────
 
+    def _build_dx_panel(self):
+        """
+        Live DX spots panel at bottom of Modes tab.
+        Shows recent DX from cluster, filtered by current band.
+        """
+        from PyQt6.QtWidgets import (
+            QGroupBox, QTableWidget, QTableWidgetItem,
+            QHeaderView, QHBoxLayout, QPushButton,
+            QComboBox, QLabel)
+
+        # Find the root layout and add DX panel
+        dx_grp = QGroupBox("DX Spots (cluster)")
+        dx_grp.setMaximumHeight(160)
+        dl = QVBoxLayout(dx_grp)
+        dl.setContentsMargins(4, 4, 4, 4)
+        dl.setSpacing(3)
+
+        # Controls row
+        ctrl = QHBoxLayout()
+        ctrl.addWidget(QLabel("Band:"))
+        self._dx_band = QComboBox()
+        self._dx_band.addItems([
+            "Current", "160m","80m","40m","30m","20m",
+            "17m","15m","12m","10m","6m","All"])
+        self._dx_band.setFixedWidth(80)
+        self._dx_band.currentTextChanged.connect(
+            self._filter_dx_spots)
+        ctrl.addWidget(self._dx_band)
+
+        ctrl.addWidget(QLabel("Mode:"))
+        self._dx_mode_filter = QComboBox()
+        self._dx_mode_filter.addItems([
+            "All","FT8","CW","SSB","FT4"])
+        self._dx_mode_filter.setFixedWidth(60)
+        self._dx_mode_filter.currentTextChanged.connect(
+            self._filter_dx_spots)
+        ctrl.addWidget(self._dx_mode_filter)
+
+        ctrl.addStretch()
+
+        self._dx_status = QLabel("DX Cluster: not connected")
+        self._dx_status.setStyleSheet("color:#555;font-size:10px;")
+        ctrl.addWidget(self._dx_status)
+
+        conn_btn = QPushButton("Connect")
+        conn_btn.setFixedHeight(22)
+        conn_btn.setFixedWidth(70)
+        conn_btn.clicked.connect(self._toggle_dx_cluster)
+        self._dx_conn_btn = conn_btn
+        ctrl.addWidget(conn_btn)
+        dl.addLayout(ctrl)
+
+        # Spot table
+        self._dx_table = QTableWidget(0, 5)
+        self._dx_table.setHorizontalHeaderLabels([
+            "DX", "Freq", "Spotter", "Comment", "Time"])
+        h = self._dx_table.horizontalHeader()
+        h.setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch)
+        self._dx_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._dx_table.setFixedHeight(90)
+        self._dx_table.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;color:#aaa;"
+            "font-size:9px;font-family:'Courier New';"
+            "border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;"
+            "color:#555;border:none;font-size:9px;}")
+        self._dx_table.doubleClicked.connect(
+            self._tune_to_dx_spot)
+        dl.addWidget(self._dx_table)
+
+        # Add to root layout - find it
+        self.layout().addWidget(dx_grp)
+        self._dx_cluster = None
+        self._dx_spots   = []
+
+    def _start_dx_cluster(self):
+        """Auto-connect to DX cluster if configured."""
+        if self.cfg.get("dx_cluster.auto_connect", False):
+            QTimer.singleShot(2000, self._toggle_dx_cluster)
+
+    def _toggle_dx_cluster(self):
+        from network.dx_cluster import DXClusterClient
+        if self._dx_cluster:
+            self._dx_cluster.stop()
+            self._dx_cluster = None
+            self._dx_status.setText(
+                "DX Cluster: disconnected")
+            self._dx_conn_btn.setText("Connect")
+            return
+
+        self._dx_cluster = DXClusterClient(self.cfg)
+        self._dx_cluster.on_spot(self._on_dx_spot)
+        self._dx_status.setText("Connecting…")
+        self._dx_cluster.start()
+        # Check if connected after start
+        QTimer.singleShot(1000, self._check_dx_connected)
+
+    def _check_dx_connected(self):
+        if self._dx_cluster:
+            if getattr(self._dx_cluster, "_running", False):
+                self._apply_dx_status("connected", "DX Cluster")
+            else:
+                self._apply_dx_status("error", "")
+                self._dx_status.setText(
+                    "DX Cluster: configure HamAlert API key")
+
+    def _on_dx_status(self, status: str, node: str = ""):
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, lambda s=status, n=node:
+            self._apply_dx_status(s, n))
+
+    def _apply_dx_status(self, status: str, node: str):
+        if status == "connected":
+            self._dx_status.setText(
+                f"DX Cluster: {node}")
+            self._dx_status.setStyleSheet(
+                "color:#3fbe6f;font-size:10px;")
+            self._dx_conn_btn.setText("Disconnect")
+            self.cfg.set("dx_cluster.auto_connect", True)
+        else:
+            self._dx_status.setText(
+                "DX Cluster: disconnected")
+            self._dx_status.setStyleSheet(
+                "color:#555;font-size:10px;")
+            self._dx_conn_btn.setText("Connect")
+
+    def _on_dx_spot(self, spot):
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0,
+            lambda s=spot: self._add_dx_spot(s))
+
+    def _add_dx_spot(self, spot):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        # Remove duplicate DX call
+        self._dx_spots = [
+            s for s in self._dx_spots
+            if s.dx_call != spot.dx_call]
+        self._dx_spots.insert(0, spot)
+        if len(self._dx_spots) > 100:
+            self._dx_spots = self._dx_spots[:100]
+        self._filter_dx_spots()
+
+    def _filter_dx_spots(self):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+        band = self._dx_band.currentText()
+        mode = self._dx_mode_filter.currentText()
+
+        if band == "Current":
+            band = self._current_band or ""
+        elif band == "All":
+            band = ""
+
+        self._dx_table.setRowCount(0)
+        shown = 0
+        for spot in self._dx_spots:
+            if band and spot.band != band:
+                continue
+            if mode != "All" and spot.mode and                spot.mode.upper() != mode.upper():
+                continue
+            row = self._dx_table.rowCount()
+            self._dx_table.insertRow(row)
+            for col, val in enumerate([
+                    spot.dx_call,
+                    f"{spot.freq_khz:.1f}",
+                    spot.spotter,
+                    spot.comment[:30],
+                    spot.time_utc]):
+                item = QTableWidgetItem(val)
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter)
+                self._dx_table.setItem(row, col, item)
+            shown += 1
+            if shown >= 10:
+                break
+
+    def _tune_to_dx_spot(self, index):
+        """Double-click DX spot to tune rig."""
+        row = index.row()
+        if row >= len(self._dx_spots):
+            return
+        spot = self._dx_spots[row]
+        freq_hz = int(spot.freq_khz * 1000)
+        if self.rig and self.rig.is_connected:
+            try:
+                self.rig.set_freq(freq_hz)
+            except Exception:
+                pass
+
     def _wire(self):
         self._band_combo.currentTextChanged.connect(self._on_band_change)
         self._tx_freq_spin.valueChanged.connect(
@@ -513,6 +708,7 @@ class ModesTab(QWidget):
     # ── Band / frequency ──────────────────────────────────────────────────
 
     def _on_band_change(self, band: str):
+        self._current_band = band
         self._active_band = band
         mode  = self._current_mode
         freq  = self._get_mode_freq(mode, band)

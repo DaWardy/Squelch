@@ -155,6 +155,7 @@ class LogDB:
         self._open()
 
     def _open(self):
+        self._path = Path(self._path)  # ensure Path object
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
             str(self._path),

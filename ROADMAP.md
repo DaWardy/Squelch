@@ -3,9 +3,10 @@
 ## Version Scheme
 
 ```
-0.6.x  Alpha     — crashes possible, core features building
-0.7.x  Alpha     — app stable, digital tabs filling in
-0.8.x  Beta      — IC-7100 verified, FT8 end-to-end working
+0.6.x  Alpha     — crashes possible, core features building ✅
+0.7.x  Alpha     — app stable, digital tabs filling in ✅
+0.8.x  Alpha     — Winlink + Help complete, IC-7100 pending test
+0.9.x  Beta      — IC-7100 verified, FT8 end-to-end working
 0.9.x  RC        — feature complete, polish and testing
 1.0.0  Release   — public release, signed installer
 ```
@@ -14,7 +15,7 @@
 
 ## Release Targets
 
-### v0.7.0 — Digital Monitor + Local RF
+### v0.7.0 — Digital Monitor + Local RF ✅ COMPLETE
 - P25 / DMR / NXDN / YSF / D-STAR decode (DSD+ / OP25)
 - RFDF foxhunt mode with bearing display
 - Signal type → decoder routing from SDR tab
@@ -28,7 +29,7 @@
 - ADS-B live aircraft on Local RF map
 - Embedded map (Leaflet via QtWebEngine)
 
-### v0.8.0 — Winlink + Help system (Beta begins)
+### v0.8.0 — Winlink + Help system ✅ COMPLETE
 - VARA HF + FM TCP socket control
 - Auto-launch VARA in background
 - ARES EmComm template library (ICS-213, ICS-214, Radiogram)
@@ -44,7 +45,7 @@
 - Instructor lab guide + exercises
 - SoapySDR setup guide (all hardware)
 
-### v0.8.1 — Map System
+### v0.8.1 — Map System (next)
 - Embedded Leaflet map (QWebEngineView)
 - QSO log map — great circle paths between stations
 - Gray line terminator overlay (day/night boundary)

@@ -194,7 +194,10 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         if not l.strip().startswith("PyQtWebEngine")
         and not (l.strip().startswith("#") and
                  "PyQtWebEngine" in l)]
-    tmp_req = Path(tempfile.mktemp(suffix=".txt"))
+    import os
+    _fd, _tmp = tempfile.mkstemp(suffix=".txt")
+    os.close(_fd)
+    tmp_req = Path(_tmp)  # nosec B306 - mkstemp is safe
     tmp_req.write_text("\n".join(req_lines))
     cmd = [pip, "install", "-r", str(tmp_req), "--quiet"]
 

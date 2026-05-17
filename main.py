@@ -93,7 +93,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Squelch")
-    app.setApplicationVersion("0.7.1-alpha")
+    app.setApplicationVersion("0.9.0-alpha")
 
     from core.config   import Config
     from core.safety   import get_safety

@@ -1,5 +1,5 @@
-# APEX — Amateur Platform for EXperimentation
-# Copyright (C) 2026  github.com/dawardy/apex
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -18,7 +18,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-"""APEX -- network/qrz_lookup.py
+"""Squelch -- network/qrz_lookup.py
 Callsign lookup via QRZ XML API (primary) and HamQTH (fallback).
 Results cached to minimize API calls.
 Credentials never logged or displayed after entry.

@@ -1,6 +1,24 @@
 from __future__ import annotations
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 """
 Squelch -- network/map_data.py
@@ -18,6 +36,7 @@ QWebEngineView renders it inside Squelch.
 
 import json
 import logging
+from core.constants import PORT_DUMP1090_HTTP
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +60,7 @@ LEAFLET_JS  = (
 def build_map_html(config,
                    log_db=None,
                    repeaters=None,
+                   aprs_stations=None,
                    show_grayline: bool = True,
                    show_qso_paths: bool = True,
                    show_adsb: bool = True,
@@ -105,8 +125,8 @@ def build_map_html(config,
         except Exception as e:
             log.debug(f"QSO paths: {e}")
 
-    # APRS stations (stub — populated by APRS module)
-    aprs_stations = []
+    # APRS stations from APRS-IS client
+    aprs_stations = aprs_stations or []
 
     # ADS-B aircraft
     aircraft = []
@@ -194,7 +214,7 @@ def _fetch_adsb() -> list[dict]:
     try:
         import urllib.request
         with urllib.request.urlopen(   # nosec B310
-                "http://localhost:8080/data/aircraft.json",
+                f"http://localhost:{PORT_DUMP1090_HTTP}/data/aircraft.json",
                 timeout=1) as resp:
             data = json.loads(resp.read(500_000))
             aircraft = []

@@ -33,6 +33,7 @@ import logging
 from datetime import datetime, timezone
 
 from PyQt6.QtWidgets import (
+    QTextEdit,
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QLabel, QGroupBox, QFrame, QPushButton,
     QComboBox, QTextEdit, QLineEdit, QFormLayout,
@@ -116,7 +117,7 @@ class WinlinkTab(QWidget):
 
         self._hf_lbl = QLabel("VARA HF: ●  Disconnected")
         self._hf_lbl.setStyleSheet(
-            "color:#555;font-size:11px;"
+            "color:#555;font-size:13px;"
             "font-family:'Courier New';")
         lay.addWidget(self._hf_lbl)
 
@@ -124,7 +125,7 @@ class WinlinkTab(QWidget):
 
         self._fm_lbl = QLabel("VARA FM: ●  Disconnected")
         self._fm_lbl.setStyleSheet(
-            "color:#555;font-size:11px;"
+            "color:#555;font-size:13px;"
             "font-family:'Courier New';")
         lay.addWidget(self._fm_lbl)
 
@@ -134,16 +135,217 @@ class WinlinkTab(QWidget):
         hf_btn = QPushButton("Connect HF")
         hf_btn.setFixedHeight(24)
         hf_btn.setFixedWidth(90)
+        hf_btn.setToolTip(
+            "Connect to VARA HF modem\n"
+            "VARA HF must be running first\n"
+            "TCP port 8300 (control) / 8301 (data)")
         hf_btn.clicked.connect(self._connect_hf)
         lay.addWidget(hf_btn)
 
         fm_btn = QPushButton("Connect FM")
         fm_btn.setFixedHeight(24)
         fm_btn.setFixedWidth(90)
+        fm_btn.setToolTip(
+            "Connect to VARA FM modem\n"
+            "VARA FM must be running first\n"
+            "TCP port 8400 (control) / 8401 (data)")
         fm_btn.clicked.connect(self._connect_fm)
         lay.addWidget(fm_btn)
 
         return bar
+
+    def _build_inbox_tab(self) -> QWidget:
+        """Inbox/Outbox for stored Winlink messages."""
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(4)
+
+        # Toolbar
+        tb = QHBoxLayout()
+        folder_combo = QComboBox()
+        folder_combo.addItems(
+            ["📥 Inbox", "📤 Outbox",
+             "📨 Sent", "📝 Drafts"])
+        folder_combo.currentTextChanged.connect(
+            self._refresh_inbox)
+        self._folder_combo = folder_combo
+        tb.addWidget(folder_combo)
+
+        import_btn = QPushButton("📂 Import")
+        import_btn.setToolTip(
+            "Import messages from file\n"
+            "Supports .b2f and text formats")
+        import_btn.clicked.connect(self._import_messages)
+        tb.addWidget(import_btn)
+
+        delete_btn = QPushButton("🗑 Delete")
+        delete_btn.setToolTip("Delete selected message")
+        delete_btn.clicked.connect(self._delete_message)
+        tb.addWidget(delete_btn)
+
+        tb.addStretch()
+
+        self._unread_lbl = QLabel("")
+        self._unread_lbl.setStyleSheet(
+            "color:#3fbe6f;font-size:12px;")
+        tb.addWidget(self._unread_lbl)
+        lay.addLayout(tb)
+
+        # Message list
+        self._msg_list = QTableWidget(0, 4)
+        self._msg_list.setHorizontalHeaderLabels([
+            "From", "Subject", "Date", "Status"])
+        h = self._msg_list.horizontalHeader()
+        h.setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch)
+        self._msg_list.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._msg_list.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        self._msg_list.setAlternatingRowColors(True)
+        self._msg_list.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;color:#aaa;"
+            "font-size:12px;border:1px solid #1a1a1a;"
+            "alternate-background-color:#0d0d0d;}"
+            "QHeaderView::section{background:#141414;"
+            "color:#666;border:none;font-size:12px;}")
+        self._msg_list.clicked.connect(
+            self._on_msg_select)
+        self._msg_list.doubleClicked.connect(
+            self._on_msg_open)
+        lay.addWidget(self._msg_list, 1)
+
+        # Preview pane
+        self._msg_preview = QTextEdit()
+        self._msg_preview.setReadOnly(True)
+        self._msg_preview.setMaximumHeight(160)
+        self._msg_preview.setStyleSheet(
+            "background:#0a0a0a;color:#aaa;"
+            "font-size:12px;font-family:'Courier New';"
+            "border:1px solid #1a1a1a;")
+        self._msg_preview.setPlaceholderText(
+            "Click a message to preview it here…")
+        lay.addWidget(self._msg_preview)
+
+        return w
+
+    def _refresh_inbox(self, _=None):
+        """Reload message list from store."""
+        folder_text = self._folder_combo.currentText()
+        folder_map  = {
+            "📥 Inbox":  "inbox",
+            "📤 Outbox": "outbox",
+            "📨 Sent":   "sent",
+            "📝 Drafts": "drafts",
+        }
+        folder = folder_map.get(folder_text, "inbox")
+        msgs   = self._msg_store.folder(folder)
+
+        self._msg_list.setRowCount(0)
+        for msg in sorted(msgs,
+                          key=lambda m: m.date_utc,
+                          reverse=True):
+            row = self._msg_list.rowCount()
+            self._msg_list.insertRow(row)
+            bold = msg.status == "unread"
+            for col, val in enumerate([
+                    msg.from_ or "(unknown)",
+                    msg.subject,
+                    msg.date_utc[:16],
+                    msg.status]):
+                item = QTableWidgetItem(val)
+                if bold:
+                    from PyQt6.QtGui import QFont
+                    f = item.font()
+                    f.setBold(True)
+                    item.setFont(f)
+                self._msg_list.setItem(row, col, item)
+                # Store mid in first column
+                if col == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        msg.mid)
+
+        unread = self._msg_store.unread_count
+        if unread:
+            self._unread_lbl.setText(
+                f"{unread} unread")
+        else:
+            self._unread_lbl.setText("")
+
+    def _on_msg_select(self, index):
+        row = index.row()
+        mid_item = self._msg_list.item(row, 0)
+        if not mid_item:
+            return
+        mid = mid_item.data(Qt.ItemDataRole.UserRole)
+        msg = self._msg_store.get(mid)
+        if not msg:
+            return
+        self._msg_store.mark_read(mid)
+        self._msg_preview.setPlainText(
+            f"From:    {msg.from_}\n"
+            f"To:      {msg.to}\n"
+            f"Subject: {msg.subject}\n"
+            f"Date:    {msg.date_utc}\n"
+            f"Status:  {msg.status}\n"
+            f"{'─'*40}\n"
+            f"{msg.body}")
+        self._refresh_inbox()
+
+    def _on_msg_open(self, index):
+        """Open message in compose tab for reply."""
+        row = index.row()
+        mid_item = self._msg_list.item(row, 0)
+        if not mid_item:
+            return
+        mid = mid_item.data(Qt.ItemDataRole.UserRole)
+        msg = self._msg_store.get(mid)
+        if not msg:
+            return
+        # Pre-fill compose tab for reply
+        self._to_edit.setText(msg.from_)
+        self._subj_edit.setText(
+            f"Re: {msg.subject}")
+        self._body_edit.setPlainText(
+            f"\n\n--- Original message ---\n"
+            f"{msg.body[:500]}")
+        self._tabs.setCurrentIndex(1)  # Compose tab
+
+    def _delete_message(self):
+        rows = self._msg_list.selectedItems()
+        if not rows:
+            return
+        mid = rows[0].data(Qt.ItemDataRole.UserRole)
+        self._msg_store.delete(mid)
+        self._msg_preview.clear()
+        self._refresh_inbox()
+
+    def _import_messages(self):
+        from PyQt6.QtWidgets import QFileDialog
+        from pathlib import Path as _Path
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Winlink Messages",
+            "",
+            "Message Files (*.b2f *.txt *.msg *.mbox)"
+            ";;All Files (*)")
+        if not path:
+            return
+        count = self._msg_store.import_adif_message(
+            _Path(path))
+        if count:
+            self._refresh_inbox()
+            QMessageBox.information(
+                self, "Import Complete",
+                f"Imported {count} message(s).")
+        else:
+            QMessageBox.warning(
+                self, "Import",
+                "No messages found in file.\n"
+                "Supported: plain text, mbox format.")
 
     def _build_compose_tab(self) -> QWidget:
         w   = QWidget()
@@ -179,6 +381,11 @@ class WinlinkTab(QWidget):
         via_lbl = QLabel("Via:")
         btn_row.addWidget(via_lbl)
         self._via_combo = QComboBox()
+        self._via_combo.setToolTip(
+            "Select how to send the message\n"
+            "VARA HF: HF radio (long distance)\n"
+            "VARA FM: VHF/UHF to local gateway\n"
+            "Pat: open-source client (auto-selects)")
         self._via_combo.addItems([
             "VARA HF", "VARA FM", "Pat (auto)", "RMS Express"])
         self._via_combo.setFixedWidth(130)
@@ -194,7 +401,10 @@ class WinlinkTab(QWidget):
         send_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
             "border:1px solid #3fbe6f;border-radius:4px;"
-            "font-size:11px;padding:4px 16px;")
+            "font-size:13px;padding:4px 16px;")
+        send_btn.setToolTip(
+            "Send message via selected modem\n"
+            "VARA must be connected and a gateway selected")
         send_btn.clicked.connect(self._send_message)
         btn_row.addWidget(send_btn)
         lay.addLayout(btn_row)
@@ -204,7 +414,7 @@ class WinlinkTab(QWidget):
             "Winlink delivers messages even when internet is down. "
             "Messages route through RF gateways to the Winlink network.")
         info.setWordWrap(True)
-        info.setStyleSheet("color:#444;font-size:10px;")
+        info.setStyleSheet("color:#444;font-size:12px;")
         lay.addWidget(info)
 
         return w
@@ -292,17 +502,17 @@ class WinlinkTab(QWidget):
         self._gw_table.setAlternatingRowColors(True)
         self._gw_table.setStyleSheet(
             "QTableWidget{background:#0a0a0a;color:#aaa;"
-            "font-size:10px;font-family:'Courier New';"
+            "font-size:12px;font-family:'Courier New';"
             "alternate-background-color:#0d0d0d;"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{background:#141414;"
-            "color:#555;border:none;font-size:10px;}")
+            "color:#555;border:none;font-size:12px;}")
         lay.addWidget(self._gw_table)
 
         note = QLabel(
             "Gateway data from Winlink network (requires internet).\n"
             "Select a gateway and click the compose tab to connect.")
-        note.setStyleSheet("color:#444;font-size:10px;")
+        note.setStyleSheet("color:#444;font-size:12px;")
         lay.addWidget(note)
         return w
 
@@ -344,7 +554,7 @@ class WinlinkTab(QWidget):
             "Winlink Wednesday — Weekly activity check-in\n"
             "Welfare — Let family know you're safe")
         ref.setStyleSheet(
-            "color:#444;font-size:10px;"
+            "color:#444;font-size:12px;"
             "font-family:'Courier New';")
         ref.setWordWrap(True)
         lay.addWidget(ref)
@@ -383,7 +593,7 @@ class WinlinkTab(QWidget):
         if modem == "HF":
             self._hf_lbl.setText(text)
             self._hf_lbl.setStyleSheet(
-                f"color:{color};font-size:11px;"
+                f"color:{color};font-size:13px;"
                 "font-family:'Courier New';")
             self._hf_state_lbl.setText(state.value)
             self._hf_state_lbl.setStyleSheet(
@@ -391,7 +601,7 @@ class WinlinkTab(QWidget):
         else:
             self._fm_lbl.setText(text)
             self._fm_lbl.setStyleSheet(
-                f"color:{color};font-size:11px;"
+                f"color:{color};font-size:13px;"
                 "font-family:'Courier New';")
             self._fm_state_lbl.setText(state.value)
             self._fm_state_lbl.setStyleSheet(
@@ -402,13 +612,13 @@ class WinlinkTab(QWidget):
             self._hf_lbl.setText(
                 "VARA HF: ●  Running (not connected)")
             self._hf_lbl.setStyleSheet(
-                "color:#888;font-size:11px;"
+                "color:#888;font-size:13px;"
                 "font-family:'Courier New';")
         if VARAModem.is_running(is_fm=True):
             self._fm_lbl.setText(
                 "VARA FM: ●  Running (not connected)")
             self._fm_lbl.setStyleSheet(
-                "color:#888;font-size:11px;"
+                "color:#888;font-size:13px;"
                 "font-family:'Courier New';")
 
     def _send_message(self):
@@ -513,19 +723,32 @@ class WinlinkTab(QWidget):
             lat = self.cfg.get("location.lat", 0.0) or 0.0
             lon = self.cfg.get("location.lon", 0.0) or 0.0
 
-            # Winlink gateway list API
-            # Docs: winlink.org/Developers
+            # Winlink gateway list - use the public stations endpoint
+            # Falls back to channel list if main API unavailable
             params = {
                 "latitude":  lat,
                 "longitude": lon,
-                "distance":  200,   # km radius
+                "distance":  200,
                 "maxCount":  25,
+                "mode":      0,     # 0=all modes
             }
-            resp = requests.get(
+            # Try primary API first
+            resp = None
+            for url in [
                 "https://api.winlink.org/gateway/list",
-                params=params,
-                timeout=10,
-                headers={"Accept": "application/json"})
+                "https://cms.winlink.org/gateway/list",
+            ]:
+                try:
+                    resp = requests.get(
+                        url, params=params,
+                        timeout=10,
+                        headers={"Accept": "application/json"})
+                    if resp.status_code == 200:
+                        break
+                except Exception:
+                    continue
+            if resp is None:
+                raise Exception("All Winlink API endpoints failed")
 
             if resp.status_code == 200 and                len(resp.content) < 100_000:
                 gateways = resp.json()

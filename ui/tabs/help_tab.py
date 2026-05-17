@@ -419,6 +419,158 @@ in the Winlink tab.
   ☐ Paper forms (backup if no PC)
 """),
 
+    ("Yaesu FT-991A Setup", "Rig Control",
+     """# Yaesu FT-991A CAT Control Setup
+
+## USB Connection
+The FT-991A has a built-in USB audio and CAT interface.
+Connect via USB cable — no external interface needed.
+Driver installs automatically on Windows 10/11.
+
+## Radio Menu Settings
+Press MENU on the radio:
+
+  CAT RATE:       38400 bps (recommended)
+  CAT TOT:        10 msec
+  CAT RTS:        Enable
+  RS232 BAUD:     38400
+  DATA IN SEL:    USB  (for digital modes)
+  DATA PTT SEL:   DTR  (if using hamlib PTT)
+
+## Squelch Settings (Rig Tab)
+  Model:  Yaesu FT-991A
+  Port:   COM port for FT-991A (check Device Manager)
+  Baud:   38400
+
+## Hamlib Model
+Hamlib model number: 135 (FT-991)
+The FT-991A uses the same Hamlib model as FT-991.
+
+## For FT8/Digital Modes
+  Set radio to USB-D mode (not plain USB)
+  DATA IN SEL: USB
+  Audio input:  USB Audio CODEC (from FT-991A)
+  Audio output: USB Audio CODEC (to FT-991A)
+
+## Troubleshooting
+  CAT not responding: Check baud rate matches menu setting
+  No audio:          Check DATA IN SEL = USB
+  TX but no signal:  Reduce audio level, check ALC
+"""),
+
+    ("Kenwood TS-2000 Setup", "Rig Control",
+     """# Kenwood TS-2000 CAT Control Setup
+
+## Interface Required
+The TS-2000 uses a DE-9 (DB-9) serial port for CAT.
+You need a USB-to-serial adapter (FTDI or Prolific chip).
+Or use the built-in serial port if your PC has one.
+
+## Recommended Interface
+  Signalink USB with Kenwood cable OR
+  West Mountain Radio RIGblaster OR
+  Any FTDI-based USB-Serial adapter + null modem cable
+
+## Radio Menu Settings
+  Menu 54 (PC COM RATE):  9600 or 57600
+  Make note of what you set — must match Squelch
+
+## Squelch Settings (Rig Tab)
+  Model:  Kenwood TS-2000
+  Port:   COM port for your USB-serial adapter
+  Baud:   9600 (or match your Menu 54 setting)
+
+## Hamlib Model
+Hamlib model number: 202 (TS-2000)
+
+## For FT8/Digital Modes
+  Connect audio via Signalink or soundcard interface
+  Set radio to USB mode for 20m/17m/15m/12m/10m
+  Set radio to LSB mode for 80m/40m
+  Audio input:  SignaLink (USB Audio CODEC)
+  Audio output: SignaLink (USB Audio CODEC)
+
+## Troubleshooting
+  No COM port: Check USB-serial driver installed
+  CAT errors:  Verify baud rate matches Menu 54
+  ALC high:    Reduce TX level on Signalink
+"""),
+
+    ("Yaesu FT-817/818 Setup", "Rig Control",
+     """# Yaesu FT-817/818 CAT Control Setup
+
+## Interface Required
+The FT-817/818 uses a mini-DIN 8-pin data port.
+You need an interface cable — recommended options:
+
+  West Mountain Radio RIGblaster Nomic
+  Yaesu CT-39A cable + USB-serial adapter
+  SignaLink USB with Yaesu cable
+
+## Radio Menu Settings
+  Menu 14 (CAT RATE):   4800, 9600, 19200, or 38400
+  Menu 16 (CAT TOT):    10 msec
+  Menu 17 (CAT RTS):    Enable
+
+## Squelch Settings (Rig Tab)
+  Model:  Yaesu FT-817/818
+  Port:   COM port for your interface
+  Baud:   4800 (default) or match your menu setting
+
+## Note on Power
+The FT-817/818 runs 5W max. When using digital modes:
+  Reduce power to 2.5W to avoid overheating
+  Use a fan if operating for extended periods
+
+## Battery Operation
+FT-817/818 can run from internal battery (~5Wh NiMH)
+For portable/SOTA operation this is ideal.
+"""),
+
+    ("Generic CAT Setup Guide", "Rig Control",
+     """# Generic CAT Control Setup
+
+## What is CAT Control?
+CAT (Computer Aided Transceiver) control lets Squelch:
+  - Read and set frequency
+  - Change mode (USB/LSB/CW/FM)
+  - Control PTT (push-to-talk)
+  - Read S-meter and other data
+
+## Finding Your Hamlib Model Number
+Run in terminal:
+  rigctl -l | grep -i "your rig name"
+Or visit: hamlib.org/hams.html
+
+Enter the number in Squelch → Rig tab → Model (manual)
+
+## Common Interface Types
+
+  USB direct:   IC-7100, FT-991A, IC-7300 — plug-in USB
+  USB-Serial:   TS-2000, older rigs — need adapter cable
+  Audio only:   Baofeng, UV-5R, QRZ-1 — no CAT available
+
+## COM Port (Windows)
+  Device Manager → Ports (COM & LPT)
+  Look for: CP210x, FTDI, Prolific, CH340
+  Note the COM number (e.g. COM5)
+
+## Troubleshooting Checklist
+  1. Is the driver installed? (Device Manager, no yellow !)
+  2. Does the baud rate match the radio's menu?
+  3. Is another program using the COM port? (close it)
+  4. Is CAT enabled in the radio menu?
+  5. Is the cable correct for your radio model?
+  6. Try a different USB port / cable
+
+## PTT Control Options
+  CAT PTT:  Hamlib controls PTT via CAT command
+  RTS:      Serial port RTS line (most interfaces)
+  DTR:      Serial port DTR line
+  VOX:      Audio level triggers PTT (SignaLink default)
+  None:     Manual PTT (push radio button yourself)
+"""),
+
     ("Keyboard Shortcuts", "Reference",
      """# Keyboard Shortcuts
 
@@ -551,7 +703,7 @@ class HelpTab(QWidget):
         self._search.setStyleSheet(
             "background:#141414;color:#aaa;"
             "border:1px solid #1a1a1a;border-radius:3px;"
-            "padding:4px 8px;font-size:11px;")
+            "padding:4px 8px;font-size:13px;")
         self._search.textChanged.connect(self._do_search)
         lay.addWidget(self._search)
 
@@ -559,7 +711,7 @@ class HelpTab(QWidget):
         self._list = QListWidget()
         self._list.setStyleSheet(
             "QListWidget{background:#0a0a0a;color:#aaa;"
-            "border:none;font-size:11px;}"
+            "border:none;font-size:13px;}"
             "QListWidget::item{padding:4px 6px;}"
             "QListWidget::item:selected{"
             "background:#1a3a1a;color:#3fbe6f;}"
@@ -636,11 +788,11 @@ class HelpTab(QWidget):
             "code{background:#141414;color:#44aaff;"
             "font-family:'Courier New';padding:1px 4px;}"
             "pre{background:#141414;color:#aaa;"
-            "font-family:'Courier New';font-size:11px;"
+            "font-family:'Courier New';font-size:13px;"
             "padding:10px;border-left:3px solid #3fbe6f;}"
             "p{margin:4px 0;}"
             "</style>"
-            f"<p style='color:#555;font-size:10px'>"
+            f"<p style='color:#555;font-size:12px'>"
             f"{cat}</p>"
         ]
         in_pre = False
@@ -699,7 +851,7 @@ body{font-family:'Segoe UI';color:#bbb;font-size:12px;
      line-height:1.6;}
 h1{color:#3fbe6f;font-size:20px;}
 h2{color:#aaa;font-size:14px;margin-top:16px;}
-.cat{color:#3fbe6f;font-size:11px;}
+.cat{color:#3fbe6f;font-size:13px;}
 </style>
 <h1>Squelch Help</h1>
 <p>Select a topic from the left, or search for what you need.</p>
@@ -717,7 +869,7 @@ Gray Line &nbsp;|&nbsp; EmComm / ARES
 Keyboard Shortcuts
 </p>
 <br>
-<p style='color:#555;font-size:11px;'>
+<p style='color:#555;font-size:13px;'>
 Squelch v0.7.1-alpha &nbsp;|&nbsp;
 github.com/dawardy/squelch &nbsp;|&nbsp;
 GPL v3

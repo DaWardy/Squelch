@@ -181,7 +181,7 @@ class DigitalTab(QWidget):
 
         self._decoder_lbl = QLabel("● No decoder running")
         self._decoder_lbl.setStyleSheet(
-            "color:#555;font-size:11px;"
+            "color:#555;font-size:13px;"
             "font-family:'Courier New';")
         lay.addWidget(self._decoder_lbl)
 
@@ -197,7 +197,7 @@ class DigitalTab(QWidget):
 
         self._tg_lbl = QLabel("TG: —")
         self._tg_lbl.setStyleSheet(
-            "color:#888;font-size:11px;"
+            "color:#888;font-size:13px;"
             "font-family:'Courier New';")
         lay.addWidget(self._tg_lbl)
 
@@ -205,7 +205,7 @@ class DigitalTab(QWidget):
 
         self._enc_lbl = QLabel("")
         self._enc_lbl.setStyleSheet(
-            "color:#cc4444;font-size:11px;"
+            "color:#cc4444;font-size:13px;"
             "font-weight:bold;")
         lay.addWidget(self._enc_lbl)
 
@@ -214,7 +214,7 @@ class DigitalTab(QWidget):
         # Audio routing indicator
         self._route_lbl = QLabel("Audio: Not routed")
         self._route_lbl.setStyleSheet(
-            "color:#444;font-size:10px;")
+            "color:#444;font-size:12px;")
         lay.addWidget(self._route_lbl)
 
         # Clear button
@@ -236,12 +236,15 @@ class DigitalTab(QWidget):
         hdr = QHBoxLayout()
         title = QLabel("Digital Decode Log")
         title.setStyleSheet(
-            "color:#aaa;font-size:11px;font-weight:bold;")
+            "color:#aaa;font-size:13px;font-weight:bold;")
         hdr.addWidget(title)
         hdr.addStretch()
 
         # Protocol filter
         self._proto_filter = QComboBox()
+        self._proto_filter.setToolTip(
+            "Filter decoded calls by protocol\n"
+            "All: show P25, DMR, NXDN, YSF, D-STAR")
         self._proto_filter.addItems([
             "All protocols",
             "P25", "DMR", "NXDN", "YSF", "D-STAR"])
@@ -252,6 +255,9 @@ class DigitalTab(QWidget):
 
         # Hide encrypted
         self._hide_enc = QCheckBox("Hide encrypted")
+        self._hide_enc.setToolTip(
+            "Hide encrypted calls from the decode log\n"
+            "Encrypted audio cannot be decoded")
         self._hide_enc.toggled.connect(self._apply_filter)
         hdr.addWidget(self._hide_enc)
 
@@ -277,11 +283,11 @@ class DigitalTab(QWidget):
             "background:#0a0a0a;color:#aaa;"
             "gridline-color:#1a1a1a;"
             "alternate-background-color:#0d0d0d;"
-            "font-size:10px;font-family:'Courier New';"
+            "font-size:12px;font-family:'Courier New';"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{"
             "background:#141414;color:#555;"
-            "border:none;font-size:10px;padding:3px;}")
+            "border:none;font-size:12px;padding:3px;}")
         self._table.setAlternatingRowColors(True)
         self._table.clicked.connect(self._on_row_click)
         lay.addWidget(self._table)
@@ -297,7 +303,7 @@ class DigitalTab(QWidget):
         self._no_decoder_msg.setAlignment(
             Qt.AlignmentFlag.AlignCenter)
         self._no_decoder_msg.setStyleSheet(
-            "color:#444;font-size:11px;")
+            "color:#444;font-size:13px;")
         self._no_decoder_msg.setWordWrap(True)
         lay.addWidget(self._no_decoder_msg)
 
@@ -323,7 +329,7 @@ class DigitalTab(QWidget):
                     self._call_src, self._call_enc,
                     self._call_dur]:
             lbl.setStyleSheet(
-                "color:#888;font-size:10px;"
+                "color:#888;font-size:12px;"
                 "font-family:'Courier New';")
             cl.addWidget(lbl)
         lay.addWidget(call_grp)
@@ -343,7 +349,7 @@ class DigitalTab(QWidget):
         self._proto_info.setReadOnly(True)
         self._proto_info.setStyleSheet(
             "background:#0a0a0a;color:#666;"
-            "font-size:10px;font-family:'Courier New';"
+            "font-size:12px;font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         self._proto_info.setMaximumHeight(200)
         il.addWidget(self._proto_info)
@@ -362,7 +368,7 @@ class DigitalTab(QWidget):
             "Encrypted:        0\n"
             "Session started:  —")
         self._stats_lbl.setStyleSheet(
-            "color:#555;font-size:10px;"
+            "color:#555;font-size:12px;"
             "font-family:'Courier New';")
         sl.addWidget(self._stats_lbl)
         lay.addWidget(stats_grp)
@@ -422,7 +428,7 @@ class DigitalTab(QWidget):
     def _set_decoder_status(self, text: str, color: str):
         self._decoder_lbl.setText(f"● {text}")
         self._decoder_lbl.setStyleSheet(
-            f"color:{color};font-size:11px;"
+            f"color:{color};font-size:13px;"
             "font-family:'Courier New';")
 
     # ── Decode events ─────────────────────────────────────────────────────
@@ -494,8 +500,8 @@ class DigitalTab(QWidget):
             "🔒 Encrypted — audio unavailable"
             if event.encrypted else "")
         self._call_enc.setStyleSheet(
-            "color:#cc4444;font-size:10px;" if event.encrypted
-            else "color:#3fbe6f;font-size:10px;")
+            "color:#cc4444;font-size:12px;" if event.encrypted
+            else "color:#3fbe6f;font-size:12px;")
 
         self._no_decoder_msg.hide()
 
@@ -549,7 +555,7 @@ class DigitalTab(QWidget):
         self._route_lbl.setText(
             f"Audio: SDR → {center_hz/1e6:.3f}MHz")
         self._route_lbl.setStyleSheet(
-            "color:#3fbe6f;font-size:10px;")
+            "color:#3fbe6f;font-size:12px;")
 
 
 def _vsep() -> QFrame:

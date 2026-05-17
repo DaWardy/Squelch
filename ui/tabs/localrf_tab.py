@@ -137,13 +137,17 @@ class LocalRFTab(QWidget):
         self._search_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
             "border:1px solid #3fbe6f;border-radius:4px;"
-            "font-size:10px;")
+            "font-size:12px;")
+        self._search_btn.setToolTip(
+            "Search RepeaterBook for nearby repeaters\n"
+            "Free, no API key required\n"
+            "Requires location set in top bar")
         self._search_btn.clicked.connect(self._do_search)
         lay.addWidget(self._search_btn)
 
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
-            "color:#555;font-size:10px;")
+            "color:#555;font-size:12px;")
         lay.addWidget(self._status_lbl)
 
         lay.addStretch()
@@ -151,7 +155,7 @@ class LocalRFTab(QWidget):
         # Location display
         self._loc_lbl = QLabel("Location: not set")
         self._loc_lbl.setStyleSheet(
-            "color:#444;font-size:10px;")
+            "color:#444;font-size:12px;")
         lay.addWidget(self._loc_lbl)
 
         return bar
@@ -182,12 +186,12 @@ class LocalRFTab(QWidget):
             "background:#0a0a0a;color:#aaa;"
             "gridline-color:#1a1a1a;"
             "alternate-background-color:#0d0d0d;"
-            "font-size:10px;font-family:'Courier New';"
+            "font-size:12px;font-family:'Courier New';"
             "selection-background-color:#1a3a1a;"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{"
             "background:#141414;color:#555;"
-            "border:none;font-size:10px;padding:3px;}")
+            "border:none;font-size:12px;padding:3px;}")
         self._table.clicked.connect(self._on_row_click)
         self._table.doubleClicked.connect(self._tune_to_selected)
         lay.addWidget(self._table)
@@ -202,23 +206,32 @@ class LocalRFTab(QWidget):
         self._no_results.setAlignment(
             Qt.AlignmentFlag.AlignCenter)
         self._no_results.setStyleSheet(
-            "color:#333;font-size:11px;")
+            "color:#333;font-size:13px;")
         lay.addWidget(self._no_results)
 
         # Action buttons
         btn_row = QHBoxLayout()
         self._tune_btn = QPushButton("📻 Tune Rig")
         self._tune_btn.setEnabled(False)
+        self._tune_btn.setToolTip(
+            "Tune rig to selected repeater frequency\n"
+            "Requires rig connected in Rig tab")
         self._tune_btn.clicked.connect(self._tune_to_selected)
         btn_row.addWidget(self._tune_btn)
 
         self._memory_btn = QPushButton("💾 Save to Memory")
         self._memory_btn.setEnabled(False)
+        self._memory_btn.setToolTip(
+            "Save repeater to CHIRP CSV file\n"
+            "Import the CSV into CHIRP to program your radio")
         self._memory_btn.clicked.connect(self._save_to_memory)
         btn_row.addWidget(self._memory_btn)
 
         self._chirp_btn = QPushButton("🔧 Open in CHIRP")
         self._chirp_btn.setEnabled(False)
+        self._chirp_btn.setToolTip(
+            "Launch CHIRP radio programming software\n"
+            "Set path in File → Paths & Executables")
         self._chirp_btn.clicked.connect(self._open_chirp)
         btn_row.addWidget(self._chirp_btn)
 
@@ -245,7 +258,7 @@ class LocalRFTab(QWidget):
         self._detail_text.setMaximumHeight(220)
         self._detail_text.setStyleSheet(
             "background:#0a0a0a;color:#888;"
-            "font-size:10px;font-family:'Courier New';"
+            "font-size:12px;font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         self._detail_text.setPlaceholderText(
             "Select a repeater to see details…")
@@ -262,13 +275,13 @@ class LocalRFTab(QWidget):
             "Requires a Premium subscription.\n"
             "Configure API key in Settings.")
         rr_msg.setStyleSheet(
-            "color:#444;font-size:10px;")
+            "color:#444;font-size:12px;")
         rr_msg.setWordWrap(True)
         rl.addWidget(rr_msg)
 
         rr_btn = QPushButton("Configure API Key →")
         rr_btn.setStyleSheet(
-            "color:#555;font-size:10px;")
+            "color:#555;font-size:12px;")
         rr_btn.clicked.connect(self._open_rr_settings)
         rl.addWidget(rr_btn)
         lay.addWidget(rr_grp)
@@ -279,13 +292,13 @@ class LocalRFTab(QWidget):
 
         self._aprs_status = QLabel("● Not connected")
         self._aprs_status.setStyleSheet(
-            "color:#555;font-size:10px;"
+            "color:#555;font-size:12px;"
             "font-family:'Courier New';")
         al.addWidget(self._aprs_status)
 
         self._aprs_count = QLabel("Stations: 0")
         self._aprs_count.setStyleSheet(
-            "color:#555;font-size:10px;")
+            "color:#555;font-size:12px;")
         al.addWidget(self._aprs_count)
 
         aprs_btns = QHBoxLayout()
@@ -305,7 +318,7 @@ class LocalRFTab(QWidget):
             "APRS-IS: internet receive-only.\n"
             "RF TX requires Direwolf + TNC.")
         aprs_note.setStyleSheet(
-            "color:#444;font-size:10px;")
+            "color:#444;font-size:12px;")
         aprs_note.setWordWrap(True)
         al.addWidget(aprs_note)
         lay.addWidget(aprs_grp)
@@ -629,7 +642,7 @@ class LocalRFTab(QWidget):
         self._aprs_status.setText(
             f"● {status.capitalize()}")
         self._aprs_status.setStyleSheet(
-            f"color:{color};font-size:10px;"
+            f"color:{color};font-size:12px;"
             "font-family:'Courier New';")
         if status == "connected":
             self._aprs_conn_btn.setText("Disconnect")

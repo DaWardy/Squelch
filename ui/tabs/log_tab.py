@@ -178,13 +178,13 @@ class LogTab(QWidget):
         self._table.setStyleSheet("""
             QTableWidget{
               background:#0d0d0d;color:#aaa;
-              gridline-color:#1a1a1a;font-size:11px;
+              gridline-color:#1a1a1a;font-size:13px;
               font-family:'Courier New';
               alternate-background-color:#111;
               selection-background-color:#1a3a1a;}
             QHeaderView::section{
               background:#141414;color:#666;
-              border:none;font-size:10px;padding:3px;}
+              border:none;font-size:12px;padding:3px;}
         """)
         root.addWidget(self._table, 4)
 
@@ -192,6 +192,7 @@ class LogTab(QWidget):
         btn_row = QHBoxLayout()
 
         add_btn = QPushButton(self.tr("+ Manual Entry"))
+        add_btn.setToolTip("Add a QSO manually\nOpens entry form with dropdowns")
         add_btn.clicked.connect(self._manual_entry)
         btn_row.addWidget(add_btn)
 
@@ -204,10 +205,12 @@ class LogTab(QWidget):
         btn_row.addWidget(adif_imp)
 
         lotw_btn = QPushButton(self.tr("Upload LoTW queue"))
+        lotw_btn.setToolTip("Upload pending QSOs to ARRL LoTW\nRequires TQSL and LoTW credentials in Settings → APIs")
         lotw_btn.clicked.connect(self._show_lotw_queue)
         btn_row.addWidget(lotw_btn)
 
         qrz_btn = QPushButton(self.tr("Upload QRZ queue"))
+        qrz_btn.setToolTip("Sync log with QRZ logbook\nRequires QRZ subscription and credentials")
         qrz_btn.clicked.connect(self._show_qrz_queue)
         btn_row.addWidget(qrz_btn)
 
@@ -215,7 +218,7 @@ class LogTab(QWidget):
 
         self._queue_label = QLabel("")
         self._queue_label.setStyleSheet(
-            "color:#666; font-size:10px;")
+            "color:#666; font-size:12px;")
         btn_row.addWidget(self._queue_label)
 
         root.addLayout(btn_row)

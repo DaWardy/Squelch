@@ -331,7 +331,7 @@ class MainWindow(QMainWindow):
                 "Check logs/squelch.log for details.")
             d.setWordWrap(True)
             d.setStyleSheet(
-                "color:#888;font-size:11px;")
+                "color:#888;font-size:13px;")
             err_l.addWidget(d)
             err_l.addStretch()
             return err_w
@@ -362,6 +362,10 @@ class MainWindow(QMainWindow):
         self._cs_lbl.setStyleSheet(
             "color:#aaa;font-size:12px;"
             "font-family:'Courier New';")
+        self._cs_lbl.setToolTip(
+            "Your FCC callsign\n"
+            "Click to edit\n"
+            "Used in all transmissions, logs, and beacons")
         lay.addWidget(self._cs_lbl)
 
         # Operator profile switcher
@@ -372,15 +376,17 @@ class MainWindow(QMainWindow):
             "QComboBox{"
             "background:#141414;color:#888;"
             "border:1px solid #222;border-radius:3px;"
-            "font-size:10px;padding:2px 6px;}"
+            "font-size:12px;padding:2px 6px;}"
             "QComboBox::drop-down{border:none;width:16px;}"
             "QComboBox QAbstractItemView{"
             "background:#141414;color:#aaa;"
             "selection-background-color:#1a3a1a;}")
         self._profile_combo.setToolTip(
-            "Switch operator profile\n"
+            "Operator profile switcher\n"
             "Each profile has its own callsign,\n"
-            "credentials, and settings.")
+            "credentials, and settings.\n"
+            "Click '+' to create a new profile\n"
+            "Useful for club stations with multiple ops")
         self._profile_combo.currentIndexChanged.connect(
             self._on_profile_change)
         lay.addWidget(self._profile_combo)
@@ -402,7 +408,7 @@ class MainWindow(QMainWindow):
 
         self._loc_lbl = QLabel("—")
         self._loc_lbl.setStyleSheet(
-            "color:#4a4a4a;font-size:11px;")
+            "color:#4a4a4a;font-size:13px;")
         lay.addWidget(self._loc_lbl)
         lay.addStretch()
 
@@ -420,7 +426,7 @@ class MainWindow(QMainWindow):
 
         self._rig_pill = QLabel("● RIG")
         self._rig_pill.setStyleSheet(
-            "color:#444;font-size:11px;"
+            "color:#444;font-size:13px;"
             "font-family:'Courier New';")
         lay.addWidget(self._rig_pill)
 
@@ -628,7 +634,7 @@ class MainWindow(QMainWindow):
             col, txt = "#444444", "● RIG"
         self._rig_pill.setText(txt)
         self._rig_pill.setStyleSheet(
-            f"color:{col};font-size:11px;"
+            f"color:{col};font-size:13px;"
             "font-family:'Courier New';")
         connected = self.rig.is_connected
         freq_str = (
@@ -953,7 +959,7 @@ class MainWindow(QMainWindow):
         info.setReadOnly(True)
         info.setMaximumHeight(200)
         info.setStyleSheet(
-            "background:#111;color:#aaa;font-size:10px;"
+            "background:#111;color:#aaa;font-size:12px;"
             "font-family:'Courier New';border:1px solid #333;")
         lay.addWidget(info)
 
@@ -1080,7 +1086,7 @@ class MainWindow(QMainWindow):
             "ham/grid_square.php' style='color:#3fbe6f'>"
             "levinecentral.com</a>")
         hint.setOpenExternalLinks(True)
-        hint.setStyleSheet("color:#666;font-size:10px;")
+        hint.setStyleSheet("color:#666;font-size:12px;")
         lay.addWidget(hint)
 
         btns = QDialogButtonBox(
@@ -1326,7 +1332,7 @@ class MainWindow(QMainWindow):
         elif self.cfg.get("callsign"):
             # Have callsign but no location — prompt
             self._loc_lbl.setText("No location set — click grid to set")
-            self._loc_lbl.setStyleSheet("color:#555;font-size:10px;")
+            self._loc_lbl.setStyleSheet("color:#555;font-size:12px;")
 
     def _init_aprs(self):
         """

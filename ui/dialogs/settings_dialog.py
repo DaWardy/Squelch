@@ -50,7 +50,7 @@ class SettingsDialog(QDialog):
         # Tab widget
         self._tabs = QTabWidget()
         self._tabs.setStyleSheet(
-            "QTabBar::tab{padding:6px 14px;font-size:11px;}"
+            "QTabBar::tab{padding:6px 14px;font-size:13px;}"
             "QTabBar::tab:selected{color:#3fbe6f;}")
 
         self._tabs.addTab(self._tab_station(),   "🎙  Station")
@@ -291,7 +291,7 @@ class SettingsDialog(QDialog):
             "API credentials are stored securely in the OS keyring "
             "(Windows Credential Manager) — never in config files.")
         note.setWordWrap(True)
-        note.setStyleSheet("color:#555;font-size:10px;")
+        note.setStyleSheet("color:#555;font-size:12px;")
         f.addRow("", note)
 
         f.addRow(_sep())
@@ -309,7 +309,7 @@ class SettingsDialog(QDialog):
         qrz_note = QLabel(
             "QRZ XML API requires a QRZ subscription. "
             "Used for callsign lookup during FT8 operation.")
-        qrz_note.setStyleSheet("color:#555;font-size:10px;")
+        qrz_note.setStyleSheet("color:#555;font-size:12px;")
         qrz_note.setWordWrap(True)
         f.addRow("", qrz_note)
 
@@ -475,7 +475,7 @@ class SettingsDialog(QDialog):
         self._data_dir_lbl = QLabel(
             str(self.cfg._path.parent))
         self._data_dir_lbl.setStyleSheet(
-            "color:#555;font-size:10px;"
+            "color:#555;font-size:12px;"
             "font-family:'Courier New';")
         f.addRow("Data Directory:", self._data_dir_lbl)
 
@@ -727,59 +727,95 @@ class SettingsDialog(QDialog):
             self._load_all()
 
     def _refresh_audio_devices(self):
-        """Populate audio device dropdowns."""
-        devices = ["Default"]
+        """Populate audio device dropdowns from sounddevice."""
+        # Common virtual audio devices always listed
+        # even if sounddevice can't enumerate
+        common_inputs = [
+            "Default",
+            "CABLE Output (VB-Audio Virtual Cable)",
+            "USB Audio CODEC",
+            "Microphone (USB)",
+            "Stereo Mix",
+        ]
+        common_outputs = [
+            "Default",
+            "CABLE Input (VB-Audio Virtual Cable)",
+            "Speakers (USB Audio CODEC)",
+            "Speakers",
+            "Headphones",
+        ]
+
+        in_devices  = list(common_inputs)
+        out_devices = list(common_outputs)
+        detected    = False
+
         try:
             import sounddevice as sd
-            for d in sd.query_devices():
+            devs = sd.query_devices()
+            for d in devs:
+                name = d["name"]
                 if d["max_input_channels"] > 0:
-                    devices.append(d["name"])
-        except Exception:
-            devices += [
-                "CABLE Output (VB-Audio Virtual Cable)",
-                "USB Audio CODEC",
-                "Microphone (USB)",
-            ]
+                    if name not in in_devices:
+                        in_devices.append(name)
+                if d["max_output_channels"] > 0:
+                    if name not in out_devices:
+                        out_devices.append(name)
+            detected = True
+        except Exception as e:
+            # sounddevice not installed or no audio
+            pass
 
-        for combo in [self._audio_input,
-                      self._digital_input]:
-            current = combo.currentText()
+        # Populate dropdowns
+        for combo, devices in [
+            (self._audio_input,   in_devices),
+            (self._digital_input, in_devices),
+        ]:
+            saved = combo.currentText()
             combo.clear()
             combo.addItems(devices)
-            if current in devices:
-                combo.setCurrentText(current)
+            # Restore or default
+            if saved in devices:
+                combo.setCurrentText(saved)
 
-        out_devices = ["Default"]
-        try:
-            import sounddevice as sd
-            for d in sd.query_devices():
-                if d["max_output_channels"] > 0:
-                    out_devices.append(d["name"])
-        except Exception:
-            out_devices += [
-                "CABLE Input (VB-Audio Virtual Cable)",
-                "Speakers",
-                "Headphones",
-            ]
-
-        for combo in [self._audio_output,
-                      self._digital_output]:
-            current = combo.currentText()
+        for combo, devices in [
+            (self._audio_output,   out_devices),
+            (self._digital_output, out_devices),
+        ]:
+            saved = combo.currentText()
             combo.clear()
-            combo.addItems(out_devices)
-            if current in out_devices:
-                combo.setCurrentText(current)
+            combo.addItems(devices)
+            if saved in devices:
+                combo.setCurrentText(saved)
 
-        # Restore saved values
+        # Restore saved config values
         cfg = self.cfg
-        self._audio_input.setCurrentText(
-            cfg.get("audio.input", "Default"))
-        self._audio_output.setCurrentText(
-            cfg.get("audio.output", "Default"))
-        self._digital_input.setCurrentText(
-            cfg.get("audio.digital_input", "Default"))
-        self._digital_output.setCurrentText(
-            cfg.get("audio.digital_output", "Default"))
+        saved_in  = cfg.get("audio.input", "")
+        saved_out = cfg.get("audio.output", "")
+        saved_din = cfg.get("audio.digital_input", "")
+        saved_dout= cfg.get("audio.digital_output", "")
+
+        for combo, val in [
+            (self._audio_input,    saved_in),
+            (self._audio_output,   saved_out),
+            (self._digital_input,  saved_din),
+            (self._digital_output, saved_dout),
+        ]:
+            if val:
+                # Add if not in list (was set manually before)
+                if combo.findText(val) < 0:
+                    combo.addItem(val)
+                combo.setCurrentText(val)
+
+        if not detected:
+            self._refresh_audio_btn.setText(
+                "↺ Refresh (sounddevice not installed)")
+            self._refresh_audio_btn.setStyleSheet(
+                "color:#888;font-size:12px;")
+        else:
+            total = len(in_devices) + len(out_devices)
+            self._refresh_audio_btn.setText(
+                f"↺ Device list ({total} found)")
+            self._refresh_audio_btn.setStyleSheet("")
 
     def _open_data_dir(self):
         import subprocess, sys
@@ -821,7 +857,7 @@ def _sep() -> QFrame:
 def _section(form: QFormLayout, title: str):
     lbl = QLabel(title)
     lbl.setStyleSheet(
-        "color:#3fbe6f;font-size:11px;"
+        "color:#3fbe6f;font-size:13px;"
         "font-weight:bold;margin-top:8px;")
     form.addRow(lbl)
 

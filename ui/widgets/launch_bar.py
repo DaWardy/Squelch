@@ -66,7 +66,7 @@ class LaunchButton(QPushButton):
                 QPushButton{
                   background:#1a3a1a;color:#3fbe6f;
                   border:1px solid #3fbe6f;
-                  border-radius:4px;font-size:10px;
+                  border-radius:4px;font-size:12px;
                   padding:2px 8px;}
                 QPushButton:hover{background:#2a4a2a;}
             """)
@@ -79,7 +79,7 @@ class LaunchButton(QPushButton):
                 QPushButton{
                   background:#1a1a1a;color:#555;
                   border:1px solid #2a2a2a;
-                  border-radius:4px;font-size:10px;
+                  border-radius:4px;font-size:12px;
                   padding:2px 8px;}
                 QPushButton:hover{
                   background:#1e1e1e;color:#888;}
@@ -141,7 +141,7 @@ class LaunchBar(QWidget):
 
         lbl = QLabel(self.tr("External software:"))
         lbl.setStyleSheet(
-            "color:#555;font-size:10px;")
+            "color:#555;font-size:12px;")
         lay.addWidget(lbl)
 
         for app in apps:
@@ -156,7 +156,7 @@ class LaunchBar(QWidget):
         rescan.setFixedHeight(24)
         rescan.setFixedWidth(70)
         rescan.setStyleSheet(
-            "font-size:10px;background:#1a1a1a;"
+            "font-size:12px;background:#1a1a1a;"
             "border:1px solid #2a2a2a;"
             "border-radius:3px;color:#666;")
         rescan.setToolTip(

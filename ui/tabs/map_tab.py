@@ -83,7 +83,7 @@ class MapTab(QWidget):
 
         if not HAS_WEBENGINE:
             self._build_no_webengine(root)
-            return
+            return  # fallback map handles its own refresh
 
         # Toolbar
         root.addWidget(self._build_toolbar())
@@ -108,7 +108,7 @@ class MapTab(QWidget):
             Qt.AlignmentFlag.AlignCenter)
         self._gl_bar.setStyleSheet(
             "background:#0a0a0a;color:#3fbe6f;"
-            "font-size:11px;font-family:'Courier New';"
+            "font-size:13px;font-family:'Courier New';"
             "border-top:1px solid #1a1a1a;")
         root.addWidget(self._gl_bar)
 
@@ -133,12 +133,19 @@ class MapTab(QWidget):
         # Layer toggles
         self._show_gl = QCheckBox("Gray line")
         self._show_gl.setChecked(True)
+        self._show_gl.setToolTip(
+            "Show day/night terminator on map\n"
+            "The gray line is the best time for DX\n"
+            "Updates every 60 seconds")
         self._show_gl.toggled.connect(
             lambda _: self._refresh_map())
         lay.addWidget(self._show_gl)
 
         self._show_qso = QCheckBox("QSO paths")
         self._show_qso.setChecked(True)
+        self._show_qso.setToolTip(
+            "Draw great circle paths to logged QSOs\n"
+            "Color-coded by mode (FT8=blue, CW=orange, SSB=green)")
         self._show_qso.toggled.connect(
             lambda _: self._refresh_map())
         lay.addWidget(self._show_qso)
@@ -151,12 +158,18 @@ class MapTab(QWidget):
 
         self._show_adsb = QCheckBox("ADS-B")
         self._show_adsb.setChecked(True)
+        self._show_adsb.setToolTip(
+            "Show aircraft from dump1090-fa\n"
+            "Requires dump1090-fa running locally")
         self._show_adsb.toggled.connect(
             lambda _: self._refresh_map())
         lay.addWidget(self._show_adsb)
 
         self._show_aprs = QCheckBox("APRS")
         self._show_aprs.setChecked(True)
+        self._show_aprs.setToolTip(
+            "Show APRS stations from APRS-IS\n"
+            "Connect in Local RF tab first")
         self._show_aprs.toggled.connect(
             lambda _: self._refresh_map())
         lay.addWidget(self._show_aprs)
@@ -239,7 +252,7 @@ class MapTab(QWidget):
             "  ● Nearest repeaters from Local RF tab\n"
             "  ● Dark map tile layer")
         features.setStyleSheet(
-            "color:#555;font-size:11px;")
+            "color:#555;font-size:13px;")
         l.addWidget(features)
         l.addStretch()
         layout.addWidget(w)
@@ -291,13 +304,13 @@ class MapTab(QWidget):
                 if info.is_gray_line:
                     self._gl_bar.setStyleSheet(
                         "background:#0a1a0a;color:#3fbe6f;"
-                        "font-size:11px;"
+                        "font-size:13px;"
                         "font-family:'Courier New';"
                         "border-top:1px solid #3fbe6f;")
                 else:
                     self._gl_bar.setStyleSheet(
                         "background:#0a0a0a;color:#666;"
-                        "font-size:11px;"
+                        "font-size:13px;"
                         "font-family:'Courier New';"
                         "border-top:1px solid #1a1a1a;")
         except Exception as e:
@@ -340,7 +353,10 @@ class MapTab(QWidget):
     def showEvent(self, event):
         """Refresh map when tab becomes visible."""
         super().showEvent(event)
-        QTimer.singleShot(200, self._refresh_map)
+        if HAS_WEBENGINE:
+            QTimer.singleShot(200, self._refresh_map)
+        else:
+            QTimer.singleShot(200, self._refresh_fallback_map)
 
 
 def _vsep() -> QFrame:

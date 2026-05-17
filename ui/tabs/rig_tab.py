@@ -206,12 +206,12 @@ class RigTab(QWidget):
 
         # Band/segment info
         self._band_info = QLabel("20m  |  Digital  |  General+")
-        self._band_info.setStyleSheet("color:#555; font-size:10px;")
+        self._band_info.setStyleSheet("color:#555; font-size:12px;")
         vfl.addWidget(self._band_info)
 
         # Step size buttons
         step_lbl = QLabel("Step:")
-        step_lbl.setStyleSheet("color:#555; font-size:10px;")
+        step_lbl.setStyleSheet("color:#555; font-size:12px;")
         step_row = QHBoxLayout()
         step_row.setSpacing(2)
         step_row.addWidget(step_lbl)
@@ -224,7 +224,7 @@ class RigTab(QWidget):
             btn.setChecked(i == self._step_idx)
             btn.setFixedHeight(20)
             btn.setStyleSheet("""
-                QPushButton{font-size:9px;border:1px solid #222;
+                QPushButton{font-size:13px;border:1px solid #222;
                   border-radius:3px;background:#111;color:#666;padding:0 4px;}
                 QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
                   border-color:#3fbe6f;}
@@ -274,7 +274,7 @@ class RigTab(QWidget):
         self._band_jump_combo = QComboBox()
         self._band_jump_combo.setFixedWidth(70)
         self._band_jump_combo.setStyleSheet(
-            "font-size:10px;background:#1a1a1a;color:#aaa;border:1px solid #333;")
+            "font-size:12px;background:#1a1a1a;color:#aaa;border:1px solid #333;")
         self._populate_band_combo()
         arrow_row.addWidget(self._band_jump_combo)
 
@@ -283,7 +283,7 @@ class RigTab(QWidget):
         go_btn.setToolTip(
             "Jump to conventional frequency for this band and active mode")
         go_btn.setStyleSheet("""
-            QPushButton{font-size:10px;border:1px solid #3fbe6f;
+            QPushButton{font-size:12px;border:1px solid #3fbe6f;
               border-radius:3px;background:#1a3a1a;color:#3fbe6f;}
             QPushButton:hover{background:#2a4a2a;}
         """)
@@ -301,12 +301,12 @@ class RigTab(QWidget):
         self.status_lbl.setStyleSheet(
             "color:#888; font-size:13px; font-weight:bold;")
         self.port_lbl = QLabel("Port: —")
-        self.port_lbl.setStyleSheet("color:#666; font-size:10px;")
+        self.port_lbl.setStyleSheet("color:#666; font-size:12px;")
         self.model_lbl = QLabel("")
-        self.model_lbl.setStyleSheet("color:#555; font-size:10px;")
+        self.model_lbl.setStyleSheet("color:#555; font-size:12px;")
 
         sm_lbl = QLabel("S-Meter")
-        sm_lbl.setStyleSheet("color:#555; font-size:10px;")
+        sm_lbl.setStyleSheet("color:#555; font-size:12px;")
         self.smeter_bar = QProgressBar()
         self.smeter_bar.setRange(0, 13)
         self.smeter_bar.setValue(0)
@@ -317,7 +317,7 @@ class RigTab(QWidget):
             "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
             "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
         self.smeter_val = QLabel("S0")
-        self.smeter_val.setStyleSheet("color:#777; font-size:10px;")
+        self.smeter_val.setStyleSheet("color:#777; font-size:12px;")
         sm_row = QHBoxLayout()
         sm_row.addWidget(self.smeter_bar)
         sm_row.addWidget(self.smeter_val)
@@ -344,7 +344,7 @@ class RigTab(QWidget):
             btn.setFixedSize(46, 28)
             btn.setToolTip(tip)
             btn.setStyleSheet("""
-                QPushButton{font-size:11px;border:1px solid #2a2a2a;
+                QPushButton{font-size:13px;border:1px solid #2a2a2a;
                   border-radius:4px;background:#141414;color:#888;}
                 QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
                   border-color:#3fbe6f;font-weight:bold;}
@@ -363,7 +363,7 @@ class RigTab(QWidget):
             "Auto-switch mode by frequency:\n"
             "LSB below 10 MHz, USB above,\n"
             "FM on VHF/UHF, PKT on digital freqs")
-        self._auto_mode_cb.setStyleSheet("color:#666; font-size:10px;")
+        self._auto_mode_cb.setStyleSheet("color:#666; font-size:12px;")
         self._auto_mode_cb.toggled.connect(
             lambda c: setattr(self, '_auto_mode', c))
         ml.addWidget(self._auto_mode_cb)
@@ -467,7 +467,7 @@ class RigTab(QWidget):
         self._scan_start.setFixedHeight(28)
         self._scan_start.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
-            "border-radius:4px;font-size:11px;")
+            "border-radius:4px;font-size:13px;")
         self._scan_start.clicked.connect(self._start_scan)
 
         self._scan_stop = QPushButton("■  Stop")
@@ -480,7 +480,7 @@ class RigTab(QWidget):
         self._scan_lock.setToolTip("Add current frequency to lockout list")
 
         self._scan_status = QLabel("Idle")
-        self._scan_status.setStyleSheet("color:#555; font-size:10px;")
+        self._scan_status.setStyleSheet("color:#555; font-size:12px;")
 
         scan_btn_row.addWidget(self._scan_start)
         scan_btn_row.addWidget(self._scan_stop)
@@ -510,9 +510,9 @@ class RigTab(QWidget):
             3, QHeaderView.ResizeMode.Stretch)
         self._mem_table.setStyleSheet(
             "QTableWidget{background:#111;color:#aaa;"
-            "gridline-color:#222;font-size:11px;}"
+            "gridline-color:#222;font-size:13px;}"
             "QHeaderView::section{background:#1a1a1a;color:#666;"
-            "border:none;font-size:10px;}")
+            "border:none;font-size:12px;}")
         self._mem_table.cellDoubleClicked.connect(self._mem_recall)
         mem_layout.addWidget(self._mem_table)
 
@@ -530,7 +530,7 @@ class RigTab(QWidget):
         mem_clear.clicked.connect(self._mem_clear)
         for b in (mem_store, mem_recall_btn, mem_clear):
             b.setStyleSheet(
-                "font-size:10px;background:#1a1a1a;border:1px solid #333;"
+                "font-size:12px;background:#1a1a1a;border:1px solid #333;"
                 "border-radius:3px;color:#aaa;")
         mem_btn_row.addWidget(mem_store)
         mem_btn_row.addWidget(mem_recall_btn)
@@ -551,6 +551,10 @@ class RigTab(QWidget):
 
         cgl.addWidget(QLabel("Baud:"), 0, 2)
         self.baud_combo = QComboBox()
+        self.baud_combo.setToolTip(
+            "Serial baud rate\n"
+            "IC-7100: set to 19200\n"
+            "Must match radio Menu 072 (CI-V USB Baud)")
         self.baud_combo.addItems([
             "1200","2400","4800","9600",
             "19200","38400","57600","115200"])
@@ -562,6 +566,10 @@ class RigTab(QWidget):
         self.port_combo = QComboBox()
         self.port_combo.setEditable(True)
         self.port_combo.setMinimumWidth(180)
+        self.port_combo.setToolTip(
+            "COM port for CAT control\n"
+            "IC-7100: look for CP210x in Device Manager\n"
+            "You can also type a port name (e.g. COM7)")
         self.port_combo.currentTextChanged.connect(
             self._on_port_change)
         cgl.addWidget(self.port_combo, 1, 1)
@@ -788,7 +796,7 @@ class RigTab(QWidget):
         self._scan_start.setEnabled(False)
         self._scan_stop.setEnabled(True)
         self._scan_status.setText("Scanning…")
-        self._scan_status.setStyleSheet("color:#3fbe6f; font-size:10px;")
+        self._scan_status.setStyleSheet("color:#3fbe6f; font-size:12px;")
 
     def _stop_scan(self):
         self._scan_running = False
@@ -796,7 +804,7 @@ class RigTab(QWidget):
         self._scan_start.setEnabled(True)
         self._scan_stop.setEnabled(False)
         self._scan_status.setText("Idle")
-        self._scan_status.setStyleSheet("color:#555; font-size:10px;")
+        self._scan_status.setStyleSheet("color:#555; font-size:12px;")
 
     def _scan_step(self):
         if not self._scan_running:
@@ -909,9 +917,9 @@ class RigTab(QWidget):
         else:
             self._band_info.setText("Out of amateur band")
             self._band_info.setStyleSheet(
-                "color:#cc4444; font-size:10px;")
+                "color:#cc4444; font-size:12px;")
             return
-        self._band_info.setStyleSheet("color:#555; font-size:10px;")
+        self._band_info.setStyleSheet("color:#555; font-size:12px;")
 
     # ── Port / model population ───────────────────────────────────────────
 
@@ -1082,7 +1090,7 @@ def _collapse_btn(title: str) -> QPushButton:
     btn.setChecked(False)
     btn.setStyleSheet("""
         QPushButton{background:#111;border:none;color:#555;
-          font-size:10px;text-align:left;padding:2px 6px;}
+          font-size:12px;text-align:left;padding:2px 6px;}
         QPushButton:checked{color:#3fbe6f;}
         QPushButton:hover{color:#aaa;}
     """)

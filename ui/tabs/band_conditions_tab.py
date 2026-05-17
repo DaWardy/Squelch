@@ -87,7 +87,7 @@ class BandConditionsTab(QWidget):
 
         self._age_lbl = QLabel("")
         self._age_lbl.setStyleSheet(
-            "color:#555;font-size:10px;")
+            "color:#555;font-size:12px;")
         hdr.addWidget(self._age_lbl)
         root.addLayout(hdr)
 
@@ -119,7 +119,7 @@ class BandConditionsTab(QWidget):
         ]
         for row, (key, label, default, tip) in enumerate(indices):
             lbl = QLabel(label)
-            lbl.setStyleSheet("color:#888;font-size:11px;")
+            lbl.setStyleSheet("color:#888;font-size:13px;")
             lbl.setToolTip(tip)
             sg.addWidget(lbl, row, 0)
 
@@ -131,7 +131,7 @@ class BandConditionsTab(QWidget):
             sg.addWidget(val, row, 1)
 
             trend = QLabel("")
-            trend.setStyleSheet("color:#555;font-size:11px;")
+            trend.setStyleSheet("color:#555;font-size:13px;")
             trend.setFixedWidth(20)
             sg.addWidget(trend, row, 2)
 
@@ -145,7 +145,7 @@ class BandConditionsTab(QWidget):
         self._rec_labels = []
         for _ in range(4):
             lbl = QLabel("—")
-            lbl.setStyleSheet("color:#666;font-size:11px;")
+            lbl.setStyleSheet("color:#666;font-size:13px;")
             lbl.setWordWrap(True)
             rl.addWidget(lbl)
             self._rec_labels.append(lbl)
@@ -157,7 +157,7 @@ class BandConditionsTab(QWidget):
         self._aurora_lbl = QLabel("")
         self._aurora_lbl.setWordWrap(True)
         self._aurora_lbl.setStyleSheet(
-            "color:#ffaa00;font-size:11px;")
+            "color:#ffaa00;font-size:13px;")
         aw.addWidget(self._aurora_lbl)
         self._aurora_widget.hide()
         ll.addWidget(self._aurora_widget)
@@ -180,7 +180,7 @@ class BandConditionsTab(QWidget):
         for col, h in enumerate(headers):
             lbl = QLabel(h)
             lbl.setStyleSheet(
-                "color:#555;font-size:10px;font-weight:bold;")
+                "color:#555;font-size:12px;font-weight:bold;")
             bg.addWidget(lbl, 0, col)
 
         self._band_rows = {}
@@ -196,7 +196,7 @@ class BandConditionsTab(QWidget):
 
             cond_lbl = QLabel("—")
             cond_lbl.setStyleSheet(
-                "color:#555;font-size:11px;")
+                "color:#555;font-size:13px;")
             bg.addWidget(cond_lbl, row, 1)
 
             bar = QProgressBar()
@@ -238,10 +238,10 @@ class BandConditionsTab(QWidget):
             QTableWidget.EditTrigger.NoEditTriggers)
         self._spots_table.setStyleSheet(
             "QTableWidget{background:#0d0d0d;color:#aaa;"
-            "gridline-color:#1a1a1a;font-size:10px;"
+            "gridline-color:#1a1a1a;font-size:12px;"
             "alternate-background-color:#111;}"
             "QHeaderView::section{background:#141414;"
-            "color:#666;border:none;font-size:10px;}")
+            "color:#666;border:none;font-size:12px;}")
         self._spots_table.setAlternatingRowColors(True)
         spl.addWidget(self._spots_table)
         rl2.addWidget(spots_grp)
@@ -401,7 +401,7 @@ class BandConditionsTab(QWidget):
             cond_lbl.setText(c.condition.capitalize())
             cond_lbl.setStyleSheet(
                 f"color:{color_map.get(c.condition,'#555')};"
-                "font-size:11px;")
+                "font-size:13px;")
             bar.setValue(level_map.get(c.condition, 0))
             bar.setStyleSheet(
                 f"QProgressBar{{background:#111;"

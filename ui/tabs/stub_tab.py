@@ -128,7 +128,7 @@ class StubTab(QWidget):
                 f"Coming in {info['coming']}  "
                 f"— check ROADMAP.md for details.")
             coming.setStyleSheet(
-                "color:#555;font-size:11px;"
+                "color:#555;font-size:13px;"
                 "font-style:italic;")
             cl.addWidget(coming)
 
@@ -137,13 +137,13 @@ class StubTab(QWidget):
             needs_lbl = QLabel(
                 "Required software:")
             needs_lbl.setStyleSheet(
-                "color:#666;font-size:11px;"
+                "color:#666;font-size:13px;"
                 "font-weight:bold;margin-top:8px;")
             cl.addWidget(needs_lbl)
             for item in needs:
                 il = QLabel(f"  • {item}")
                 il.setStyleSheet(
-                    "color:#555;font-size:10px;")
+                    "color:#555;font-size:12px;")
                 cl.addWidget(il)
 
         if tab_key and self._cfg:
@@ -151,7 +151,7 @@ class StubTab(QWidget):
                 "Use the launch bar above to "
                 "install or configure required software.")
             hint.setStyleSheet(
-                "color:#446644;font-size:10px;"
+                "color:#446644;font-size:12px;"
                 "margin-top:12px;")
             cl.addWidget(hint)
 

@@ -136,7 +136,7 @@ class ModesTab(QWidget):
         self._mode_tabs.setFixedHeight(42)
         self._mode_tabs.tabBar().setDocumentMode(True)
         self._mode_tabs.setStyleSheet("""
-            QTabBar::tab{padding:6px 16px;font-size:11px;
+            QTabBar::tab{padding:6px 16px;font-size:13px;
               background:#141414;color:#666;border:none;
               border-bottom:2px solid transparent;}
             QTabBar::tab:selected{color:#3fbe6f;
@@ -218,17 +218,17 @@ class ModesTab(QWidget):
 
         self._state_label = QLabel("● Idle — monitoring")
         self._state_label.setStyleSheet(
-            "color:#555; font-size:11px; font-weight:bold;")
+            "color:#555; font-size:13px; font-weight:bold;")
         state_l.addWidget(self._state_label)
 
         self._qso_label = QLabel("No QSO in progress")
         self._qso_label.setStyleSheet(
-            "color:#444; font-size:10px;")
+            "color:#444; font-size:12px;")
         state_l.addWidget(self._qso_label)
 
         self._tx_msg_label = QLabel("")
         self._tx_msg_label.setStyleSheet(
-            "color:#3fbe6f; font-family:'Courier New'; font-size:10px;")
+            "color:#3fbe6f; font-family:'Courier New'; font-size:12px;")
         self._tx_msg_label.setWordWrap(True)
         state_l.addWidget(self._tx_msg_label)
 
@@ -239,14 +239,21 @@ class ModesTab(QWidget):
         self._cq_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
             "border-radius:4px;font-weight:bold;font-size:12px;")
-        self._cq_btn.clicked.connect(self._send_cq)
+        self._cq_btn.setToolTip(
+            "Transmit CQ call\n"
+            "Requires WSJT-X connected via UDP\n"
+            "Auto-returns to IDLE after 2 cycles without response")
+        cq_btn.clicked.connect(self._send_cq)
 
         self._halt_btn = QPushButton("Halt TX")
         self._halt_btn.setFixedHeight(30)
         self._halt_btn.setStyleSheet(
             "background:#3a1a1a;color:#cc4444;border:1px solid #cc4444;"
-            "border-radius:4px;font-size:11px;")
-        self._halt_btn.clicked.connect(self._halt_tx)
+            "border-radius:4px;font-size:13px;")
+        self._halt_btn.setToolTip(
+            "Stop transmitting immediately\n"
+            "Cancels auto-sequence and returns to IDLE")
+        halt_btn.clicked.connect(self._halt_tx)
         btn_row1.addWidget(self._cq_btn)
         btn_row1.addWidget(self._halt_btn)
         state_l.addLayout(btn_row1)
@@ -312,10 +319,10 @@ class ModesTab(QWidget):
 
         def _stat(label, attr):
             lbl = QLabel(label)
-            lbl.setStyleSheet("color:#555; font-size:10px;")
+            lbl.setStyleSheet("color:#555; font-size:12px;")
             val = QLabel("0")
             val.setStyleSheet(
-                "color:#3fbe6f; font-size:11px; "
+                "color:#3fbe6f; font-size:13px; "
                 "font-family:'Courier New';")
             setattr(self, attr, val)
             return lbl, val
@@ -379,12 +386,12 @@ class ModesTab(QWidget):
         self._decode_table.verticalHeader().setVisible(False)
         self._decode_table.setStyleSheet("""
             QTableWidget{background:#0d0d0d;color:#aaa;
-              gridline-color:#1a1a1a;font-size:11px;
+              gridline-color:#1a1a1a;font-size:13px;
               font-family:'Courier New';
               alternate-background-color:#111111;
               selection-background-color:#1a3a1a;}
             QHeaderView::section{background:#141414;color:#666;
-              border:none;font-size:10px;padding:3px;}
+              border:none;font-size:12px;padding:3px;}
         """)
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
         right_layout.addWidget(self._decode_table, 3)
@@ -404,7 +411,7 @@ class ModesTab(QWidget):
         self._activity_log.setMaximumHeight(120)
         self._activity_log.setStyleSheet(
             "background:#080808; color:#3fbe6f; "
-            "font-family:'Courier New'; font-size:10px; "
+            "font-family:'Courier New'; font-size:12px; "
             "border:1px solid #1a1a1a;")
         right_layout.addWidget(self._activity_log)
 
@@ -423,7 +430,7 @@ class ModesTab(QWidget):
         status_row = QHBoxLayout()
         self._fldigi_status = QLabel("● Not connected")
         self._fldigi_status.setStyleSheet(
-            "color:#888; font-size:11px; font-weight:bold;")
+            "color:#888; font-size:13px; font-weight:bold;")
         self._fldigi_connect_btn = QPushButton("Launch Fldigi")
         self._fldigi_connect_btn.setFixedHeight(26)
         self._fldigi_connect_btn.clicked.connect(self._connect_fldigi)
@@ -492,7 +499,7 @@ class ModesTab(QWidget):
         ctrl.addStretch()
 
         self._dx_status = QLabel("DX Cluster: not connected")
-        self._dx_status.setStyleSheet("color:#555;font-size:10px;")
+        self._dx_status.setStyleSheet("color:#555;font-size:12px;")
         ctrl.addWidget(self._dx_status)
 
         conn_btn = QPushButton("Connect")
@@ -517,10 +524,10 @@ class ModesTab(QWidget):
         self._dx_table.setFixedHeight(90)
         self._dx_table.setStyleSheet(
             "QTableWidget{background:#0a0a0a;color:#aaa;"
-            "font-size:9px;font-family:'Courier New';"
+            "font-size:13px;font-family:'Courier New';"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{background:#141414;"
-            "color:#555;border:none;font-size:9px;}")
+            "color:#555;border:none;font-size:13px;}")
         self._dx_table.doubleClicked.connect(
             self._tune_to_dx_spot)
         dl.addWidget(self._dx_table)
@@ -571,14 +578,14 @@ class ModesTab(QWidget):
             self._dx_status.setText(
                 f"DX Cluster: {node}")
             self._dx_status.setStyleSheet(
-                "color:#3fbe6f;font-size:10px;")
+                "color:#3fbe6f;font-size:12px;")
             self._dx_conn_btn.setText("Disconnect")
             self.cfg.set("dx_cluster.auto_connect", True)
         else:
             self._dx_status.setText(
                 "DX Cluster: disconnected")
             self._dx_status.setStyleSheet(
-                "color:#555;font-size:10px;")
+                "color:#555;font-size:12px;")
             self._dx_conn_btn.setText("Connect")
 
     def _on_dx_spot(self, spot):
@@ -766,12 +773,12 @@ class ModesTab(QWidget):
         if ok:
             self._fldigi_status.setText("● Connected")
             self._fldigi_status.setStyleSheet(
-                "color:#3fbe6f; font-size:11px; font-weight:bold;")
+                "color:#3fbe6f; font-size:13px; font-weight:bold;")
             self.fldigi.set_mode(self._current_mode)
         else:
             self._fldigi_status.setText("● Failed — check Fldigi install")
             self._fldigi_status.setStyleSheet(
-                "color:#cc4444; font-size:11px; font-weight:bold;")
+                "color:#cc4444; font-size:13px; font-weight:bold;")
 
     def _fldigi_tx(self):
         text = self._fldigi_tx_edit.text()
@@ -873,7 +880,7 @@ class ModesTab(QWidget):
         color = STATE_COLORS.get(state, "#555")
         self._state_label.setText(f"● {state.value}")
         self._state_label.setStyleSheet(
-            f"color:{color}; font-size:11px; font-weight:bold;")
+            f"color:{color}; font-size:13px; font-weight:bold;")
         qso = self.ft8_engine.current_qso
         if qso.their_call:
             self._qso_label.setText(

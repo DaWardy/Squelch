@@ -197,7 +197,7 @@ class SDRTab(QWidget):
                 "This is usually caused by a missing dependency.\n"
                 "Check logs/squelch.log for details.")
             err_lbl.setWordWrap(True)
-            err_lbl.setStyleSheet("color:#888;font-size:11px;")
+            err_lbl.setStyleSheet("color:#888;font-size:13px;")
             lay.addWidget(err_lbl)
             lay.addStretch()
 
@@ -249,11 +249,11 @@ class SDRTab(QWidget):
         for label, detail in steps:
             lbl = QLabel(f"  ▸  {label}")
             lbl.setStyleSheet(
-                "color:#3fbe6f;font-size:11px;"
+                "color:#3fbe6f;font-size:13px;"
                 "font-weight:bold;margin-top:6px;")
             l.addWidget(lbl)
             det = QLabel(f"     {detail}")
-            det.setStyleSheet("color:#666;font-size:10px;")
+            det.setStyleSheet("color:#666;font-size:12px;")
             det.setWordWrap(True)
             l.addWidget(det)
 
@@ -274,7 +274,7 @@ class SDRTab(QWidget):
             "aircraft map. It does not require SoapySDR.\n"
             "  Install: github.com/flightaware/dump1090")
         dump_msg.setWordWrap(True)
-        dump_msg.setStyleSheet("color:#666;font-size:10px;")
+        dump_msg.setStyleSheet("color:#666;font-size:12px;")
         l.addWidget(dump_msg)
 
         # ADS-B map button — works when dump1090 is running
@@ -286,7 +286,7 @@ class SDRTab(QWidget):
             QPushButton{
               background:#1a2a1a;color:#3fbe6f;
               border:1px solid #3fbe6f;border-radius:4px;
-              font-size:11px;padding:4px 12px;}
+              font-size:13px;padding:4px 12px;}
             QPushButton:hover{background:#2a3a2a;}
             QPushButton:disabled{color:#333;
               border-color:#222;background:#111;}
@@ -379,7 +379,7 @@ class SDRTab(QWidget):
 
         # Device selector
         dev_lbl = QLabel(self.tr("Device:"))
-        dev_lbl.setStyleSheet("color:#666;font-size:10px;")
+        dev_lbl.setStyleSheet("color:#666;font-size:12px;")
         lay.addWidget(dev_lbl)
 
         self._dev_combo = QComboBox()
@@ -401,7 +401,7 @@ class SDRTab(QWidget):
 
         self._sdr_status = QLabel("● Disconnected")
         self._sdr_status.setStyleSheet(
-            "color:#555;font-size:11px;"
+            "color:#555;font-size:13px;"
             "font-family:'Courier New';")
         lay.addWidget(self._sdr_status)
         lay.addWidget(_vsep())
@@ -427,7 +427,7 @@ class SDRTab(QWidget):
 
         # Step sizes
         step_lbl = QLabel("Step:")
-        step_lbl.setStyleSheet("color:#666;font-size:10px;")
+        step_lbl.setStyleSheet("color:#666;font-size:12px;")
         lay.addWidget(step_lbl)
 
         self._step_btns = []
@@ -440,7 +440,7 @@ class SDRTab(QWidget):
             btn.setChecked(i == self._step_idx)
             btn.setFixedHeight(22)
             btn.setStyleSheet("""
-                QPushButton{font-size:9px;border:1px solid #222;
+                QPushButton{font-size:13px;border:1px solid #222;
                   border-radius:3px;background:#111;
                   color:#666;padding:0 4px;}
                 QPushButton:checked{background:#1a3a1a;
@@ -458,7 +458,7 @@ class SDRTab(QWidget):
         # TX indicator (only shown for TX-capable hardware)
         self._tx_indicator = QLabel("● TX")
         self._tx_indicator.setStyleSheet(
-            "color:#cc4444;font-size:11px;"
+            "color:#cc4444;font-size:13px;"
             "font-family:'Courier New';")
         self._tx_indicator.hide()
         lay.addWidget(self._tx_indicator)
@@ -607,7 +607,7 @@ class SDRTab(QWidget):
         gl.addWidget(self._gain_slider, 0, 1)
         self._gain_lbl = QLabel("30 dB")
         self._gain_lbl.setStyleSheet(
-            "color:#3fbe6f;font-size:10px;"
+            "color:#3fbe6f;font-size:12px;"
             "font-family:'Courier New';")
         self._gain_lbl.setFixedWidth(45)
         gl.addWidget(self._gain_lbl, 0, 2)
@@ -731,7 +731,7 @@ class SDRTab(QWidget):
                 "⚠ Ensure you have appropriate\n"
                 "license before transmitting."))
         tx_warn.setStyleSheet(
-            "color:#eeaa22;font-size:10px;")
+            "color:#eeaa22;font-size:12px;")
         txl.addWidget(tx_warn)
 
         tx_btn = QPushButton(self.tr("TX IQ File…"))
@@ -781,7 +781,7 @@ class SDRTab(QWidget):
 
         self._rec_status = QLabel(self.tr("Idle"))
         self._rec_status.setStyleSheet(
-            "color:#555;font-size:10px;"
+            "color:#555;font-size:12px;"
             "font-family:'Courier New';")
         rl.addWidget(self._rec_status)
 
@@ -824,7 +824,7 @@ class SDRTab(QWidget):
         self._scan_start.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
             "border:1px solid #3fbe6f;border-radius:3px;"
-            "font-size:10px;")
+            "font-size:12px;")
         self._scan_start.clicked.connect(self._start_scan)
         self._scan_stop = QPushButton(self.tr("■ Stop"))
         self._scan_stop.setFixedHeight(24)
@@ -896,7 +896,7 @@ class SDRTab(QWidget):
             self._connect_btn.setText(self.tr("Connect"))
             self._sdr_status.setText("● Disconnected")
             self._sdr_status.setStyleSheet(
-                "color:#555;font-size:11px;"
+                "color:#555;font-size:13px;"
                 "font-family:'Courier New';")
             return
 
@@ -918,7 +918,7 @@ class SDRTab(QWidget):
             self._sdr_status.setText(
                 f"● {dev.display_name}")
             self._sdr_status.setStyleSheet(
-                "color:#3fbe6f;font-size:11px;"
+                "color:#3fbe6f;font-size:13px;"
                 "font-family:'Courier New';")
             self._current = dev
             self._manager.start_rx()
@@ -928,7 +928,7 @@ class SDRTab(QWidget):
             self._connect_btn.setText(self.tr("Connect"))
             self._sdr_status.setText("● Error")
             self._sdr_status.setStyleSheet(
-                "color:#cc4444;font-size:11px;"
+                "color:#cc4444;font-size:13px;"
                 "font-family:'Courier New';")
 
     # ── Frequency control ─────────────────────────────────────────────────
@@ -1174,7 +1174,7 @@ class SDRTab(QWidget):
             self._rec_status.setText(
                 f"● REC  {elapsed:.0f}s")
             self._rec_status.setStyleSheet(
-                "color:#cc4444;font-size:10px;"
+                "color:#cc4444;font-size:12px;"
                 "font-family:'Courier New';")
 
     def _update_axes(self):
@@ -1229,7 +1229,7 @@ class SDRTab(QWidget):
             self._rec_status.setText(
                 self.tr("Recording saved"))
             self._rec_status.setStyleSheet(
-                "color:#3fbe6f;font-size:10px;"
+                "color:#3fbe6f;font-size:12px;"
                 "font-family:'Courier New';")
             self._refresh_recordings()
         else:
@@ -1401,7 +1401,7 @@ class SDRTab(QWidget):
                     f"Frequency: {fq_m:.3f} MHz\n"
                     f"Top {nm} matches from "
                     f"Artemis database:")
-                lbl.setStyleSheet("color:#aaa;font-size:10px;")
+                lbl.setStyleSheet("color:#aaa;font-size:12px;")
                 lay.addWidget(lbl)
 
                 tbl = QTableWidget(len(m), 4)
@@ -1413,7 +1413,7 @@ class SDRTab(QWidget):
                 tbl.setEditTriggers(
                     QTableWidget.EditTrigger.NoEditTriggers)
                 tbl.setStyleSheet(
-                    "font-size:10px;font-family:'Courier New';")
+                    "font-size:12px;font-family:'Courier New';")
 
                 for row, match in enumerate(m):
                     tbl.setItem(row, 0,

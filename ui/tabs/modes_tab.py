@@ -17,6 +17,7 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 """
 Squelch -- ui/tabs/modes_tab.py
 Unified digital modes tab.
@@ -27,6 +28,8 @@ Decode list, auto-sequence state display, QSO log feed.
 
 import logging
 import threading
+from ui.widgets.launch_bar import LaunchBar
+from core.launcher import get_launcher
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QGroupBox,
@@ -42,6 +45,7 @@ from modes.ft8 import FT8Engine, AutoSeqState, DecodedSignal
 from modes.wspr import WSPREngine
 from modes.fldigi_bridge import FldigiBridge, MODE_FREQS
 from core.band_plan import DIGITAL_FREQS, BAND_EDGES
+from core.constants import BAND_EDGES_R2 as BAND_EDGES, FT8_FREQUENCIES
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +122,12 @@ class ModesTab(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        # ── Launch bar ───────────────────────────────────────────────────
+        self._launch_bar = LaunchBar(
+            "modes", self.cfg,
+            rescan_callback=self._rescan_software)
+        root.addWidget(self._launch_bar)
 
         # ── Mode selector tabs ────────────────────────────────────────────
         self._mode_tabs = QTabWidget()
@@ -445,6 +455,38 @@ class ModesTab(QWidget):
             self.ft8_engine.set_tx_freq)
 
     # ── Mode tab switching ────────────────────────────────────────────────
+
+    def _rescan_software(self):
+        """Re-check for running software instances."""
+        try:
+            self._ft8_engine.reconnect()
+        except Exception:
+            pass
+        self._launch_bar.refresh()
+
+    def _auto_launch_wsjtx(self):
+        """Auto-launch WSJT-X when FT8/FT4/WSPR selected."""
+        launcher = get_launcher(self.cfg)
+        if not launcher.is_available("paths.wsjtx"):
+            return
+        # Check if already running
+        import subprocess, sys
+        try:
+            if sys.platform == "win32":
+                out = subprocess.run(
+                    ["tasklist"], capture_output=True,
+                    text=True).stdout.lower()
+                if "wsjtx" in out:
+                    return  # already running
+            else:
+                out = subprocess.run(
+                    ["pgrep", "-x", "wsjtx"],
+                    capture_output=True).returncode
+                if out == 0:
+                    return
+        except Exception:
+            pass
+        launcher.launch("paths.wsjtx")
 
     def _on_mode_tab(self, idx: int):
         modes = ["FT8","FT4","WSPR","JS8","PSK31","RTTY","CW","SSTV"]

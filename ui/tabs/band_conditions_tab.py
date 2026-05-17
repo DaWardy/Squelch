@@ -48,6 +48,10 @@ class BandConditionsTab(QWidget):
         self._feed.on_alert(self._on_alert)
         self._build()
         self._feed.start()
+        # Show placeholder data immediately while fetching
+        QTimer.singleShot(200, self._show_fetching_state)
+        # If feed already has data (re-opened tab), show it
+        QTimer.singleShot(500, self._refresh_display)
 
         # Refresh UI every 60 seconds
         self._timer = QTimer(self)
@@ -243,6 +247,53 @@ class BandConditionsTab(QWidget):
         root.addWidget(splitter)
 
     # ── Callbacks ─────────────────────────────────────────────────────────
+
+    def _update_grayline(self):
+        """Update gray line status from config location."""
+        try:
+            lat = self.cfg.get("location.lat", 0.0) or 0.0
+            lon = self.cfg.get("location.lon", 0.0) or 0.0
+            if not (lat or lon):
+                grid = self.cfg.grid or ""
+                if grid:
+                    from core.location import _grid_to_latlon
+                    lat, lon = _grid_to_latlon(grid)
+            if lat or lon:
+                info   = gray_line_info(lat, lon)
+                status = format_gray_line_status(info)
+                self._gl_lbl.setText(status)
+                if info.is_gray_line:
+                    self._gl_lbl.setStyleSheet(
+                        "background:#0a1a0a;color:#3fbe6f;"
+                        "font-size:12px;"
+                        "font-family:'Courier New';"
+                        "border:1px solid #3fbe6f;"
+                        "border-radius:3px;padding:2px 8px;")
+                else:
+                    self._gl_lbl.setStyleSheet(
+                        "background:#0a0a0a;color:#666;"
+                        "font-size:12px;"
+                        "font-family:'Courier New';"
+                        "border:1px solid #1a1a1a;"
+                        "border-radius:3px;padding:2px 8px;")
+            else:
+                self._gl_lbl.setText(
+                    "Set location to see gray line status")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(
+                f"Gray line update: {e}")
+        # Update every 60s
+        QTimer.singleShot(60_000, self._update_grayline)
+
+    def _show_fetching_state(self):
+        """Show placeholder while solar data is being fetched."""
+        if self._feed.solar.sfi == 0.0:
+            self._summary_lbl.setText(
+                "Fetching solar data from NOAA…")
+            self._summary_lbl.setStyleSheet(
+                "font-size:13px;color:#555;")
+            self._age_lbl.setText("Connecting…")
 
     def _on_solar(self, solar: SolarData):
         QTimer.singleShot(0,

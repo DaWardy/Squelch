@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/widgets/spectrum_widget.py
+from __future__ import annotations
+"""Squelch -- ui/widgets/spectrum_widget.py
 Mini spectrum analyzer + waterfall for the Rig tab.
 Driven by IC-7100 audio (primary) or SoapySDR (if available).
 Band plan segments overlaid with color coding and hover tooltips.
@@ -51,6 +51,7 @@ except ImportError:
     HAS_SD = False
 
 from core.band_plan import segments_in_range, band_at_freq, SEG_COLORS, SegType
+from core.constants import FFT_SIZE
 
 # FFT config
 FFT_SIZE    = 2048
@@ -371,7 +372,7 @@ class SpectrumWidget(QWidget):
             self._audio_buf = indata[:, 0].copy()
 
     @staticmethod
-    def _find_rig_audio() -> Optional[int]:
+    def _find_rig_audio() -> int | None:
         if not HAS_SD:
             return None
         devs = sd.query_devices()

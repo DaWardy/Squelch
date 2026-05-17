@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- modes/fldigi_bridge.py
+from __future__ import annotations
+"""Squelch -- modes/fldigi_bridge.py
 Fldigi XML-RPC bridge for PSK31, RTTY, CW, SSTV, Olivia.
 Launches Fldigi as a subprocess and controls it via XML-RPC.
 """
@@ -27,7 +27,13 @@ import logging
 import subprocess
 import threading
 import time
-import xmlrpc.client
+try:
+    import defusedxml  # type: ignore
+    defusedxml.defuse_stdlib()  # patches xmlrpc.client globally
+except ImportError:
+    pass  # defusedxml not installed — xmlrpc runs unpatched
+          # install with: pip install defusedxml
+import xmlrpc.client  # nosec B411 - patched by defusedxml above
 from pathlib import Path
 from typing import Optional, Callable
 
@@ -70,17 +76,17 @@ class FldigiBridge:
     def __init__(self, config, log_db=None):
         self.cfg    = config
         self.log_db = log_db
-        self._proc: Optional[subprocess.Popen] = None
-        self._rpc:  Optional[xmlrpc.client.ServerProxy] = None
+        self._proc: subprocess.Popen | None = None
+        self._rpc:  xmlrpc.client.ServerProxy | None = None
         self._connected = False
         self._mode      = "PSK31"
         self._rx_text   = ""
-        self._poll_thread: Optional[threading.Thread] = None
+        self._poll_thread: threading.Thread | None = None
         self._running   = False
 
-        self._on_rx:  Optional[Callable] = None
-        self._on_tx:  Optional[Callable] = None
-        self._on_connected: Optional[Callable] = None
+        self._on_rx:  Callable | None = None
+        self._on_tx:  Callable | None = None
+        self._on_connected: Callable | None = None
 
     # ── Connect ───────────────────────────────────────────────────────────
 
@@ -232,11 +238,25 @@ class FldigiBridge:
             return False
 
     def _is_fldigi_running(self) -> bool:
-        import psutil
-        for proc in psutil.process_iter(["name"]):
-            if "fldigi" in (proc.info["name"] or "").lower():
-                return True
-        return False
+        try:
+            import psutil
+            for proc in psutil.process_iter(["name"]):
+                if "fldigi" in (proc.info["name"] or "").lower():
+                    return True
+            return False
+        except ImportError:
+            # psutil not available — fall back to process list
+            import subprocess, sys
+            cmd = (["tasklist"] if sys.platform == "win32"
+                   else ["pgrep", "-l", "fldigi"])
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True)
+                return "fldigi" in result.stdout.lower()
+            except Exception:
+                return False
+        except Exception:
+            return False
 
     # ── Poll loop ─────────────────────────────────────────────────────────
 

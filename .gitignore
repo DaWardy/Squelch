@@ -1,56 +1,69 @@
-# SIGLAB .gitignore
-
-# User config — contains callsign, API keys, personal settings
-config.json
-
-# Virtual environment
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.pyo
+*.pyw~
+.Python
 venv/
 .venv/
 env/
-
-# Python cache
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-
-# Logs and session data
-logs/*.db
-logs/*.adi
-logs/adif_exports/
-logs/sessions/
-logs/siglab.log
-
-# IQ recordings — can be very large
-recordings/
-
-# Build artifacts
-build/
-dist/
+pip-wheel-metadata/
 *.egg-info/
+dist/
+build/
 .eggs/
 
-# IDE files
-.vscode/
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Squelch runtime files
+config.json
+logs/
+recordings/
+profiles/
+offline_packages/
+assets/artemis_signals.json
+assets/cty.dat
+assets/squelch.ico
+
+# OS
 .DS_Store
 Thumbs.db
+desktop.ini
+*.lnk
 
-# Temporary files
-*.tmp
-*.bak
+# Editor
+.vscode/
+.idea/
 *.swp
+*.swo
+*~
+.project
+.pydevproject
 
-# Hamlib
-*.log
-
-# Test output
+# Testing
 .pytest_cache/
-htmlcov/
 .coverage
+htmlcov/
+.tox/
+
+# Security — never commit these
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.env
+secrets.json
+credentials.json
+
+# Build artifacts
+Squelch_*.zip
+*.exe
+*.msi
+*.deb
+Squelch_Setup*
+
+# Bandit reports
+bandit_report*
+.bandit

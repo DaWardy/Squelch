@@ -1,5 +1,5 @@
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
+# APEX — Amateur Platform for EXperimentation
+# Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- network/dx_cluster.py
+from __future__ import annotations
+"""APEX -- network/dx_cluster.py
 DX cluster and alerting API integrations:
   - PSKReporter (spot feed)
   - DX Watch / DX Summit (cluster spots)
@@ -35,7 +35,9 @@ from dataclasses import dataclass, field
 from typing import Optional, Callable
 from datetime import datetime, timezone
 
-from core.validator import Validator
+from core.validator import (
+    callsign_soft, api_callsign, api_string,
+    api_int, api_float)
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ PSKREPORTER_URL  = "https://retrieve.pskreporter.info/query"
 DXWATCH_URL      = "https://dxwatch.com/dxsd1/s.php"
 DXSUMMIT_URL     = "https://www.dxsummit.fi/api/v1/spots"
 HAMALERT_URL     = "https://hamalert.org/api"
-RBN_URL          = "http://www.reversebeacon.net/api/spots/dx"
+RBN_URL          = "https://www.reversebeacon.net/api/spots/dx"
 CLUBLOG_URL      = "https://clublog.org/realtime.php"
 
 # Rate limits
@@ -99,7 +101,7 @@ class PSKReporterClient:
         self._last_fetch = 0.0
         self._spots_rx: list[DXSpot] = []  # who hears you
         self._spots_tx: list[DXSpot] = []  # who you hear
-        self._on_update: Optional[Callable] = None
+        self._on_update: Callable | None = None
 
     def fetch(self, callsign: str, band: str = "",
               mode: str = "") -> bool:
@@ -113,7 +115,7 @@ class PSKReporterClient:
             return False
 
         try:
-            cs = Validator.callsign(callsign)
+            cs = callsign_soft(callsign)
             params = {
                 "senderCallsign": cs,
                 "rrOnly":         1,
@@ -128,8 +130,9 @@ class PSKReporterClient:
                 PSKREPORTER_URL,
                 params=params,
                 timeout=10,
-                headers={"User-Agent": "Squelch/1.0 github.com/dawardy/squelch"})
-
+                headers={"User-Agent": "APEX/1.0 github.com/dawardy/apex"})
+            if len(resp.content) > 100_000:
+                return None  # response too large
             if resp.status_code == 200:
                 self._parse_pskreporter(resp.json(), cs)
                 self._last_fetch = now
@@ -161,16 +164,16 @@ class PSKReporterClient:
             for r in receptions:
                 try:
                     spot = DXSpot(
-                        callsign  = Validator.api_callsign(
+                        callsign  = api_callsign(
                             r.get("senderCallsign", "")),
-                        freq_hz   = Validator.api_integer(
+                        freq_hz   = api_int(
                             r.get("frequency", 0),
                             min_val=0, max_val=450_000_000),
-                        spotter   = Validator.api_callsign(
+                        spotter   = api_callsign(
                             r.get("receiverCallsign", "")),
-                        mode      = Validator.api_string(
+                        mode      = api_string(
                             r.get("mode", ""), max_length=20),
-                        snr       = Validator.api_integer(
+                        snr       = api_int(
                             r.get("sNR", 0),
                             min_val=-40, max_val=40),
                         source    = "pskreporter",
@@ -235,7 +238,7 @@ class DXClusterClient:
         self.cfg = config
         self._spots: list[DXSpot] = []
         self._last_fetch = 0.0
-        self._on_spot: Optional[Callable] = None
+        self._on_spot: Callable | None = None
 
     def fetch(self, band: str = "", mode: str = "",
               limit: int = 50) -> list[DXSpot]:
@@ -255,8 +258,9 @@ class DXClusterClient:
                 DXSUMMIT_URL,
                 params=params,
                 timeout=8,
-                headers={"User-Agent": "Squelch/1.0"})
-
+                headers={"User-Agent": "APEX/1.0"})
+            if len(resp.content) > 100_000:
+                return None  # response too large
             if resp.status_code == 200:
                 spots = self._parse_dxsummit(resp.json())
                 self._spots = spots
@@ -281,15 +285,15 @@ class DXClusterClient:
         for item in data[:100]:  # cap at 100
             try:
                 spot = DXSpot(
-                    callsign = Validator.api_callsign(
+                    callsign = api_callsign(
                         item.get("dx", "")),
                     freq_hz  = int(float(
                         item.get("frequency", 0)) * 1000),
-                    spotter  = Validator.api_callsign(
+                    spotter  = api_callsign(
                         item.get("spotter", "")),
-                    mode     = Validator.api_string(
+                    mode     = api_string(
                         item.get("mode", ""), max_length=10),
-                    comment  = Validator.api_string(
+                    comment  = api_string(
                         item.get("comment", ""), max_length=60),
                     source   = "dxsummit",
                 )
@@ -316,8 +320,8 @@ class HamAlertClient:
         self._alerts:  list[dict] = []
         self._last_id: int        = 0
         self._running: bool       = False
-        self._thread:  Optional[threading.Thread] = None
-        self._on_alert: Optional[Callable]        = None
+        self._thread:  threading.Thread | None = None
+        self._on_alert: Callable | None        = None
         self._wantlist: list[str]                  = []
 
     def start(self):
@@ -357,11 +361,12 @@ class HamAlertClient:
                 f"{HAMALERT_URL}/spots",
                 headers={
                     "Authorization": f"Bearer {key}",
-                    "User-Agent": "Squelch/1.0",
+                    "User-Agent": "APEX/1.0",
                 },
                 params={"since_id": self._last_id},
                 timeout=8)
-
+            if len(resp.content) > 100_000:
+                return None  # response too large
             if resp.status_code == 200:
                 data = resp.json()
                 alerts = data if isinstance(data, list) else \
@@ -385,18 +390,18 @@ class HamAlertClient:
 
     def _process_alert(self, alert: dict):
         spot = DXSpot(
-            callsign = Validator.api_callsign(
+            callsign = api_callsign(
                 alert.get("callsign", "")),
-            freq_hz  = Validator.api_integer(
+            freq_hz  = api_int(
                 float(alert.get("frequency", 0)) * 1000,
                 min_val=0, max_val=450_000_000),
-            mode     = Validator.api_string(
+            mode     = api_string(
                 alert.get("mode", ""), max_length=10),
-            comment  = Validator.api_string(
+            comment  = api_string(
                 alert.get("comment", ""), max_length=100),
-            dxcc     = Validator.api_string(
+            dxcc     = api_string(
                 alert.get("dxcc", ""), max_length=50),
-            country  = Validator.api_string(
+            country  = api_string(
                 alert.get("entity", ""), max_length=60),
             source   = "hamalert",
         )
@@ -407,7 +412,7 @@ class HamAlertClient:
             spot.dxcc.upper() in self._wantlist or
             spot.country.upper() in self._wantlist)
 
-        alert_id = Validator.api_integer(
+        alert_id = api_int(
             alert.get("id", 0), min_val=0)
         if alert_id > self._last_id:
             self._last_id = alert_id
@@ -440,7 +445,7 @@ class RBNClient:
         self.cfg       = config
         self._spots:   list[DXSpot] = []
         self._last_fetch = 0.0
-        self._on_spot: Optional[Callable] = None
+        self._on_spot: Callable | None = None
 
     def fetch(self, callsign: str,
               mode: str = "CW") -> list[DXSpot]:
@@ -449,7 +454,7 @@ class RBNClient:
             return self._spots
 
         try:
-            cs = Validator.callsign(callsign)
+            cs = callsign_soft(callsign)
             resp = requests.get(
                 RBN_URL,
                 params={
@@ -458,7 +463,7 @@ class RBNClient:
                     "rows": 20,
                 },
                 timeout=8,
-                headers={"User-Agent": "Squelch/1.0"})
+                headers={"User-Agent": "APEX/1.0"})
 
             if resp.status_code == 200:
                 self._spots = self._parse_rbn(resp.json())
@@ -476,16 +481,16 @@ class RBNClient:
         for item in data[:30]:
             try:
                 spot = DXSpot(
-                    callsign = Validator.api_callsign(
+                    callsign = api_callsign(
                         item.get("dx", "")),
                     freq_hz  = int(float(
                         item.get("freq", 0)) * 1000),
-                    spotter  = Validator.api_callsign(
+                    spotter  = api_callsign(
                         item.get("callsign", "")),
-                    snr      = Validator.api_integer(
+                    snr      = api_int(
                         item.get("db", 0),
                         min_val=-10, max_val=60),
-                    mode     = Validator.api_string(
+                    mode     = api_string(
                         item.get("mode", "CW"), max_length=10),
                     source   = "rbn",
                 )
@@ -538,7 +543,7 @@ class ClubLogClient:
                     "adif":     adif_content,
                 },
                 timeout=30,
-                headers={"User-Agent": "Squelch/1.0"})
+                headers={"User-Agent": "APEX/1.0"})
             ok = resp.status_code == 200 and "OK" in resp.text
             if ok:
                 log.info("ClubLog upload: OK")

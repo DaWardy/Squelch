@@ -1,0 +1,455 @@
+from __future__ import annotations
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+
+"""
+Squelch -- core/launcher.py
+External software launcher.
+Auto-detects installed programs on startup.
+Provides launch buttons for all integrated software.
+Validates paths before launching.
+"""
+
+import sys
+import shutil
+import logging
+import subprocess
+from pathlib import Path
+from core.validator import ALLOWED_EXECUTABLES
+from dataclasses import dataclass, field
+
+log = logging.getLogger(__name__)
+
+IS_WINDOWS = sys.platform == "win32"
+IS_LINUX   = sys.platform.startswith("linux")
+
+
+@dataclass
+class AppDef:
+    """Definition of an external application."""
+    key:          str           # config key e.g. "paths.wsjtx"
+    name:         str           # display name
+    description:  str           # one-line description
+    category:     str           # "digital" / "sdr" / "winlink" / "programming"
+    exe_name:     str           # executable filename
+    common_paths: list          # common Windows install paths
+    linux_paths:  list          # common Linux paths
+    download_url: str           # where to get it
+    download_note: str          = ""
+    args:         list          = field(default_factory=list)
+    required:     bool          = False
+    tab:          str           = ""  # which tab uses this
+
+
+# All external applications Squelch integrates with
+APPS: list[AppDef] = [
+
+    AppDef(
+        key          = "paths.rigctld",
+        name         = "rigctld (Hamlib)",
+        description  = "CAT rig control — required for all rig control",
+        category     = "rig",
+        exe_name     = "rigctld",
+        common_paths = [
+            r"C:\hamlib\bin\rigctld.exe",
+            r"C:\Program Files\Hamlib\bin\rigctld.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/rigctld",
+            "/usr/local/bin/rigctld",
+        ],
+        download_url  = "https://github.com/Hamlib/Hamlib/releases",
+        download_note = "Extract to C:\\hamlib, add C:\\hamlib\\bin to PATH",
+        required      = True,
+        tab           = "rig",
+    ),
+
+    AppDef(
+        key          = "paths.wsjtx",
+        name         = "WSJT-X",
+        description  = "FT8, FT4, WSPR, JS8 weak signal digital modes",
+        category     = "digital",
+        exe_name     = "wsjtx",
+        common_paths = [
+            r"C:\Program Files\WSJT-X\bin\wsjtx.exe",
+            r"C:\Program Files (x86)\WSJT-X\bin\wsjtx.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/wsjtx",
+            "/usr/local/bin/wsjtx",
+            "/opt/wsjtx/bin/wsjtx",
+        ],
+        download_url  = "https://wsjt.sourceforge.io/wsjtx.html",
+        tab           = "modes",
+    ),
+
+    AppDef(
+        key          = "paths.fldigi",
+        name         = "Fldigi",
+        description  = "PSK31, RTTY, CW, SSTV, Olivia digital modes",
+        category     = "digital",
+        exe_name     = "fldigi",
+        common_paths = [
+            r"C:\Program Files\fldigi\fldigi.exe",
+            r"C:\Program Files (x86)\fldigi\fldigi.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/fldigi",
+            "/usr/local/bin/fldigi",
+        ],
+        download_url  = "https://sourceforge.net/projects/fldigi/",
+        tab           = "modes",
+    ),
+
+    AppDef(
+        key          = "paths.js8call",
+        name         = "JS8Call",
+        description  = "JS8 keyboard messaging and store-and-forward",
+        category     = "digital",
+        exe_name     = "js8call",
+        common_paths = [
+            r"C:\Program Files\JS8Call\js8call.exe",
+            r"C:\Program Files (x86)\JS8Call\js8call.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/js8call",
+            "/usr/local/bin/js8call",
+        ],
+        download_url  = "https://js8call.com/",
+        tab           = "modes",
+    ),
+
+    AppDef(
+        key          = "paths.vara_hf",
+        name         = "VARA HF",
+        description  = "Winlink HF modem (free/paid license)",
+        category     = "winlink",
+        exe_name     = "VARAHF",
+        common_paths = [
+            r"C:\VARA HF\VARAHF.exe",
+            r"C:\VARA\VARAHF.exe",
+            r"C:\Program Files\VARA HF\VARAHF.exe",
+        ],
+        linux_paths  = [],   # Wine only on Linux
+        download_url  = "https://rosmodem.wordpress.com/",
+        download_note = "Free version available. Full speed requires paid license.",
+        tab           = "winlink",
+    ),
+
+    AppDef(
+        key          = "paths.vara_fm",
+        name         = "VARA FM",
+        description  = "Winlink VHF/UHF modem",
+        category     = "winlink",
+        exe_name     = "VARAFM",
+        common_paths = [
+            r"C:\VARA FM\VARAFM.exe",
+            r"C:\Program Files\VARA FM\VARAFM.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://rosmodem.wordpress.com/",
+        tab           = "winlink",
+    ),
+
+    AppDef(
+        key          = "paths.pat",
+        name         = "Pat (Winlink)",
+        description  = "Open source cross-platform Winlink client",
+        category     = "winlink",
+        exe_name     = "pat",
+        common_paths = [
+            r"C:\Program Files\Pat\pat.exe",
+            r"C:\Users\%USERNAME%\AppData\Local\pat\pat.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/pat",
+            "/usr/local/bin/pat",
+            str(Path.home() / "go/bin/pat"),
+        ],
+        download_url  = "https://github.com/la5nta/pat/releases",
+        download_note = "Recommended open-source Winlink client. Cross-platform.",
+        tab           = "winlink",
+    ),
+
+    AppDef(
+        key          = "paths.rms_express",
+        name         = "RMS Express (Winlink)",
+        description  = "Traditional Winlink client (Windows only)",
+        category     = "winlink",
+        exe_name     = "RMS Express",
+        common_paths = [
+            r"C:\RMS Express\RMS Express.exe",
+            r"C:\Program Files\RMS Express\RMS Express.exe",
+            r"C:\Program Files (x86)\RMS Express\RMS Express.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.winlink.org/RMSExpress",
+        tab           = "winlink",
+    ),
+
+    AppDef(
+        key          = "paths.dsdplus",
+        name         = "DSD+",
+        description  = "DMR / NXDN / YSF digital voice decode (Windows)",
+        category     = "digital",
+        exe_name     = "DSDPlus",
+        common_paths = [
+            r"C:\DSDPlus\DSDPlus.exe",
+            r"C:\Program Files\DSDPlus\DSDPlus.exe",
+            r"C:\DSD+\DSDPlus.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.dsdplus.com/",
+        download_note = "Windows only. On Linux use OP25 (open source).",
+        tab           = "digital",
+    ),
+
+    AppDef(
+        key          = "paths.op25",
+        name         = "OP25 (Linux)",
+        description  = "P25 open source decoder for Linux / DragonOS",
+        category     = "digital",
+        exe_name     = "rx.py",
+        common_paths = [],
+        linux_paths  = [
+            "/usr/src/op25/op25/gr-op25-r1/apps/rx.py",
+            "/opt/op25/op25/gr-op25-r1/apps/rx.py",
+            str(Path.home() / "op25/op25/gr-op25-r1/apps/rx.py"),
+        ],
+        download_url  = "https://github.com/osmocom/op25",
+        download_note = (
+            "Linux only. Requires GNU Radio. "
+            "See README for DragonOS install."),
+        tab           = "digital",
+    ),
+
+    AppDef(
+        key          = "paths.dump1090",
+        name         = "dump1090-fa",
+        description  = "ADS-B aircraft tracking decoder",
+        category     = "sdr",
+        exe_name     = "dump1090-fa",
+        common_paths = [
+            r"C:\dump1090\dump1090-fa.exe",
+            r"C:\Program Files\dump1090\dump1090-fa.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/dump1090-fa",
+            "/usr/local/bin/dump1090-fa",
+            "/usr/bin/dump1090",
+        ],
+        download_url  = "https://github.com/flightaware/dump1090",
+        tab           = "sdr",
+    ),
+
+    AppDef(
+        key          = "paths.chirp",
+        name         = "CHIRP",
+        description  = "Radio programming — memories, channels, CTCSS",
+        category     = "programming",
+        exe_name     = "chirp",
+        common_paths = [
+            r"C:\Program Files\CHIRP\chirpw.exe",
+            r"C:\Program Files (x86)\CHIRP\chirpw.exe",
+            r"C:\Program Files\CHIRP-daily\chirpw.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/chirp",
+            "/usr/local/bin/chirp",
+            "/usr/bin/chirpw",
+        ],
+        download_url  = "https://chirpmyradio.com/projects/chirp/wiki/Download",
+        download_note = (
+            "QRZ-1 Explorer: use TYT TH-UV88 driver in CHIRP. "
+            "Standard Kenwood/Baofeng K1 cable required."),
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.rt_systems",
+        name         = "RT Systems (QRZ-1)",
+        description  = "Proprietary QRZ-1 Explorer programmer",
+        category     = "programming",
+        exe_name     = "RPS-QRZ1",
+        common_paths = [
+            r"C:\Program Files\RT Systems\RPS-QRZ1\RPS-QRZ1.exe",
+            r"C:\Program Files (x86)\RT Systems\RPS-QRZ1\RPS-QRZ1.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.rtsystemsinc.com/",
+        download_note = "Required for reliable CTCSS programming on QRZ-1 Explorer.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.tqsl",
+        name         = "TQSL (LoTW)",
+        description  = "ARRL LoTW QSO signing and upload",
+        category     = "log",
+        exe_name     = "tqsl",
+        common_paths = [
+            r"C:\Program Files\TQSL\tqsl.exe",
+            r"C:\Program Files (x86)\TQSL\tqsl.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/tqsl",
+            "/usr/local/bin/tqsl",
+        ],
+        download_url  = "https://lotw.arrl.org/lotw-user-guide/",
+        tab           = "log",
+    ),
+]
+
+# Quick lookup by key
+_BY_KEY: dict[str, AppDef] = {a.key: a for a in APPS}
+_BY_TAB: dict[str, list[AppDef]] = {}
+for _app in APPS:
+    _BY_TAB.setdefault(_app.tab, []).append(_app)
+
+
+class Launcher:
+    """
+    Auto-detects and launches external applications.
+    Called on startup to silently populate paths.
+    """
+
+    def __init__(self, config):
+        self.cfg = config
+        self._detected: dict[str, str] = {}
+
+    def auto_detect_all(self) -> dict[str, str]:
+        """
+        Silently scan for all known applications.
+        Updates config with found paths.
+        Returns dict of key → found_path.
+        """
+        found = {}
+        for app in APPS:
+            path = self._find(app)
+            if path:
+                found[app.key] = path
+                # Only set if not already configured
+                existing = self.cfg.get(app.key, "")
+                if not existing or not Path(existing).exists():
+                    self.cfg.set(app.key, path)
+                    log.info(f"Auto-detected: {app.name} → {path}")
+        self._detected = found
+        return found
+
+    def _find(self, app: AppDef) -> str:
+        """Find an application's executable."""
+        # 1. Check configured path
+        configured = self.cfg.get(app.key, "")
+        if configured and Path(configured).exists():
+            return configured
+
+        # 2. Check PATH
+        found = shutil.which(app.exe_name)
+        if found:
+            return found
+
+        # 3. Check exe_name.exe on Windows
+        if IS_WINDOWS:
+            found = shutil.which(app.exe_name + ".exe")
+            if found:
+                return found
+
+        # 4. Check common paths
+        paths = app.common_paths if IS_WINDOWS \
+                else app.linux_paths
+        for candidate in paths:
+            # Expand environment variables
+            expanded = str(Path(candidate).expanduser())
+            if Path(expanded).exists():
+                return expanded
+
+        return ""
+
+    def launch(self, key: str,
+                args: list = None) -> bool:
+        """Launch an application by config key."""
+        app = _BY_KEY.get(key)
+        if not app:
+            log.warning(f"Unknown app key: {key}")
+            return False
+
+        path = self._find(app)
+        if not path:
+            log.warning(
+                f"{app.name} not found. "
+                f"Configure in Settings → Paths.")
+            return False
+
+        try:
+            # Validate executable is in allowlist
+            exe_name = Path(path).name.lower()
+            if exe_name not in [a.lower()
+                                 for a in ALLOWED_EXECUTABLES]:
+                log.warning(
+                    f"Launch blocked — not in allowlist: "
+                    f"{exe_name!r}")
+                return False
+            # Block path traversal
+            if ".." in path:
+                log.warning(
+                    f"Launch blocked — path traversal: {path!r}")
+                return False
+            cmd = [path] + (args or app.args)
+            subprocess.Popen(
+                cmd,
+                shell=False,   # nosec B603 - shell=False is intentionally safe
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+            log.info(f"Launched: {app.name} ({path})")
+            return True
+        except Exception as e:
+            log.error(f"Launch {app.name}: {e}")
+            return False
+
+    def is_available(self, key: str) -> bool:
+        app = _BY_KEY.get(key)
+        if not app:
+            return False
+        return bool(self._find(app))
+
+    def get_path(self, key: str) -> str:
+        app = _BY_KEY.get(key)
+        if not app:
+            return ""
+        return self._find(app)
+
+    def apps_for_tab(self, tab: str) -> list[AppDef]:
+        return _BY_TAB.get(tab, [])
+
+    @staticmethod
+    def all_apps() -> list[AppDef]:
+        return list(APPS)
+
+
+# Module singleton
+_launcher: Launcher = None
+
+def get_launcher(config=None) -> Launcher:
+    global _launcher
+    if _launcher is None:
+        if config is None:
+            from core.config import get_config
+            config = get_config()
+        _launcher = Launcher(config)
+    return _launcher

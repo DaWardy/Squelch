@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/rig_presets.py
+from __future__ import annotations
+"""Squelch -- core/rig_presets.py
 Radio configuration presets. Auto-populates rig tab settings
 and drives the help system radio setup pages.
 """
@@ -30,7 +30,7 @@ from typing import Optional
 @dataclass
 class RigPreset:
     name:              str
-    hamlib_model:      Optional[int]
+    hamlib_model:      int | None
     baud:              int
     ptt_method:        str          # CAT, VOX, RTS, DTR
     data_mode:         str          # PKTUSB, PKTLSB, USB
@@ -515,6 +515,159 @@ PRESETS: dict[str, RigPreset] = {
 
     # ── MANUAL ───────────────────────────────────────────────────────────
 
+    # ── USB Audio Interface Adapters ──────────────────────────────────
+    "SignaLink USB": RigPreset(
+        name          = "SignaLink USB",
+        hamlib_model  = None,
+        baud          = 0,
+        ptt_method    = "RTS",
+        data_mode     = "USB",
+        usb_hints     = ["SignaLink", "USB Audio CODEC"],
+        supports_cat  = False,
+        category      = "Audio Interface",
+        student_friendly = False,
+        notes = (
+            "USB audio interface for any rig with an accessory port. "
+            "Works with IC-7100, FT-991A, TS-590S, and most HF rigs. "
+            "PTT via internal VOX or RTS line. "
+            "Provides audio isolation and level control. "
+            "No CAT — use Hamlib directly to the rig for frequency control."
+        ),
+        audio_notes = (
+            "SignaLink USB appears as a USB Audio CODEC device. "
+            "Set WSJT-X audio input/output to SignaLink. "
+            "PTT: set WSJT-X PTT Method to CAT (via Hamlib) or RTS. "
+            "Internal jumpers set audio levels — see SignaLink manual."
+        ),
+        radio_menu_steps = [
+            "Connect SignaLink USB to rig accessory/data port",
+            "Connect SignaLink to PC via USB",
+            "Install jumpers per rig (download from tigertronics.com)",
+            "Set rig to USB-D or DATA mode",
+            "In WSJT-X: Settings → Audio → select SignaLink USB",
+            "In WSJT-X: Settings → Radio → PTT Method → RTS or CAT",
+            "Adjust TX level knob on SignaLink for ~30W output",
+        ],
+        troubleshooting = [
+            "No audio: verify SignaLink shows in Windows sound devices",
+            "No TX: check jumper configuration for your specific rig",
+            "ALC riding: turn TX knob down on SignaLink",
+            "RFI: ensure USB cable is ferrite-choked",
+        ],
+    ),
+
+    "RigBlaster Advantage": RigPreset(
+        name          = "RigBlaster Advantage",
+        hamlib_model  = None,
+        baud          = 0,
+        ptt_method    = "RTS",
+        data_mode     = "USB",
+        usb_hints     = ["RigBlaster", "USB Audio"],
+        supports_cat  = False,
+        category      = "Audio Interface",
+        student_friendly = False,
+        notes = (
+            "USB audio interface by West Mountain Radio. "
+            "Works with most HF rigs via mic/speaker/accessory ports. "
+            "Also supports CW keying. No CAT."
+        ),
+        audio_notes = (
+            "Appears as a USB audio device in Windows. "
+            "PTT via RTS line on USB serial port. "
+            "CW keying via DTR line."
+        ),
+        radio_menu_steps = [
+            "Connect RigBlaster to rig mic/speaker ports",
+            "Connect to PC via USB",
+            "Set rig to USB or DATA mode",
+            "Select RigBlaster audio in WSJT-X",
+            "PTT Method → RTS",
+        ],
+        troubleshooting = [
+            "No PTT: verify COM port assigned to RigBlaster",
+            "Audio level: adjust in Windows sound settings",
+        ],
+    ),
+
+    "Generic USB Audio (VOX PTT)": RigPreset(
+        name          = "Generic USB Audio (VOX PTT)",
+        hamlib_model  = None,
+        baud          = 0,
+        ptt_method    = "VOX",
+        data_mode     = "USB",
+        usb_hints     = ["USB Audio", "CODEC"],
+        supports_cat  = False,
+        category      = "Audio Interface",
+        student_friendly = True,
+        notes = (
+            "Any USB sound card or audio interface with VOX PTT. "
+            "Cheap CM108-based adapters work for light use. "
+            "Use dedicated interface (SignaLink, RigBlaster) for "
+            "serious digital operation — better audio isolation "
+            "and level control."
+        ),
+        audio_notes = (
+            "Enable VOX on rig. Set VOX delay to minimum (50ms). "
+            "VOX level: adjust so TX keys on audio, drops quickly. "
+            "Watch ALC — keep TX audio low enough that ALC stays low."
+        ),
+        radio_menu_steps = [
+            "Connect USB audio adapter to rig mic/speaker",
+            "Enable VOX on rig (check menu)",
+            "Set VOX delay to minimum",
+            "Select USB audio device in WSJT-X/Fldigi",
+            "PTT Method → VOX in WSJT-X",
+            "Start with low TX output and increase carefully",
+        ],
+        troubleshooting = [
+            "TX not releasing: VOX delay too long — decrease",
+            "TX not keying: increase audio level or VOX sensitivity",
+            "ALC distorting: reduce WSJT-X pwr slider",
+            "Ground loop hum: use audio isolation transformer",
+        ],
+    ),
+
+    "Explorer QRZ-1": RigPreset(
+        name          = "Explorer QRZ-1",
+        hamlib_model  = None,
+        baud          = 0,
+        ptt_method    = "VOX",
+        data_mode     = "FM",
+        usb_hints     = [],
+        supports_cat  = False,
+        category      = "Student",
+        student_friendly = True,
+        notes = (
+            "VHF/UHF handheld — no CAT control. "
+            "Audio interface only for digital modes. "
+            "Based on TYT TH-UV88 hardware. "
+            "Use standard Kenwood/Baofeng K1 cable for programming and audio."
+        ),
+        audio_notes = (
+            "Connect via K1 audio cable for digital modes. "
+            "Set VOX to level 2-3 for TX. "
+            "For programming: use CHIRP with TYT TH-UV88 driver, "
+            "or RT Systems RPS-QRZ1 software for reliable CTCSS. "
+            "Note: CHIRP may not program CTCSS correctly — "
+            "use RT Systems software to re-upload after CHIRP programming."
+        ),
+        radio_menu_steps = [
+            "Set radio to NFM mode",
+            "Set frequency manually on radio",
+            "CTCSS/Tone Squelch → OFF for digital operation",
+            "VOX → ON, level 2 or 3",
+            "Connect K1 cable to PC sound card",
+            "For programming: use CHIRP (TYT TH-UV88 driver)",
+            "  or RT Systems RPS-QRZ1 software",
+        ],
+        troubleshooting = [
+            "No TX: verify VOX on and level 2-3",
+            "CTCSS not working after CHIRP: re-upload with RT Systems software",
+            "Programming cable: standard Kenwood K1 type (not CH341 if possible)",
+            "Antenna connector: SMA-F (opposite of Baofeng SMA-M)",
+        ],
+    ),
+
     "Manual / Other": RigPreset(
         name          = "Manual / Other",
         hamlib_model  = None,
@@ -546,7 +699,7 @@ PRESETS: dict[str, RigPreset] = {
 
 # ── Lookup helpers ────────────────────────────────────────────────────────
 
-def get_preset(name: str) -> Optional[RigPreset]:
+def get_preset(name: str) -> RigPreset | None:
     return PRESETS.get(name)
 
 def preset_names() -> list[str]:
@@ -586,7 +739,7 @@ def preset_names() -> list[str]:
         result.extend(sorted(groups[group]))
     return result
 
-def detect_from_port(description: str) -> Optional[RigPreset]:
+def detect_from_port(description: str) -> RigPreset | None:
     """Try to identify rig from USB port description string."""
     desc = description.upper()
     for preset in PRESETS.values():

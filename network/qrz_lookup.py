@@ -1,5 +1,5 @@
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
+# APEX — Amateur Platform for EXperimentation
+# Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- network/qrz_lookup.py
+from __future__ import annotations
+"""APEX -- network/qrz_lookup.py
 Callsign lookup via QRZ XML API (primary) and HamQTH (fallback).
 Results cached to minimize API calls.
 Credentials never logged or displayed after entry.
@@ -28,7 +28,10 @@ import logging
 import time
 import threading
 import requests
-import xml.etree.ElementTree as ET
+try:
+    import defusedxml.ElementTree as ET  # type: ignore
+except ImportError:
+    import xml.etree.ElementTree as ET  # fallback
 from dataclasses import dataclass, field
 from typing import Optional
 from core.validator import api_string, api_callsign, api_float
@@ -80,8 +83,8 @@ class CallsignLookup:
     def __init__(self, config):
         self.cfg      = config
         self._cache:  dict[str, CallsignInfo] = {}
-        self._session_key: Optional[str] = None
-        self._hamqth_session: Optional[str] = None
+        self._session_key: str | None = None
+        self._hamqth_session: str | None = None
         self._lock    = threading.Lock()
 
     # ── Public API ────────────────────────────────────────────────────────
@@ -98,7 +101,7 @@ class CallsignLookup:
                     log.debug(f"Lookup callback: {e}")
         threading.Thread(target=_do, daemon=True).start()
 
-    def lookup(self, callsign: str) -> Optional[CallsignInfo]:
+    def lookup(self, callsign: str) -> CallsignInfo | None:
         """Synchronous lookup. Returns None if not found."""
         callsign = callsign.upper().strip()
         if not callsign:
@@ -136,7 +139,7 @@ class CallsignLookup:
 
     # ── QRZ XML ───────────────────────────────────────────────────────────
 
-    def _qrz_login(self) -> Optional[str]:
+    def _qrz_login(self) -> str | None:
         user = self.cfg.get("apis.qrz_user", "")
         pw   = self.cfg.get("apis.qrz_pass", "")
         if not user or not pw:
@@ -145,9 +148,11 @@ class CallsignLookup:
             resp = requests.get(
                 QRZ_XML_URL,
                 params={"username": user, "password": pw,
-                        "agent": "Squelch-1.0"},
+                        "agent": "APEX-1.0"},
                 timeout=10)
-            root = ET.fromstring(resp.text)
+            if len(resp.content) > 50_000:
+                return None  # response too large
+            root = ET.fromstring(resp.text)  # nosec B314
             ns   = {"q": "urn:xmethods-XCallsign"}
             sess = root.find(".//q:Session", ns)
             if sess is not None:
@@ -160,7 +165,7 @@ class CallsignLookup:
             log.debug(f"QRZ login: {e}")
             return None
 
-    def _lookup_qrz(self, callsign: str) -> Optional[CallsignInfo]:
+    def _lookup_qrz(self, callsign: str) -> CallsignInfo | None:
         if not self._session_key:
             self._session_key = self._qrz_login()
         if not self._session_key:
@@ -171,7 +176,9 @@ class CallsignLookup:
                 params={"s": self._session_key,
                         "callsign": callsign},
                 timeout=10)
-            root = ET.fromstring(resp.text)
+            if len(resp.content) > 50_000:
+                return None  # response too large
+            root = ET.fromstring(resp.text)  # nosec B314
             ns   = {"q": "urn:xmethods-XCallsign"}
 
             # Check for session expiry
@@ -216,7 +223,7 @@ class CallsignLookup:
 
     # ── HamQTH ────────────────────────────────────────────────────────────
 
-    def _hamqth_login(self) -> Optional[str]:
+    def _hamqth_login(self) -> str | None:
         user = self.cfg.get("apis.hamqth_user", "")
         pw   = self.cfg.get("apis.hamqth_pass", "")
         if not user or not pw:
@@ -226,7 +233,9 @@ class CallsignLookup:
                 HAMQTH_URL,
                 params={"u": user, "p": pw},
                 timeout=10)
-            root = ET.fromstring(resp.text)
+            if len(resp.content) > 50_000:
+                return None  # response too large
+            root = ET.fromstring(resp.text)  # nosec B314
             ns   = {"h": "https://www.hamqth.com"}
             sess = root.find(".//h:session_id", ns)
             if sess is not None and sess.text:
@@ -236,7 +245,7 @@ class CallsignLookup:
             log.debug(f"HamQTH login: {e}")
             return None
 
-    def _lookup_hamqth(self, callsign: str) -> Optional[CallsignInfo]:
+    def _lookup_hamqth(self, callsign: str) -> CallsignInfo | None:
         if not self._hamqth_session:
             self._hamqth_session = self._hamqth_login()
         if not self._hamqth_session:
@@ -248,7 +257,9 @@ class CallsignLookup:
                         "callsign": callsign,
                         "prg": "Squelch"},
                 timeout=10)
-            root = ET.fromstring(resp.text)
+            if len(resp.content) > 50_000:
+                return None  # response too large
+            root = ET.fromstring(resp.text)  # nosec B314
             ns   = {"h": "https://www.hamqth.com"}
             rec  = root.find(".//h:search", ns)
             if rec is None:
@@ -277,7 +288,7 @@ class CallsignLookup:
             return None
 
 
-_lookup: Optional[CallsignLookup] = None
+_lookup: CallsignLookup | None = None
 
 def get_lookup(config=None) -> CallsignLookup:
     global _lookup

@@ -1,49 +1,53 @@
-# Squelch — Amateur Radio Operations Platform
-# Python 3.11+ required
-# Run bootstrap.bat to install — do not run pip install manually
-
-# ── GUI ───────────────────────────────────────────────────────────────────
+# ── Critical — Squelch will not start without these ────────────────────────
 PyQt6>=6.6.0
 PyQt6-Qt6>=6.6.0
 PyQt6-sip>=13.6.0
+requests>=2.31.0
+python-dateutil>=2.8.2
+defusedxml>=0.7.1
+appdirs>=1.4.4
+
+# ── Strongly recommended — most features need these ────────────────────────
+pyserial>=3.5
+maidenhead>=1.0.0
+adif-io>=0.0.5
+keyring>=24.0.0
+psutil>=5.9.0
+
+# ── Optional — enables specific features ───────────────────────────────────
+# SDR waterfall and spectrum display
 pyqtgraph>=0.13.3
-
-# ── SDR ───────────────────────────────────────────────────────────────────
-# SoapySDR is installed separately — see README
 numpy>=1.26.0
-scipy>=1.11.0
 
-# ── Audio ─────────────────────────────────────────────────────────────────
+# Audio features
 sounddevice>=0.4.6
 soundfile>=0.12.1
 
-# ── Serial / Rig control ──────────────────────────────────────────────────
-pyserial>=3.5
+# Map features (requires Python <3.14 for now)
+# PyQtWebEngine>=6.4.0   <- skip on Python 3.14
+folium>=0.15.0
 
-# ── Networking ────────────────────────────────────────────────────────────
-requests>=2.31.0
+# Digital mode features
 aiohttp>=3.9.0
 websockets>=12.0
 
-# ── Mapping / Location ────────────────────────────────────────────────────
-folium>=0.15.0
+# Location and grid features
 geopy>=2.4.0
-maidenhead>=1.0.0
 mgrs>=1.4.4
 
-# ── Data ──────────────────────────────────────────────────────────────────
-adif-io>=0.0.5
+# Logging and export
 xmltodict>=0.13.0
-python-dateutil>=2.8.2
-
-# ── Ham radio utilities ───────────────────────────────────────────────────
-pyhamtools>=0.6.8
-
-# ── Utilities ─────────────────────────────────────────────────────────────
-appdirs>=1.4.4
-psutil>=5.9.0
 Markdown>=3.5.0
 Pillow>=10.0.0
+
+# Ham radio data
+pyhamtools>=0.6.8
+
+# Scipy (signal processing) - may fail on Python 3.14
+scipy>=1.11.0
+
+# Windows COM port access
 pywin32>=306; sys_platform == "win32"
 
-keyring>=24.0.0
+# ── Development / Testing ───────────────────────────────────────────────────
+pytest>=8.0.0

@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/safety.py
+from __future__ import annotations
+"""Squelch -- core/safety.py
 Safety systems: app state machine, PTT watchdog,
 TX timeout, exception handler, hardware protection alerts.
 """
@@ -77,14 +77,14 @@ class SafetyManager:
     def __init__(self):
         self._state        = AppState.IDLE
         self._rig          = None
-        self._tx_start:    Optional[float] = None
+        self._tx_start:    float | None = None
         self._tx_mode:     str = "SSB"
         self._ptt_active:  bool = False
         self._running:     bool = False
         self._lock         = threading.Lock()
         self._state_cbs:   list[Callable] = []
         self._alert_cbs:   list[Callable] = []
-        self._watchdog_th: Optional[threading.Thread] = None
+        self._watchdog_th: threading.Thread | None = None
 
         atexit.register(self._emergency_ptt_release)
         sys.excepthook = self._exception_hook
@@ -141,7 +141,7 @@ class SafetyManager:
 
     def duty_cycle_warning(self, mode: str,
                             power_w: float,
-                            rated_w: float) -> Optional[str]:
+                            rated_w: float) -> str | None:
         safe = self.safe_power_watts(mode, rated_w)
         if power_w > safe:
             pct = int(DUTY_CYCLE.get(mode, 0.5) * 100)
@@ -220,7 +220,7 @@ class SafetyManager:
 
     # ── Hardware alerts ───────────────────────────────────────────────────
 
-    def check_alc(self, alc: float) -> Optional[str]:
+    def check_alc(self, alc: float) -> str | None:
         if alc > 0.6:
             return ("ALC active — overdriving detected.\n"
                     "Reduce TX audio level or power.\n"
@@ -229,7 +229,7 @@ class SafetyManager:
             return "ALC detected — consider reducing audio level."
         return None
 
-    def check_swr(self, swr: float) -> Optional[str]:
+    def check_swr(self, swr: float) -> str | None:
         if swr >= 3.0:
             return (f"HIGH SWR {swr:.1f}:1 — finals at risk!\n"
                     "Check antenna. Reduce power or run ATU.")
@@ -237,7 +237,7 @@ class SafetyManager:
             return f"Elevated SWR {swr:.1f}:1 — consider running ATU."
         return None
 
-    def check_clipping(self, clip_pct: float) -> Optional[str]:
+    def check_clipping(self, clip_pct: float) -> str | None:
         if clip_pct > 0.05:
             return (f"Audio clipping {clip_pct*100:.0f}%.\n"
                     "Reduce audio level. Clipping causes splatter.")
@@ -262,7 +262,7 @@ class SafetyManager:
                     "Report at: github.com/dawardy/squelch/issues")
                 msg.exec()
         except Exception:
-            print(f"\nFATAL: {exc_type.__name__}: {exc_value}",
+            print(f"\nFATAL: {exc_type.__name__}: {exc_value}",  # intentional: stderr before logger
                   file=sys.stderr)
         sys.exit(1)
 
@@ -280,7 +280,7 @@ class SafetyManager:
             except Exception as e: log.debug(f"Alert cb: {e}")
 
 
-_safety: Optional[SafetyManager] = None
+_safety: SafetyManager | None = None
 
 def get_safety() -> SafetyManager:
     global _safety

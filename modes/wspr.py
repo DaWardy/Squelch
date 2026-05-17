@@ -1,5 +1,5 @@
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
+# APEX — Amateur Platform for EXperimentation
+# Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- modes/wspr.py
+from __future__ import annotations
+"""APEX -- modes/wspr.py
 WSPR beacon and decode engine.
 Controls WSJT-X WSPR mode and uploads spots to WSPRnet.
 """
@@ -32,7 +32,7 @@ from typing import Optional, Callable
 
 log = logging.getLogger(__name__)
 
-WSPRNET_URL = "http://wsprnet.org/post"
+WSPRNET_URL = "https://www.wsprnet.org/post"
 WSPR_BANDS = {
     "160m": 1_836_600,
     "80m":  3_568_600,
@@ -98,11 +98,11 @@ class WSPREngine:
         self._band_idx:     int       = 0
         self._in_tx:        bool      = False
 
-        self._on_spot:   Optional[Callable] = None
-        self._on_tx:     Optional[Callable] = None
-        self._on_status: Optional[Callable] = None
+        self._on_spot:   Callable | None = None
+        self._on_tx:     Callable | None = None
+        self._on_status: Callable | None = None
 
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -255,7 +255,7 @@ class WSPREngine:
                 "tcall":      spot.callsign,
                 "tgrid":      spot.grid,
                 "dbm":        str(spot.power_dbm),
-                "version":    "Squelch-1.0",
+                "version":    "APEX-1.0",
                 "mode":       "2",
             }
             resp = requests.get(

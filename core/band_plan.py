@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/band_plan.py
+from __future__ import annotations
+"""Squelch -- core/band_plan.py
 FCC Part 97 amateur radio band plan.
 Segments colored by mode type and license privilege.
 Used by spectrum widget for visual band overlays.
@@ -26,6 +26,7 @@ Used by spectrum widget for visual band overlays.
 
 from dataclasses import dataclass
 from typing import Optional
+from core.constants import BAND_EDGES_R2 as BAND_EDGES
 
 
 # ── Segment types ─────────────────────────────────────────────────────────
@@ -110,7 +111,7 @@ class Band:
     segments: list        # list of BandSegment
     notes:    str = ""
 
-    def segment_at(self, freq_hz: int) -> Optional[BandSegment]:
+    def segment_at(self, freq_hz: int) -> BandSegment | None:
         for s in self.segments:
             if s.freq_lo <= freq_hz <= s.freq_hi:
                 return s
@@ -452,18 +453,18 @@ _BAND_BY_NAME: dict[str, Band] = {b.name: b for b in BANDS}
 _BANDS_SORTED: list[Band] = sorted(BANDS, key=lambda b: b.freq_lo)
 
 
-def get_band(name: str) -> Optional[Band]:
+def get_band(name: str) -> Band | None:
     return _BAND_BY_NAME.get(name)
 
 
-def band_at_freq(freq_hz: int) -> Optional[Band]:
+def band_at_freq(freq_hz: int) -> Band | None:
     for b in _BANDS_SORTED:
         if b.freq_lo <= freq_hz <= b.freq_hi:
             return b
     return None
 
 
-def segment_at_freq(freq_hz: int) -> Optional[BandSegment]:
+def segment_at_freq(freq_hz: int) -> BandSegment | None:
     band = band_at_freq(freq_hz)
     if band:
         return band.segment_at(freq_hz)

@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/main_window.py
+from __future__ import annotations
+"""Squelch -- ui/main_window.py
 Main application window.
 9 tabs, inline callsign/grid editing, theme system,
 tab show/hide, UTC+local clock, safety alerts,
@@ -27,14 +27,15 @@ window size/position persistence, plugin tabs.
 
 import logging
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from PyQt6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QMessageBox, QPushButton,
     QFrame, QDialog, QFormLayout, QLineEdit,
     QDialogButtonBox, QMenu, QSizePolicy,
-    QCheckBox, QScrollArea
+    QCheckBox, QScrollArea, QComboBox, QTextEdit,
+    QInputDialog, QSpinBox, QGroupBox, QSplitter,
+    QApplication, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer, QSettings, pyqtSlot
 from PyQt6.QtGui import QAction, QActionGroup, QFont, QCursor
@@ -45,17 +46,14 @@ from core.config import Config
 from core.location import LocationManager
 from core.themes import THEMES, get_stylesheet
 from core.plugins import get_plugin_manager
-from ui.tabs.rig_tab import RigTab
-from ui.tabs.modes_tab import ModesTab
-from ui.tabs.log_tab import LogTab
-from ui.tabs.band_conditions_tab import BandConditionsTab
+from core.launcher import get_launcher
 from ui.dialogs.paths_dialog import PathsDialog
-from ui.tabs.stub_tab import StubTab
+from core.constants import (
+    APP_NAME, APP_FULL, APP_VERSION, APP_URL)
+VERSION = APP_VERSION
 
 log = logging.getLogger(__name__)
-VERSION = "1.4.0"
-APP_NAME = "Squelch"
-APP_FULL = "Amateur Radio Operations Platform"
+
 
 # Tab definitions — key, label, default visible
 TABS = [
@@ -66,10 +64,10 @@ TABS = [
     ("sdr",       "〰️  SDR",            True),
     ("digital",   "🔊  Digital",        True),
     ("localrf",   "📋  Local RF",       True),
+    ("map",       "🗺  Map",            True),
     ("winlink",   "✉️  Winlink",        True),
     ("help",      "❓  Help",           True),
 ]
-
 
 class ClickableLabel(QLabel):
     """
@@ -137,31 +135,57 @@ class ClickableLabel(QLabel):
         self._edit.focusOutEvent = _focus_out
 
     def _commit(self):
-        if not self._edit:
-            self._editing = False
+        # Guard against double-commit (returnPressed + focusOut both fire)
+        if self._edit is None or self._editing is False:
             return
-        raw = self._edit.text().strip()
-        self._edit.hide()
-        self._edit.deleteLater()
-        self._edit    = None
+        # Mark done immediately to block re-entry
         self._editing = False
+        edit = self._edit
+        self._edit = None
 
-        # Sanitize and validate
-        val = raw.upper()
+        raw = edit.text().strip()
+        try:
+            edit.hide()
+            edit.deleteLater()
+        except Exception:
+            pass
+
+        # Allow letters, digits, slash (portable calls), spaces for
+        # location searches (ZIP codes, city names)
+        val = raw.strip()
         if not val or val.lower() in self._PLACEHOLDERS:
             return
-        # Remove non-alphanumeric except / for portable calls
+
+        # Callsign: uppercase, alphanumeric + /
+        # Location: allow spaces, digits, letters (ZIP/city)
         import re
-        val = re.sub(r'[^A-Z0-9/]', '', val)
-        if not val:
-            return
+        # Check if it looks like a callsign or a location query
+        val_upper = val.upper()
+        is_callsign = bool(re.match(
+            r'[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z]', val_upper))
 
-        self.setText(val)
-        try:
-            self._on_commit(val)
-        except Exception as e:
-            log.warning(f"ClickableLabel commit: {e}")
-
+        if self._placeholder and 'call' in self._placeholder.lower():
+            # Callsign field - strip to safe chars only
+            val_clean = re.sub(r'[^A-Z0-9/]', '', val_upper)
+            if not val_clean:
+                return
+            self.setText(val_clean)
+            try:
+                self._on_commit(val_clean)
+            except Exception as e:
+                log.warning(f"Callsign commit: {e}")
+        else:
+            # Location field - allow spaces, digits, letters for
+            # ZIP codes, city names, MGRS, grid squares
+            val_clean = re.sub(r'[^A-Za-z0-9 ,./\-]', '', val).strip()
+            if not val_clean:
+                return
+            # Don't setText here — let _on_grid_edit set the
+            # final Maidenhead grid after resolution completes
+            try:
+                self._on_commit(val_clean)
+            except Exception as e:
+                log.warning(f"Location commit: {e}")
 
 class MainWindow(QMainWindow):
     def __init__(self, config: Config,
@@ -173,7 +197,7 @@ class MainWindow(QMainWindow):
         self.location = location
 
         self.setWindowTitle(
-            f"{APP_NAME}  v{VERSION}  —  {APP_FULL}")
+            f"{APP_NAME}  v{VERSION}-alpha  —  {APP_FULL}")
         self.setMinimumSize(900, 600)
 
         # Restore window geometry
@@ -197,6 +221,14 @@ class MainWindow(QMainWindow):
         self._start_clock()
         self._check_first_run()
         self._load_plugins()
+        self._apply_saved_font_size()
+        QTimer.singleShot(100, self._wire_sdr_to_digital)
+        self._auto_detect_software()
+        # Populate operator profiles
+        self._populate_profiles()
+
+        # Show location on startup if already configured
+        QTimer.singleShot(800, self._restore_location)
 
     # ── UI ────────────────────────────────────────────────────────────────
 
@@ -210,6 +242,8 @@ class MainWindow(QMainWindow):
         vbox.addWidget(self._build_topbar())
 
         self.tabs = QTabWidget()
+        locked = self.cfg.get("ui.layout_locked", False)
+        self.tabs.tabBar().setMovable(not locked)
         self.tabs.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
         self.tabs.customContextMenuRequested.connect(
@@ -230,15 +264,70 @@ class MainWindow(QMainWindow):
                 self.tabs.indexOf(w), visible)
 
     def _make_tab(self, key: str, label: str) -> QWidget:
+        """
+        Lazy-load tab widgets — only import when first created.
+        All imports are local to avoid top-level import failures.
+        Each tab is wrapped in try/except so one bad tab
+        never crashes the whole application.
+        """
         ldb = self._get_log_db()
-        if key == "rig":
-            return RigTab(self.rig, self.cfg)
-        elif key == "modes":
-            return ModesTab(self.rig, self.cfg, ldb)
-        elif key == "log":
-            return LogTab(self.cfg)
-        else:
-            return StubTab(label, key)
+        try:
+            if key == "rig":
+                from ui.tabs.rig_tab import RigTab
+                return RigTab(self.rig, self.cfg)
+            elif key == "modes":
+                from ui.tabs.modes_tab import ModesTab
+                return ModesTab(self.rig, self.cfg, ldb)
+            elif key == "log":
+                from ui.tabs.log_tab import LogTab
+                return LogTab(self.cfg)
+            elif key == "bandcond":
+                from ui.tabs.band_conditions_tab import (
+                    BandConditionsTab)
+                return BandConditionsTab(self.cfg)
+            elif key == "sdr":
+                from ui.tabs.sdr_tab import SDRTab
+                return SDRTab(self.cfg, self.rig)
+            elif key == "digital":
+                from ui.tabs.digital_tab import DigitalTab
+                return DigitalTab(self.cfg, self.rig)
+            elif key == "localrf":
+                from ui.tabs.localrf_tab import LocalRFTab
+                return LocalRFTab(self.cfg, self.rig)
+            elif key == "map":
+                from ui.tabs.map_tab import MapTab
+                tab = MapTab(self.cfg, self._get_log_db())
+                # Wire location changes to map
+                self.location.on_location_change(
+                    tab.on_location_change)
+                return tab
+            else:
+                from ui.tabs.stub_tab import StubTab
+                return StubTab(label, key, self.cfg)
+        except Exception as e:
+            log.error(
+                f"Tab '{key}' failed to load: "
+                f"{type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Always return something visible
+            err_w = QWidget()
+            err_l = QVBoxLayout(err_w)
+            err_l.setContentsMargins(30, 30, 30, 30)
+            t = QLabel(f"Tab failed to load: {key}")
+            t.setStyleSheet(
+                "color:#cc4444;font-size:13px;"
+                "font-weight:bold;")
+            err_l.addWidget(t)
+            d = QLabel(
+                f"{type(e).__name__}: {e}\n\n"
+                "Check logs/squelch.log for details.")
+            d.setWordWrap(True)
+            d.setStyleSheet(
+                "color:#888;font-size:11px;")
+            err_l.addWidget(d)
+            err_l.addStretch()
+            return err_w
 
     def _build_topbar(self) -> QFrame:
         bar = QFrame()
@@ -267,14 +356,37 @@ class MainWindow(QMainWindow):
             "color:#aaa;font-size:12px;"
             "font-family:'Courier New';")
         lay.addWidget(self._cs_lbl)
+
+        # Operator profile switcher
+        self._profile_combo = QComboBox()
+        self._profile_combo.setFixedWidth(120)
+        self._profile_combo.setFixedHeight(24)
+        self._profile_combo.setStyleSheet(
+            "QComboBox{"
+            "background:#141414;color:#888;"
+            "border:1px solid #222;border-radius:3px;"
+            "font-size:10px;padding:2px 6px;}"
+            "QComboBox::drop-down{border:none;width:16px;}"
+            "QComboBox QAbstractItemView{"
+            "background:#141414;color:#aaa;"
+            "selection-background-color:#1a3a1a;}")
+        self._profile_combo.setToolTip(
+            "Switch operator profile\n"
+            "Each profile has its own callsign,\n"
+            "credentials, and settings.")
+        self._profile_combo.currentIndexChanged.connect(
+            self._on_profile_change)
+        lay.addWidget(self._profile_combo)
         lay.addWidget(_vsep())
 
         # Inline-editable grid
         self._grid_lbl = ClickableLabel(
             self.cfg.grid or "No grid set",
-            "grid / ZIP / city / MGRS",
+            "Maidenhead grid (DM79rr), ZIP (22030), "
+            "city (Denver CO), or MGRS. "
+            "All formats resolve to Maidenhead grid square.",
             self._on_grid_edit,
-            max_length=20)
+            max_length=30)
         self._grid_lbl.setStyleSheet(
             "color:#777;font-size:12px;"
             "font-family:'Courier New';")
@@ -291,7 +403,7 @@ class MainWindow(QMainWindow):
         self._utc_lbl = QLabel("00:00:00 UTC")
         self._utc_lbl.setStyleSheet(
             "color:#3fbe6f;font-family:'Courier New';"
-            "font-size:13px;cursor:pointer;")
+            "font-size:13px;")
         self._utc_lbl.setToolTip(
             "Click to toggle UTC / Local time")
         self._utc_lbl.mousePressEvent = self._toggle_clock
@@ -468,18 +580,21 @@ class MainWindow(QMainWindow):
         if self._show_utc:
             self._utc_lbl.setText(
                 now_utc.strftime("%H:%M:%S UTC"))
+            self._utc_lbl.setToolTip(
+                "Click to show local time")
         else:
-            try:
-                local_tz = ZoneInfo("localtime")
-                now_local = now_utc.astimezone(local_tz)
-                self._utc_lbl.setText(
-                    now_local.strftime("%H:%M:%S LCL"))
-            except Exception:
-                self._utc_lbl.setText(
-                    now_utc.strftime("%H:%M:%S UTC"))
+            # Use local system time - works on all platforms
+            from datetime import datetime as dt
+            now_local = dt.now()
+            self._utc_lbl.setText(
+                now_local.strftime("%H:%M:%S LCL"))
+            self._utc_lbl.setToolTip(
+                "Click to show UTC time")
 
-    def _toggle_clock(self, _event):
+    def _toggle_clock(self, _event=None):
         self._show_utc = not self._show_utc
+        # Force immediate update
+        self._tick()
 
     # ── Rig state ─────────────────────────────────────────────────────────
 
@@ -519,8 +634,29 @@ class MainWindow(QMainWindow):
         disp = loc.display if loc.is_valid else "—"
         self._loc_lbl.setText(disp)
         self._sb_loc.setText(f"Location: {disp}")
+        # Update dump1090 station marker whenever location changes
+        if loc.is_valid:
+            import threading
+            threading.Thread(
+                target=self.location.write_dump1090_receiver_json,
+                daemon=True).start()
+        # Always show Maidenhead grid in the grid label
         if loc.grid:
             self._grid_lbl.setText(loc.grid)
+            self._grid_lbl.setStyleSheet(
+                "color:#3fbe6f;font-size:12px;"
+                "font-family:'Courier New';")
+        elif loc.is_valid:
+            # Have lat/lon, compute grid
+            from core.location import _latlon_to_grid
+            try:
+                grid = _latlon_to_grid(loc.lat, loc.lon)
+                self._grid_lbl.setText(grid)
+                self._grid_lbl.setStyleSheet(
+                    "color:#3fbe6f;font-size:12px;"
+                    "font-family:'Courier New';")
+            except Exception:
+                pass
 
     # ── Callsign / Grid edits ─────────────────────────────────────────────
 
@@ -530,23 +666,97 @@ class MainWindow(QMainWindow):
         log.info(f"Callsign: {val}")
 
     def _on_grid_edit(self, val: str):
-        """Handle grid/ZIP/city/MGRS entry from top bar."""
-        from core.location import _valid_grid
-        if _valid_grid(val):
-            self.cfg.grid = val
-            self.location.set_from_grid(val)
+        """
+        Handle grid/ZIP/city/MGRS entry from top bar.
+        All inputs resolve to Maidenhead grid square.
+        Label always settles on a grid — never stays as
+        a ZIP code or city name.
+        """
+        from core.location import _valid_grid, _latlon_to_grid
+        import threading
+
+        val = val.strip()
+        if not val:
+            return
+
+        def _set_grid(grid: str, display: str = ""):
+            """Final step — always show Maidenhead grid."""
+            if not grid:
+                return
+            grid = grid.upper()
+            self._grid_lbl.setText(grid)
+            self._grid_lbl.setStyleSheet(
+                "color:#3fbe6f;font-size:12px;"
+                "font-family:'Courier New';")
+            if display:
+                self._loc_lbl.setText(display)
+                self._sb_loc.setText(
+                    f"Location: {display}")
+            self.cfg.grid = grid
             self.cfg.save()
+
+        if _valid_grid(val):
+            # Already a valid grid square
+            self.location.set_from_grid(val.upper())
+            QTimer.singleShot(0,
+                lambda g=val.upper(): _set_grid(g))
         else:
-            # Treat as search query (ZIP/city/MGRS)
-            import threading
-            def _search():
-                loc = self.location.search(val)
-                if loc:
-                    QTimer.singleShot(0, lambda l=loc: (
-                        self.location.apply(l),
-                        self._grid_lbl.setText(l.grid)))
-            threading.Thread(target=_search,
-                             daemon=True).start()
+            # ZIP, city, address — search via Nominatim
+            self._grid_lbl.setText("Searching…")
+            self._grid_lbl.setStyleSheet(
+                "color:#888;font-size:12px;"
+                "font-family:'Courier New';")
+
+            def _search(q=val):
+                try:
+                    loc = self.location.search(q)
+                    if loc and loc.is_valid:
+                        # Ensure we have a grid
+                        grid = loc.grid or ""
+                        if not grid and loc.lat:
+                            try:
+                                grid = _latlon_to_grid(
+                                    loc.lat, loc.lon)
+                            except Exception:
+                                pass
+                        if grid:
+                            self.location.apply(loc)
+                            city  = loc.city or ""
+                            state = loc.state or ""
+                            disp  = ", ".join(
+                                filter(None,
+                                       [city, state]))
+                            QTimer.singleShot(0,
+                                lambda g=grid, d=disp:
+                                _set_grid(g, d))
+                        else:
+                            QTimer.singleShot(0,
+                                lambda: (
+                                    self._grid_lbl.setText(
+                                        "Not found"),
+                                    QTimer.singleShot(
+                                        2500, lambda:
+                                        self._grid_lbl.setText(
+                                            self.cfg.grid or
+                                            "No grid set"))))
+                    else:
+                        QTimer.singleShot(0,
+                            lambda: (
+                                self._grid_lbl.setText(
+                                    "Not found — try a grid or city"),
+                                QTimer.singleShot(
+                                    2500, lambda:
+                                    self._grid_lbl.setText(
+                                        self.cfg.grid or
+                                        "No grid set"))))
+                except Exception as e:
+                    log.warning(f"Location search: {e}")
+                    QTimer.singleShot(0,
+                        lambda: self._grid_lbl.setText(
+                            self.cfg.grid or "No grid set"))
+
+            threading.Thread(
+                target=_search, daemon=True).start()
 
     # ── Safety alerts ─────────────────────────────────────────────────────
 
@@ -630,6 +840,67 @@ class MainWindow(QMainWindow):
                 if hasattr(rig_tab, '_spec_toggle'):
                     rig_tab._spec_toggle.setChecked(visible)
 
+    def _set_font_size(self, size: int):
+        """
+        Change application font size globally.
+        Affects tooltips, labels, help text, everything.
+        Persisted to config.
+        """
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtGui import QFont
+        app = QApplication.instance()
+        if app:
+            f = app.font()
+            f.setPointSize(size)
+            app.setFont(f)
+            # Also update tooltip font
+            app.setStyleSheet(
+                app.styleSheet() +
+                f"QToolTip{{font-size:{size}pt;"
+                f"padding:6px;border:1px solid #333;"
+                f"background:#1a1a1a;color:#ccc;}}")
+        self.cfg.set("ui.font_size", size)
+        self.cfg.save()
+        log.info(f"Font size set to {size}pt")
+
+    def _toggle_ui_lock(self, locked: bool):
+        """Lock/unlock UI layout — prevent accidental tab moves."""
+        self.cfg.set("ui.layout_locked", locked)
+        self.cfg.save()
+        # Enable/disable tab drag reordering
+        self.tabs.tabBar().setMovable(not locked)
+        # Lock/unlock splitters
+        from PyQt6.QtWidgets import QSplitter
+        for splitter in self.findChildren(QSplitter):
+            for i in range(splitter.count()):
+                splitter.handle(i).setEnabled(not locked)
+        icon = "🔒" if locked else "🔓"
+        self._lock_action.setText(
+            f"{icon} {'Lock' if not locked else 'Unlock'} UI Layout")
+
+    def _rearrange_hint(self):
+        """Show tab rearrange instructions."""
+        locked = self.cfg.get("ui.layout_locked", False)
+        if locked:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, self.tr("Rearrange Tabs"),
+                self.tr(
+                    "UI is currently locked.\n\n"
+                    "Unlock via View → Unlock UI Layout "
+                    "to drag tabs into a different order."))
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, self.tr("Rearrange Tabs"),
+                self.tr(
+                    "Drag tabs to reorder them.\n\n"
+                    "Right-click a tab to hide it.\n"
+                    "View → Show/Hide Tabs to restore "
+                    "hidden tabs.\n\n"
+                    "Lock your layout via View → "
+                    "Lock UI Layout when done."))
+
     def _toggle_lab(self):
         current = self.cfg.get("classroom.lab_mode", False)
         self.cfg.set("classroom.lab_mode", not current)
@@ -711,11 +982,44 @@ class MainWindow(QMainWindow):
 
     # ── First run ─────────────────────────────────────────────────────────
 
+    def _auto_fill_location(self, edit):
+        """
+        Try to auto-fill location field using IP geolocation.
+        Runs in background — pre-fills edit if successful.
+        """
+        import threading
+        def _detect():
+            try:
+                loc = self.location._ip_geolocation()
+                if loc and loc.is_valid:
+                    city = loc.display.split(",")[0].strip()
+                    QTimer.singleShot(0, lambda l=loc, c=city: (
+                        edit.setPlaceholderText(
+                            f"Detected: {l.grid} "
+                            f"({c}) — confirm or change"),
+                        edit.setText(l.grid),
+                        edit.setToolTip(
+                            f"Auto-detected via IP geolocation\n"
+                            f"{l.display}\n"
+                            f"Grid: {l.grid}\n"
+                            f"Edit if incorrect.")))
+            except Exception:
+                pass
+        threading.Thread(
+            target=_detect, daemon=True).start()
+
     def _check_first_run(self):
         if not self.cfg.is_configured:
             QTimer.singleShot(600, self._first_run_dialog)
 
     def _first_run_dialog(self):
+        try:
+            self._first_run_dialog_impl()
+        except Exception as e:
+            log.error(f"First run dialog failed: {e}")
+            # Don't crash — just skip it
+
+    def _first_run_dialog_impl(self):
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Welcome to {APP_NAME}")
         dlg.setMinimumWidth(440)
@@ -723,8 +1027,10 @@ class MainWindow(QMainWindow):
 
         intro = QLabel(
             f"<b style='font-size:14px'>"
-            f"Welcome to {APP_NAME}!</b><br><br>"
+            f"Welcome to {APP_NAME} v{VERSION}!</b><br><br>"
             "Enter your callsign and location to get started.<br>"
+            "Location resolves to a Maidenhead grid square — "
+            "the universal reference for amateur radio.<br>"
             "You can also click either value in the top bar "
             "to edit at any time.")
         intro.setWordWrap(True)
@@ -737,8 +1043,11 @@ class MainWindow(QMainWindow):
 
         loc_edit = QLineEdit()
         loc_edit.setPlaceholderText(
-            "Grid (FM18lv), ZIP (22030), city, or MGRS")
+            "Maidenhead grid (DM79rr), ZIP, city, or MGRS")
         loc_edit.setMaxLength(30)
+
+        # Try to auto-detect location
+        self._auto_fill_location(loc_edit)
 
         form.addRow("Callsign:", cs_edit)
         form.addRow("Location:", loc_edit)
@@ -758,6 +1067,8 @@ class MainWindow(QMainWindow):
         btns.accepted.connect(dlg.accept)
         lay.addWidget(btns)
 
+        dlg.raise_()
+        dlg.activateWindow()
         if dlg.exec():
             cs = re.sub(r'[^A-Z0-9/]', '',
                         cs_edit.text().strip().upper())
@@ -769,19 +1080,34 @@ class MainWindow(QMainWindow):
 
             if loc:
                 from core.location import _valid_grid
-                if _valid_grid(loc.upper()):
-                    self.cfg.grid = loc.upper()
-                    self.location.set_from_grid(loc.upper())
-                    self._grid_lbl.setText(loc.upper())
+                loc_clean = loc.strip()
+                if _valid_grid(loc_clean.upper()):
+                    self.cfg.grid = loc_clean.upper()
+                    self.location.set_from_grid(
+                        loc_clean.upper())
+                    self._grid_lbl.setText(loc_clean.upper())
                 else:
                     import threading
-                    def _search():
-                        result = self.location.search(loc)
-                        if result:
+                    self._grid_lbl.setText(
+                        self.tr("Searching…"))
+                    def _search(q=loc_clean):
+                        try:
+                            result = self.location.search(q)
+                            if result and result.is_valid:
+                                QTimer.singleShot(0,
+                                    lambda r=result: (
+                                        self.location.apply(r),
+                                        self._grid_lbl.setText(
+                                            r.grid or q)))
+                            else:
+                                QTimer.singleShot(0,
+                                    lambda: self._grid_lbl.setText(
+                                        self.tr("Not found — try grid square")))
+                        except Exception as e:
+                            log.warning(f"First run location: {e}")
                             QTimer.singleShot(0,
-                                lambda r=result: (
-                                    self.location.apply(r),
-                                    self._grid_lbl.setText(r.grid)))
+                                lambda: self._grid_lbl.setText(
+                                    self.tr("Search failed")))
                     threading.Thread(
                         target=_search, daemon=True).start()
 
@@ -810,6 +1136,18 @@ class MainWindow(QMainWindow):
             self.tabs.setCurrentWidget(help_tab)
 
     # ── Plugins ───────────────────────────────────────────────────────────
+
+    def _wire_sdr_to_digital(self):
+        """Wire SDR tab IQ routing to Digital tab."""
+        try:
+            sdr_tab     = self._tab_map.get("sdr")
+            digital_tab = self._tab_map.get("digital")
+            if sdr_tab and digital_tab and                     hasattr(sdr_tab, 'set_decoder_callback') and                     hasattr(digital_tab, 'receive_iq_samples'):
+                sdr_tab.set_decoder_callback(
+                    digital_tab.receive_iq_samples)
+                log.info("SDR → Digital routing wired")
+        except Exception as e:
+            log.debug(f"SDR→Digital wire: {e}")
 
     def _load_plugins(self):
         try:
@@ -845,6 +1183,123 @@ class MainWindow(QMainWindow):
     def _open_paths(self):
         dlg = PathsDialog(self.cfg, self)
         dlg.exec()
+
+    def _populate_profiles(self):
+        """Load operator profiles into the combo box."""
+        try:
+            from core.profiles import ProfileManager
+            pm = ProfileManager()
+            profiles = pm.list_profiles()
+            current  = pm.current_name()
+
+            self._profile_combo.blockSignals(True)
+            self._profile_combo.clear()
+            for p in profiles:
+                self._profile_combo.addItem(p)
+            # Always have "Add profile..."
+            self._profile_combo.addItem("+ New profile…")
+            # Select current
+            idx = self._profile_combo.findText(current)
+            if idx >= 0:
+                self._profile_combo.setCurrentIndex(idx)
+            self._profile_combo.blockSignals(False)
+        except Exception as e:
+            log.debug(f"Profile populate: {e}")
+            self._profile_combo.clear()
+            self._profile_combo.addItem(
+                self.cfg.callsign or "Default")
+
+    def _on_profile_change(self, idx: int):
+        """Switch to selected operator profile."""
+        name = self._profile_combo.currentText()
+        if name == "+ New profile…":
+            self._new_profile_dialog()
+            return
+        try:
+            from core.profiles import ProfileManager
+            pm = ProfileManager()
+            if pm.switch_to(name):
+                # Refresh UI from new profile
+                cs = self.cfg.callsign
+                if cs:
+                    self._cs_lbl.setText(cs)
+                grid = self.cfg.grid
+                if grid:
+                    self._grid_lbl.setText(grid)
+                log.info(f"Switched to profile: {name}")
+        except Exception as e:
+            log.warning(f"Profile switch: {e}")
+
+    def _new_profile_dialog(self):
+        """Create a new operator profile."""
+        from PyQt6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, "New Profile",
+            "Profile name (e.g. your callsign):")
+        if ok and name.strip():
+            try:
+                from core.profiles import ProfileManager
+                pm = ProfileManager()
+                pm.create(name.strip())
+                self._populate_profiles()
+                # Switch to new profile
+                idx = self._profile_combo.findText(name.strip())
+                if idx >= 0:
+                    self._profile_combo.setCurrentIndex(idx)
+            except Exception as e:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self, "Error",
+                    f"Could not create profile: {e}")
+        else:
+            # Revert combo to current profile
+            self._populate_profiles()
+
+    def _restore_location(self):
+        """
+        Show previously saved location on startup.
+        Fires after UI is fully ready.
+        """
+        grid = self.cfg.get("location.grid_square", "") or                self.cfg.grid or ""
+        if grid:
+            self._grid_lbl.setText(grid)
+            self._grid_lbl.setStyleSheet(
+                "color:#3fbe6f;font-size:12px;"
+                "font-family:'Courier New';")
+            # Restore full location display
+            city  = self.cfg.get("location.city", "")
+            state = self.cfg.get("location.state", "")
+            if city and state:
+                disp = f"{grid}  |  {city}, {state}"
+            elif city:
+                disp = f"{grid}  |  {city}"
+            else:
+                disp = grid
+            self._loc_lbl.setText(disp)
+            self._sb_loc.setText(f"Location: {disp}")
+        elif self.cfg.get("callsign"):
+            # Have callsign but no location — prompt
+            self._loc_lbl.setText("No location set — click grid to set")
+            self._loc_lbl.setStyleSheet("color:#555;font-size:10px;")
+
+    def _apply_saved_font_size(self):
+        """Apply saved font size preference on startup."""
+        size = self.cfg.get("ui.font_size", 0)
+        if size and isinstance(size, int) and 8 <= size <= 24:
+            self._set_font_size(size)
+
+    def _auto_detect_software(self):
+        """Silent startup scan for external programs."""
+        import threading
+        def _scan():
+            launcher = get_launcher(self.cfg)
+            found = launcher.auto_detect_all()
+            if found:
+                log.info(
+                    f"Auto-detected {len(found)} "
+                    f"external programs")
+        threading.Thread(
+            target=_scan, daemon=True).start()
 
     def closeEvent(self, event):
         # Confirm if transmitting
@@ -887,9 +1342,7 @@ class MainWindow(QMainWindow):
         except Exception:
             return None
 
-
 import re  # used in _first_run_dialog and ClickableLabel
-
 
 def _vsep() -> QFrame:
     f = QFrame()

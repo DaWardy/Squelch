@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/widgets/freq_display.py
+from __future__ import annotations
+"""Squelch -- ui/widgets/freq_display.py
 Click-to-edit VFO frequency display. Green on black, band color coded.
 """
 

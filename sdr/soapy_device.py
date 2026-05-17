@@ -1,0 +1,346 @@
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+
+from __future__ import annotations
+"""Squelch -- sdr/soapy_device.py
+SoapySDR device abstraction.
+Detects hardware capabilities (RX-only vs TX capable).
+Spectral span auto-adjusts per hardware limits.
+Supports: RTL-SDR, HackRF, B200/B210, RSP series,
+          Airspy, LimeSDR, BladeRF, PlutoSDR.
+"""
+
+import logging
+import threading
+import numpy as np
+from dataclasses import dataclass, field
+from typing import Optional, Callable
+
+log = logging.getLogger(__name__)
+
+try:
+    import SoapySDR
+    from SoapySDR import SOAPY_SDR_RX, SOAPY_SDR_TX, SOAPY_SDR_CF32
+    HAS_SOAPY = True
+except ImportError:
+    HAS_SOAPY = False
+    log.info("SoapySDR not installed — SDR tab will show setup guide")
+
+
+# Hardware capability profiles
+# Drives UI — TX controls only shown for TX-capable devices
+DEVICE_PROFILES = {
+    "rtlsdr":   {"name": "RTL-SDR",       "tx": False,
+                 "max_sr": 3_200_000,  "max_span": 3_000_000},
+    "hackrf":   {"name": "HackRF One",    "tx": True,
+                 "max_sr": 20_000_000, "max_span": 18_000_000},
+    "uhd":      {"name": "USRP",          "tx": True,
+                 "max_sr": 61_440_000, "max_span": 56_000_000},
+    "sdrplay":  {"name": "SDRplay",       "tx": False,
+                 "max_sr": 10_000_000, "max_span": 8_000_000},
+    "airspy":   {"name": "Airspy",        "tx": False,
+                 "max_sr": 10_000_000, "max_span": 9_000_000},
+    "lime":     {"name": "LimeSDR",       "tx": True,
+                 "max_sr": 61_440_000, "max_span": 56_000_000},
+    "bladerf":  {"name": "BladeRF",       "tx": True,
+                 "max_sr": 40_000_000, "max_span": 36_000_000},
+    "plutosdr": {"name": "PlutoSDR",      "tx": True,
+                 "max_sr": 61_440_000, "max_span": 20_000_000},
+    "remote":   {"name": "Remote SDR",    "tx": False,
+                 "max_sr": 10_000_000, "max_span": 8_000_000},
+}
+
+
+@dataclass
+class SDRDevice:
+    """Detected SDR device with capabilities."""
+    driver:     str
+    label:      str
+    serial:     str      = ""
+    can_tx:     bool     = False
+    max_sr:     int      = 3_200_000
+    max_span:   int      = 3_000_000
+    freq_min:   int      = 1_000_000
+    freq_max:   int      = 1_750_000_000
+    gain_range: tuple    = (0, 50)
+    extra:      dict     = field(default_factory=dict)
+
+    @property
+    def display_name(self) -> str:
+        profile = DEVICE_PROFILES.get(
+            self.driver.lower(), {})
+        name = profile.get("name", self.driver.upper())
+        if self.serial:
+            return f"{name} ({self.serial[:8]})"
+        return name
+
+    @property
+    def recommended_span(self) -> int:
+        """Default span based on hardware."""
+        spans = {
+            "rtlsdr":  2_400_000,
+            "sdrplay": 6_000_000,
+            "airspy":  6_000_000,
+            "hackrf":  10_000_000,
+            "uhd":     20_000_000,
+            "lime":    20_000_000,
+        }
+        return spans.get(self.driver.lower(), 2_000_000)
+
+
+class SoapyManager:
+    """
+    Manages SoapySDR device lifecycle.
+    Enumerates hardware, opens streams, delivers samples.
+    TX controls shown only when hardware supports it.
+    """
+
+    def __init__(self):
+        self._device     = None
+        self._rx_stream  = None
+        self._tx_stream  = None
+        self._running    = False
+        self._lock       = threading.Lock()
+        self._rx_thread: threading.Thread | None = None
+
+        self._center_hz  = 100_000_000
+        self._sample_rate = 2_400_000
+        self._gain       = 30.0
+        self._ppm        = 0
+
+        self._on_samples: Callable | None = None
+        self._on_error:   Callable | None = None
+
+        self.current_device: SDRDevice | None = None
+
+    # ── Device enumeration ────────────────────────────────────────────────
+
+    @staticmethod
+    def enumerate() -> list[SDRDevice]:
+        """Return list of all connected SDR devices."""
+        if not HAS_SOAPY:
+            return []
+        try:
+            results = SoapySDR.Device.enumerate()
+            devices = []
+            for r in results:
+                driver = str(r.get("driver", "unknown"))
+                label  = str(r.get("label",
+                             r.get("product", driver)))
+                serial = str(r.get("serial", ""))
+                profile = DEVICE_PROFILES.get(
+                    driver.lower(), {})
+                dev = SDRDevice(
+                    driver   = driver,
+                    label    = label,
+                    serial   = serial,
+                    can_tx   = profile.get("tx", False),
+                    max_sr   = profile.get("max_sr",
+                                          3_200_000),
+                    max_span = profile.get("max_span",
+                                          3_000_000),
+                )
+                devices.append(dev)
+                log.info(
+                    f"SDR found: {dev.display_name} "
+                    f"TX={dev.can_tx}")
+            return devices
+        except Exception as e:
+            log.warning(f"SDR enumerate: {e}")
+            return []
+
+    # ── Open / Close ──────────────────────────────────────────────────────
+
+    def open(self, device: SDRDevice) -> bool:
+        """Open an SDR device for streaming."""
+        if not HAS_SOAPY:
+            return False
+        try:
+            self._device = SoapySDR.Device(
+                dict(driver=device.driver,
+                     serial=device.serial))
+            self.current_device = device
+
+            # Configure RX
+            self._device.setSampleRate(
+                SOAPY_SDR_RX, 0, self._sample_rate)
+            self._device.setFrequency(
+                SOAPY_SDR_RX, 0, self._center_hz)
+            self._device.setGain(
+                SOAPY_SDR_RX, 0, self._gain)
+            if self._ppm != 0:
+                try:
+                    self._device.setFrequencyCorrection(
+                        SOAPY_SDR_RX, 0, self._ppm)
+                except Exception:
+                    pass
+
+            # Setup RX stream
+            self._rx_stream = self._device.setupStream(
+                SOAPY_SDR_RX, SOAPY_SDR_CF32)
+            self._device.activateStream(self._rx_stream)
+
+            log.info(
+                f"SDR opened: {device.display_name} "
+                f"{self._center_hz/1e6:.3f}MHz "
+                f"{self._sample_rate/1e6:.2f}MSPS")
+            return True
+        except Exception as e:
+            log.error(f"SDR open failed: {e}")
+            self._device = None
+            return False
+
+    def close(self):
+        self._running = False
+        if self._rx_stream and self._device:
+            try:
+                self._device.deactivateStream(
+                    self._rx_stream)
+                self._device.closeStream(self._rx_stream)
+            except Exception:
+                pass
+        if self._device:
+            try:
+                self._device = None
+            except Exception:
+                pass
+        self._rx_stream = None
+        self.current_device = None
+
+    # ── Tuning ────────────────────────────────────────────────────────────
+
+    def set_frequency(self, hz: int):
+        self._center_hz = hz
+        if self._device:
+            try:
+                self._device.setFrequency(
+                    SOAPY_SDR_RX, 0, float(hz))
+            except Exception as e:
+                log.debug(f"Set freq: {e}")
+
+    def set_sample_rate(self, sps: int):
+        if self.current_device:
+            sps = min(sps, self.current_device.max_sr)
+        self._sample_rate = sps
+        if self._device:
+            try:
+                self._device.setSampleRate(
+                    SOAPY_SDR_RX, 0, float(sps))
+            except Exception as e:
+                log.debug(f"Set SR: {e}")
+
+    def set_gain(self, db: float):
+        self._gain = db
+        if self._device:
+            try:
+                self._device.setGain(
+                    SOAPY_SDR_RX, 0, db)
+            except Exception as e:
+                log.debug(f"Set gain: {e}")
+
+    def set_ppm(self, ppm: int):
+        self._ppm = ppm
+        if self._device:
+            try:
+                self._device.setFrequencyCorrection(
+                    SOAPY_SDR_RX, 0, float(ppm))
+            except Exception:
+                pass
+
+    # ── Streaming ─────────────────────────────────────────────────────────
+
+    def start_rx(self):
+        if not self._device:
+            return
+        self._running  = True
+        self._rx_thread = threading.Thread(
+            target=self._rx_loop,
+            daemon=True, name="SDRRx")
+        self._rx_thread.start()
+
+    def stop_rx(self):
+        self._running = False
+
+    def _rx_loop(self):
+        """Continuous RX sample delivery loop."""
+        buf_size = 16384
+        buf = np.zeros(buf_size, dtype=np.complex64)
+        while self._running and self._device:
+            try:
+                sr = self._device.readStream(
+                    self._rx_stream,
+                    [buf], buf_size,
+                    timeoutUs=100_000)
+                if sr.ret > 0 and self._on_samples:
+                    samples = buf[:sr.ret].copy()
+                    try:
+                        self._on_samples(
+                            samples,
+                            self._sample_rate,
+                            self._center_hz)
+                    except Exception as e:
+                        log.debug(f"Sample cb: {e}")
+            except Exception as e:
+                if self._running:
+                    log.debug(f"RX loop: {e}")
+
+    # ── TX (for capable hardware) ─────────────────────────────────────────
+
+    def tx_capable(self) -> bool:
+        return (self.current_device is not None and
+                self.current_device.can_tx)
+
+    def transmit_iq(self, iq_data: np.ndarray):
+        """TX IQ samples — only for TX-capable hardware."""
+        if not self.tx_capable():
+            raise RuntimeError(
+                "Connected SDR is RX-only")
+        if not self._device:
+            raise RuntimeError("No SDR device open")
+        try:
+            if not self._tx_stream:
+                self._tx_stream = \
+                    self._device.setupStream(
+                        SOAPY_SDR_TX, SOAPY_SDR_CF32)
+                self._device.activateStream(
+                    self._tx_stream)
+            self._device.writeStream(
+                self._tx_stream,
+                [iq_data], len(iq_data))
+        except Exception as e:
+            log.error(f"TX failed: {e}")
+            raise
+
+    # ── Callbacks ─────────────────────────────────────────────────────────
+
+    def on_samples(self, cb: Callable):
+        self._on_samples = cb
+
+    def on_error(self, cb: Callable):
+        self._on_error = cb
+
+
+# Module singleton
+_manager: SoapyManager | None = None
+
+def get_sdr_manager() -> SoapyManager:
+    global _manager
+    if _manager is None:
+        _manager = SoapyManager()
+    return _manager

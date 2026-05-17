@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/tabs/rig_tab.py
+from __future__ import annotations
+"""Squelch -- ui/tabs/rig_tab.py
 Rig control tab.
 - Click-to-edit VFO with unit selector (Hz/kHz/MHz)
 - Step size buttons + arrow controls + mousewheel
@@ -76,6 +76,12 @@ RIG_MODELS = [
     ("Xiegu G90",       None,  19200, ["CP210","G90"]),
     ("Xiegu X6100",     None,  19200, ["CP210","X6100"]),
     ("Lab599 TX-500",   None, 115200, ["CP210","TX-500"]),
+    # Audio interfaces — no CAT, Hamlib model = None
+    ("SignaLink USB",    None,      0, ["SignaLink","USB Audio CODEC"]),
+    ("RigBlaster",       None,      0, ["RigBlaster","USB Audio"]),
+    ("Generic USB Audio",None,      0, ["USB Audio","CODEC"]),
+    ("Explorer QRZ-1",   None,      0, ["QRZ","TYT","TH-UV88"]),
+    ("Baofeng UV-5R",    None,      0, ["Baofeng","UV-5R","UV-82"]),
 ]
 
 # Mode buttons: (label, hamlib_mode, tooltip)
@@ -155,6 +161,16 @@ class RigTab(QWidget):
         self._build()
         self._wire()
         self._populate_ports()
+        # Restore saved port
+        saved_port = self.cfg.get("rig.port", "")
+        if saved_port:
+            idx = self.port_combo.findText(saved_port)
+            if idx >= 0:
+                self.port_combo.setCurrentIndex(idx)
+            else:
+                # Port not in list — add and select it
+                self.port_combo.addItem(saved_port)
+                self.port_combo.setCurrentText(saved_port)
         self._populate_rig_models()
 
     # ── Build UI ──────────────────────────────────────────────────────────
@@ -546,6 +562,8 @@ class RigTab(QWidget):
         self.port_combo = QComboBox()
         self.port_combo.setEditable(True)
         self.port_combo.setMinimumWidth(180)
+        self.port_combo.currentTextChanged.connect(
+            self._on_port_change)
         cgl.addWidget(self.port_combo, 1, 1)
 
         self.refresh_btn = QPushButton("↺")
@@ -897,10 +915,37 @@ class RigTab(QWidget):
 
     # ── Port / model population ───────────────────────────────────────────
 
+    def _on_port_change(self, port: str):
+        """Save selected port to config."""
+        if port and not port.startswith("──"):
+            self.cfg.set("rig.port", port)
+            self.cfg.save()
+
     def _populate_ports(self):
         self.port_combo.clear()
-        self.port_combo.addItem("AUTO  —  auto-detect")
-        ports = RigController.list_ports()
+        # Always show common Windows ports first
+        common_ports = [
+            "AUTO  —  auto-detect",
+            "COM1", "COM2", "COM3", "COM4",
+            "COM5", "COM6", "COM7", "COM8",
+            "COM9", "COM10", "COM11", "COM12",
+        ]
+        for p in common_ports:
+            self.port_combo.addItem(p)
+
+        # Try to detect actual ports via pyserial
+        try:
+            ports = RigController.list_ports()
+            if ports:
+                self.port_combo.insertSeparator(
+                    self.port_combo.count())
+                detected_lbl = "── Detected ports ──"
+                self.port_combo.addItem(detected_lbl)
+                self.port_combo.model().item(
+                    self.port_combo.count()-1
+                ).setEnabled(False)
+        except Exception:
+            ports = []
         for p in ports:
             label = p["port"]
             if p["description"]:
@@ -915,33 +960,90 @@ class RigTab(QWidget):
     def _populate_rig_models(self):
         self.model_combo.clear()
         self.model_combo.addItem("— Select rig model —")
-        ports   = RigController.list_ports()
+
+        # Auto-detect from connected ports
         detected = None
-        for p in ports:
-            desc = (p["description"] or "").upper()
-            for name, model, baud, hints in RIG_MODELS:
-                if any(h.upper() in desc for h in hints):
-                    detected = name
+        try:
+            ports = RigController.list_ports()
+            for p in ports:
+                desc = (p.get("description") or "").upper()
+                for name, model, baud, hints in RIG_MODELS:
+                    if any(h.upper() in desc for h in hints):
+                        detected = name
+                        break
+                if detected:
                     break
-            if detected:
-                break
-        for name, *_ in RIG_MODELS:
-            self.model_combo.addItem(name)
-        if detected:
-            idx = next(
-                (i+1 for i,(n,*_) in enumerate(RIG_MODELS)
-                 if n == detected), 0)
-            if idx:
+        except Exception:
+            pass
+
+        # Add with manufacturer separators
+        groups = {}
+        for name, model, baud, hints in RIG_MODELS:
+            mfr = name.split()[0]
+            # Map to clean group names
+            mfr_map = {
+                "SignaLink": "Audio Interfaces",
+                "RigBlaster": "Audio Interfaces",
+                "Generic": "Audio Interfaces",
+                "Explorer": "Handheld / No CAT",
+                "Baofeng": "Handheld / No CAT",
+            }
+            grp = mfr_map.get(mfr, mfr)
+            groups.setdefault(grp, []).append(name)
+
+        grp_order = [
+            "ICOM","Yaesu","Kenwood","Elecraft","Xiegu",
+            "Lab599","Audio Interfaces","Handheld / No CAT"]
+        for grp in grp_order:
+            if grp not in groups:
+                continue
+            # Add separator
+            self.model_combo.insertSeparator(
+                self.model_combo.count())
+            sep_idx = self.model_combo.count() - 1
+            # Can't easily label separator in QComboBox
+            # Add a disabled label item instead
+            self.model_combo.addItem(f"── {grp} ──")
+            self.model_combo.model().item(
+                self.model_combo.count()-1).setEnabled(False)
+            for name in groups[grp]:
+                self.model_combo.addItem(name)
+
+        # Restore saved model or select detected
+        saved = self.cfg.get("rig.model_name", "")
+        if saved:
+            idx = self.model_combo.findText(saved)
+            if idx > 0:
                 self.model_combo.setCurrentIndex(idx)
-                self.model_lbl.setText(f"Detected: {detected}")
+        elif detected:
+            idx = self.model_combo.findText(detected)
+            if idx > 0:
+                self.model_combo.setCurrentIndex(idx)
+                try:
+                    self.model_lbl.setText(
+                        f"Detected: {detected}")
+                except AttributeError:
+                    pass
 
     def _on_model_select(self, idx: int):
         if idx <= 0:
             return
-        _, model, baud, _ = RIG_MODELS[idx - 1]
-        self.baud_combo.setCurrentText(str(baud))
+        name = self.model_combo.currentText()
+        if name.startswith("──") or not name:
+            return
+        # Find in RIG_MODELS
+        match = next(
+            ((m, b) for n, m, b, _ in RIG_MODELS
+             if n == name), None)
+        if not match:
+            return
+        model, baud = match
+        if baud > 0:
+            self.baud_combo.setCurrentText(str(baud))
         if model:
             self.cfg.set("rig.hamlib_model", model)
+        self.cfg.set("rig.model_name", name)
+        self.cfg.save()
 
     def _on_connect(self):
         raw  = self.port_combo.currentText().strip()

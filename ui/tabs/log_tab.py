@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/tabs/log_tab.py
+from __future__ import annotations
+"""Squelch -- ui/tabs/log_tab.py
 QSO logbook tab. Sortable table, awards tracking,
 ADIF import/export, LoTW/QRZ queue, manual entry,
 callsign lookup integration.
@@ -372,26 +372,85 @@ class LogTab(QWidget):
     # ── Manual entry ──────────────────────────────────────────────────────
 
     def _manual_entry(self):
+        from PyQt6.QtWidgets import QComboBox
         dlg = QDialog(self)
         dlg.setWindowTitle(self.tr("Manual QSO Entry"))
-        dlg.setMinimumWidth(380)
+        dlg.setMinimumWidth(420)
         lay = QFormLayout(dlg)
+        lay.setSpacing(8)
 
-        fields = {}
-        for label, key, placeholder in [
-            ("Callsign:",  "call",     "W4XYZ"),
-            ("Band:",      "band",     "20m"),
-            ("Mode:",      "mode",     "SSB"),
-            ("RST Sent:",  "rst_sent", "59"),
-            ("RST Rcvd:",  "rst_rcvd", "59"),
-            ("Grid:",      "grid",     "FM18"),
-            ("Name:",      "name",     ""),
-            ("Comment:",   "comment",  ""),
-        ]:
-            edit = QLineEdit()
-            edit.setPlaceholderText(placeholder)
-            lay.addRow(label, edit)
-            fields[key] = edit
+        # Common bands
+        BANDS = [
+            "160m","80m","60m","40m","30m","20m",
+            "17m","15m","12m","10m","6m","2m",
+            "1.25m","70cm","33cm","23cm",
+        ]
+        # Common modes
+        MODES = [
+            "SSB","USB","LSB","AM","FM","CW",
+            "FT8","FT4","WSPR","JS8","PSK31",
+            "RTTY","SSTV","D-STAR","DMR","P25",
+            "YSF","NXDN","Olivia","MFSK","Other",
+        ]
+        # RST defaults by mode
+        RST_DEFAULTS = {
+            "SSB":"59","USB":"59","LSB":"59",
+            "AM":"59","FM":"59",
+            "CW":"599","FT8":"-10","FT4":"-10",
+            "WSPR":"-10",
+        }
+
+        # Callsign
+        cs_edit = QLineEdit()
+        cs_edit.setPlaceholderText("e.g. W4XYZ")
+        cs_edit.setMaxLength(15)
+        lay.addRow("Callsign:", cs_edit)
+
+        # Band dropdown
+        band_combo = QComboBox()
+        band_combo.addItems(BANDS)
+        band_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        band_combo.setCurrentText("20m")
+        lay.addRow("Band:", band_combo)
+
+        # Mode dropdown
+        mode_combo = QComboBox()
+        mode_combo.addItems(MODES)
+        mode_combo.setEditable(True)  # allow custom modes
+        mode_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        mode_combo.setCurrentText("SSB")
+        lay.addRow("Mode:", mode_combo)
+
+        # RST - auto-fills based on mode
+        rst_sent = QLineEdit("59")
+        rst_sent.setMaxLength(6)
+        rst_rcvd = QLineEdit("59")
+        rst_rcvd.setMaxLength(6)
+
+        def _update_rst(mode):
+            default = RST_DEFAULTS.get(mode, "59")
+            rst_sent.setText(default)
+            rst_rcvd.setText(default)
+
+        mode_combo.currentTextChanged.connect(_update_rst)
+        lay.addRow("RST Sent:", rst_sent)
+        lay.addRow("RST Rcvd:", rst_rcvd)
+
+        # Other fields
+        grid_edit = QLineEdit()
+        grid_edit.setPlaceholderText("e.g. DM79rr")
+        grid_edit.setMaxLength(8)
+        lay.addRow("Their Grid:", grid_edit)
+
+        name_edit = QLineEdit()
+        name_edit.setMaxLength(50)
+        lay.addRow("Name:", name_edit)
+
+        comment_edit = QLineEdit()
+        comment_edit.setMaxLength(200)
+        lay.addRow("Comment:", comment_edit)
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
@@ -401,32 +460,37 @@ class LogTab(QWidget):
         lay.addRow(btns)
 
         if dlg.exec():
-            call = callsign_soft(fields["call"].text())
+            call = callsign_soft(cs_edit.text())
             if not call:
                 QMessageBox.warning(
-                    self, "Invalid",
+                    self, "Invalid Callsign",
                     "Please enter a valid callsign.")
                 return
             try:
                 qso = QSO(
                     call      = call,
-                    band      = fields["band"].text().strip(),
-                    mode      = fields["mode"].text().strip().upper(),
-                    rst_sent  = fields["rst_sent"].text().strip() or "59",
-                    rst_rcvd  = fields["rst_rcvd"].text().strip() or "59",
-                    grid      = grid_square_soft(
-                        fields["grid"].text()),
-                    name      = fields["name"].text().strip()[:50],
-                    comment   = fields["comment"].text().strip()[:200],
+                    band      = band_combo.currentText(),
+                    mode      = mode_combo.currentText().upper(),
+                    rst_sent  = rst_sent.text().strip() or "59",
+                    rst_rcvd  = rst_rcvd.text().strip() or "59",
+                    grid      = grid_square_soft(grid_edit.text()),
+                    name      = name_edit.text().strip()[:50],
+                    comment   = comment_edit.text().strip()[:200],
                     my_call   = self.cfg.callsign,
                     my_grid   = self.cfg.grid,
+                    my_lat    = self.cfg.get(
+                        "location.lat", 0.0),
+                    my_lon    = self.cfg.get(
+                        "location.lon", 0.0),
                     source    = "manual",
                 )
                 self.log_db.log_qso(qso)
                 self._load_log()
                 QMessageBox.information(
                     self, self.tr("QSO Logged"),
-                    f"QSO with {call} logged successfully.")
+                    f"QSO with {call} on "
+                    f"{band_combo.currentText()} "
+                    f"{mode_combo.currentText()} logged.")
             except Exception as e:
                 QMessageBox.warning(
                     self, "Error", f"Could not log QSO: {e}")

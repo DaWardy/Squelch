@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/validator.py
+from __future__ import annotations
+"""Squelch -- core/validator.py
 Input validation and sanitization.
 All external data, user input, and subprocess arguments
 pass through this module before use.
@@ -171,17 +171,33 @@ def executable_path(path: str, allowlist: list = None) -> str:
 
 # Allowlist of executables Squelch is permitted to launch
 ALLOWED_EXECUTABLES = [
+    # Rig control
     "rigctld", "rigctld.exe",
+    # Digital modes
     "wsjtx", "wsjtx.exe",
     "js8call", "js8call.exe",
     "fldigi", "fldigi.exe",
+    # Winlink
     "varahf", "varahf.exe",
     "varafm", "varafm.exe",
+    "pat", "pat.exe",
+    "rms express", "rms express.exe",
+    # Digital voice decode
     "dsdplus", "dsdplus.exe",
+    "op25", "op25.py",
+    # ADS-B
     "dump1090", "dump1090.exe",
     "dump1090-fa", "dump1090-fa.exe",
+    # APRS
     "direwolf", "direwolf.exe",
-    "python", "python3", "python.exe", "python3.exe",
+    # Radio programming
+    "chirp", "chirp.exe", "chirpw", "chirpw.exe",
+    "rps-qrz1", "rps-qrz1.exe",
+    # LoTW
+    "tqsl", "tqsl.exe",
+    # Python (for installer/scripts)
+    "python", "python3", "python.exe",
+    "python3.exe", "pythonw.exe",
 ]
 
 
@@ -206,8 +222,11 @@ def api_callsign(value) -> str:
 def api_float(value, default: float = 0.0,
               min_val: float = None,
               max_val: float = None) -> float:
+    import math
     try:
         f = float(value)
+        if math.isnan(f) or math.isinf(f):
+            return default
         if min_val is not None:
             f = max(f, min_val)
         if max_val is not None:

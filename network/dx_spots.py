@@ -1,5 +1,5 @@
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
+# APEX — Amateur Platform for EXperimentation
+# Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- network/dx_spots.py
+from __future__ import annotations
+"""APEX -- network/dx_spots.py
 Spot feeds: PSKReporter, RBN, DX Watch, HamAlert.
 All responses validated before use — no injection possible.
 """
@@ -84,14 +84,14 @@ class SpotFeed:
         self._spots:  list[Spot] = []
         self._lock    = threading.Lock()
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
         self._band:   str = "20m"
         self._mode:   str = "FT8"
         self._my_call: str = ""
 
-        self._on_spot:  Optional[Callable] = None
-        self._on_alert: Optional[Callable] = None
+        self._on_spot:  Callable | None = None
+        self._on_alert: Callable | None = None
 
         # HamAlert wantlist
         self._wantlist: set[str] = set()
@@ -396,7 +396,7 @@ class SpotFeed:
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
-    def _get(self, url: str, params: dict) -> Optional[requests.Response]:
+    def _get(self, url: str, params: dict) -> requests.Response | None:
         try:
             resp = requests.get(
                 url, params=params,

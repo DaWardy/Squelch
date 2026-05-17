@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/config.py
+from __future__ import annotations
+"""Squelch -- core/config.py
 Configuration manager. Dot-notation access, auto-save, singleton.
 """
 
@@ -30,29 +30,111 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-CONFIG_PATH  = Path("config.json")
-EXAMPLE_PATH = Path("config.example.json")
+import sys
+import os
+
+def _user_config_dir() -> Path:
+    """
+    Return platform-appropriate user config directory.
+    Survives app reinstalls — user data is never in the app folder.
+    
+    Windows: %APPDATA%/Squelch/
+    Linux:   ~/.config/squelch/
+    macOS:   ~/Library/Application Support/Squelch/
+    """
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA",
+                    Path.home() / "AppData" / "Roaming"))
+        return base / "Squelch"
+    elif sys.platform == "darwin":
+        return (Path.home() / "Library" /
+                "Application Support" / "Squelch")
+    else:
+        # Linux / DragonOS
+        xdg = os.environ.get("XDG_CONFIG_HOME", "")
+        base = Path(xdg) if xdg else Path.home() / ".config"
+        return base / "squelch"
+
+
+APP_DIR      = Path(__file__).parent.parent.resolve()
+USER_DIR     = _user_config_dir()
+CONFIG_PATH  = USER_DIR / "config.json"
+EXAMPLE_PATH = APP_DIR  / "config.example.json"
+LOG_DIR      = USER_DIR / "logs"
+PROFILES_DIR = USER_DIR / "profiles"
+
+# Create all user directories immediately on import
+# so nothing fails with FileNotFoundError on first run
+for _d in (USER_DIR, LOG_DIR, PROFILES_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
 
 class Config:
     def __init__(self, path: Path = CONFIG_PATH):
         self._path  = path
+        # Ensure user config directory exists
+        self._path.parent.mkdir(parents=True, exist_ok=True)
         self._data  = {}
         self._dirty = False
+        self._migrate_legacy()
         self.load()
+
+    def _migrate_legacy(self):
+        """
+        Migrate config.json from app folder to user profile folder.
+        Called once on first run after v0.6.0-alpha.
+        Preserves all user settings across reinstalls from this point on.
+        """
+        if self._path.exists():
+            return  # already migrated
+        legacy = APP_DIR / "config.json"
+        if legacy.exists():
+            import shutil
+            try:
+                shutil.copy(legacy, self._path)
+                log.info(
+                    f"Migrated config from {legacy} "
+                    f"to {self._path}")
+            except Exception as e:
+                log.warning(f"Config migration: {e}")
 
     def load(self):
         if self._path.exists():
             try:
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, "r",
+                          encoding="utf-8") as f:
                     self._data = json.load(f)
-                log.info(f"Config loaded from {self._path}")
+                log.info(
+                    f"Config loaded from "
+                    f"{self._path.resolve()}")
             except Exception as e:
-                log.error(f"Config load failed: {e} -- using defaults")
+                log.error(
+                    f"Config load failed: {e} "
+                    f"-- using defaults")
                 self._data = self._load_example()
         else:
-            log.info("config.json not found -- loading from template")
-            self._data = self._load_example()
+            # Check app folder for legacy config
+            legacy = APP_DIR / "config.json"
+            if legacy.exists():
+                try:
+                    with open(legacy, "r",
+                              encoding="utf-8") as f:
+                        self._data = json.load(f)
+                    log.info(
+                        f"Config loaded from legacy "
+                        f"path: {legacy}")
+                    # Immediately save to APPDATA location
+                    self.save()
+                    log.info(
+                        f"Config migrated to "
+                        f"{self._path.resolve()}")
+                except Exception as e:
+                    log.warning(f"Legacy config: {e}")
+                    self._data = self._load_example()
+            else:
+                log.info(
+                    "No config found -- starting fresh")
+                self._data = self._load_example()
             self.save()
         self._dirty = False
 
@@ -114,11 +196,18 @@ class Config:
 
     @property
     def grid(self) -> str:
-        return self._data.get("grid_square", "").upper().strip()
+        # Prefer location.grid (set by LocationManager)
+        # Fall back to legacy grid_square key
+        g = (self._data.get("location.grid", "") or
+             self._data.get("grid_square", ""))
+        return g.upper().strip()
 
     @grid.setter
     def grid(self, v: str):
-        self.set("grid_square", v.upper().strip())
+        # Write to both keys for compatibility
+        v = v.upper().strip()
+        self.set("location.grid", v)
+        self.set("grid_square", v)
 
     @property
     def is_configured(self) -> bool:

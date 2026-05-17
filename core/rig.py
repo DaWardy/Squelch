@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/rig.py
+from __future__ import annotations
+"""Squelch -- core/rig.py
 IC-7100 (and any Hamlib rig) control via rigctld subprocess.
 Auto COM detection, PTT, VFO, mode, preamp/att/filter, S-meter.
 """
@@ -28,10 +28,19 @@ import socket
 import time
 import logging
 import threading
-import serial.tools.list_ports
 from enum import Enum
 from typing import Optional, Callable
 from dataclasses import dataclass, field
+
+try:
+    import serial.tools.list_ports
+    HAS_SERIAL = True
+except ImportError:
+    HAS_SERIAL = False
+    log_pre = logging.getLogger(__name__)
+    log_pre.warning(
+        "pyserial not installed — COM port auto-detect unavailable.\n"
+        "Run: pip install pyserial")
 
 log = logging.getLogger(__name__)
 
@@ -103,10 +112,10 @@ class RigController:
     def __init__(self, config):
         self.cfg   = config
         self.state = RigState()
-        self._proc: Optional[subprocess.Popen] = None
-        self._sock: Optional[socket.socket]    = None
+        self._proc: subprocess.Popen | None = None
+        self._sock: socket.socket | None    = None
         self._lock    = threading.Lock()
-        self._poll_th: Optional[threading.Thread] = None
+        self._poll_th: threading.Thread | None = None
         self._running = False
         self._callbacks: list[Callable] = []
 
@@ -240,7 +249,7 @@ class RigController:
             })
         return sorted(out, key=lambda x: (not x["likely_rig"], x["port"]))
 
-    def _detect_port(self) -> Optional[str]:
+    def _detect_port(self) -> str | None:
         candidates = self.list_ports()
         log.info(f"Serial ports: {[p['port'] for p in candidates]}")
         for p in candidates:
@@ -291,7 +300,7 @@ class RigController:
             self._error(f"Cannot connect to rigctld: {e}")
             return False
 
-    def _cmd(self, command: str) -> Optional[str]:
+    def _cmd(self, command: str) -> str | None:
         with self._lock:
             if not self._sock:
                 return None

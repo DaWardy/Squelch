@@ -116,3 +116,14 @@ DSD+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 All trademarks are property of their respective owners.
 APEX is not affiliated with ARRL, FCC, or any radio manufacturer.
+
+SigID Wiki
+  License: CC BY-SA 4.0
+  https://www.sigidwiki.com/
+  Signal identification database accessed via API.
+
+Artemis Signal Database
+  Copyright: AresValley
+  License: CC BY-NC-SA 4.0
+  https://github.com/AresValley/Artemis
+  Local signal database for offline identification.

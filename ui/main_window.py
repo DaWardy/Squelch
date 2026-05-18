@@ -222,6 +222,7 @@ class MainWindow(QMainWindow):
         self._check_first_run()
         self._load_plugins()
         self._apply_saved_font_size()
+        self._apply_station_settings()
         self._init_aprs()
         self._init_pskreporter()
         QTimer.singleShot(100, self._wire_sdr_to_digital)
@@ -1147,7 +1148,8 @@ class MainWindow(QMainWindow):
         from ui.dialogs.settings_dialog import SettingsDialog
         dlg = SettingsDialog(self.cfg, parent=self)
         if dlg.exec():
-            # Apply any live changes (theme, font, etc.)
+            # Apply all settings
+            self._apply_station_settings()
             cs = self.cfg.callsign
             if cs:
                 self._cs_lbl.setText(cs)
@@ -1306,6 +1308,40 @@ class MainWindow(QMainWindow):
         else:
             # Revert combo to current profile
             self._populate_profiles()
+
+    def _apply_station_settings(self):
+        """
+        Apply station settings from config to all subsystems.
+        Called after settings dialog closes.
+        """
+        # Contest exchange
+        exchange = self.cfg.get("station.contest_exchange", "")
+        if exchange:
+            self.cfg.set("modes.contest_exchange", exchange)
+
+        # Station callsign (overrides operator callsign for club stations)
+        station_cs = self.cfg.get("station.station_callsign", "")
+        if station_cs:
+            # Used in Winlink and log headers
+            self.cfg.set("station.active_callsign", station_cs)
+        else:
+            self.cfg.set("station.active_callsign", self.cfg.callsign)
+
+        # Auto-launch WSJT-X preference
+        auto_launch = self.cfg.get("modes.auto_launch_wsjtx", True)
+        modes_tab = self._tab_map.get("modes")
+        if modes_tab and hasattr(modes_tab, "_auto_launch_wsjtx"):
+            modes_tab._auto_launch_wsjtx = auto_launch
+
+        # PTT timeout
+        timeout = self.cfg.get("safety.ptt_timeout_s", 180)
+        try:
+            from core.safety import get_safety
+            get_safety().set_ptt_timeout(timeout)
+        except Exception:
+            pass
+
+        log.debug("Station settings applied")
 
     def _restore_location(self):
         """

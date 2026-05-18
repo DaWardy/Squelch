@@ -537,6 +537,158 @@ class ModesTab(QWidget):
         self._dx_cluster = None
         self._dx_spots   = []
 
+        # SOTA/POTA spots panel
+        self._build_sota_pota_panel()
+
+    def _build_sota_pota_panel(self):
+        """SOTA and POTA activator spots panel."""
+        from PyQt6.QtWidgets import (
+            QGroupBox, QTableWidget, QTableWidgetItem,
+            QHeaderView, QHBoxLayout, QComboBox, QLabel)
+
+        sp_grp = QGroupBox("SOTA / POTA Spots")
+        sp_grp.setMaximumHeight(150)
+        sl = QVBoxLayout(sp_grp)
+        sl.setContentsMargins(4, 4, 4, 4)
+        sl.setSpacing(3)
+
+        # Controls
+        ctrl = QHBoxLayout()
+        self._sp_mode = QComboBox()
+        self._sp_mode.addItems(["SOTA", "POTA", "Both"])
+        self._sp_mode.setFixedWidth(80)
+        self._sp_mode.currentTextChanged.connect(
+            self._filter_sota_pota)
+        ctrl.addWidget(QLabel("Show:"))
+        ctrl.addWidget(self._sp_mode)
+
+        self._sp_status = QLabel("Not started")
+        self._sp_status.setStyleSheet(
+            "color:#555;font-size:12px;")
+        ctrl.addStretch()
+        ctrl.addWidget(self._sp_status)
+
+        sp_start = QPushButton("▶ Start")
+        sp_start.setFixedHeight(22)
+        sp_start.setFixedWidth(60)
+        sp_start.setToolTip(
+            "Fetch SOTA/POTA activator spots\n"
+            "Updates every 5 minutes")
+        sp_start.clicked.connect(self._start_sota_pota)
+        ctrl.addWidget(sp_start)
+        sl.addLayout(ctrl)
+
+        # Spot table
+        self._sp_table = QTableWidget(0, 5)
+        self._sp_table.setHorizontalHeaderLabels([
+            "Callsign", "Freq", "Mode",
+            "Reference", "Name"])
+        h = self._sp_table.horizontalHeader()
+        h.setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            4, QHeaderView.ResizeMode.Stretch)
+        self._sp_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._sp_table.setFixedHeight(88)
+        self._sp_table.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;color:#aaa;"
+            "font-size:12px;border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;"
+            "color:#555;border:none;font-size:12px;}")
+        self._sp_table.doubleClicked.connect(
+            self._tune_to_sota_pota)
+        sl.addWidget(self._sp_table)
+
+        self.layout().addWidget(sp_grp)
+        self._sota_spots = []
+        self._pota_spots = []
+        self._sota_client = None
+        self._pota_client = None
+
+    def _start_sota_pota(self):
+        """Start fetching SOTA/POTA spots."""
+        from network.sota_pota import SOTAClient, POTAClient
+        from PyQt6.QtCore import QTimer
+
+        if self._sota_client is None:
+            self._sota_client = SOTAClient()
+            self._sota_client.on_spots(
+                lambda s: QTimer.singleShot(0,
+                    lambda spots=s:
+                        self._on_sota_spots(spots)))
+            self._sota_client.start()
+
+        if self._pota_client is None:
+            self._pota_client = POTAClient()
+            self._pota_client.on_spots(
+                lambda s: QTimer.singleShot(0,
+                    lambda spots=s:
+                        self._on_pota_spots(spots)))
+            self._pota_client.start()
+
+        self._sp_status.setText(
+            "Fetching…")
+        self._sp_status.setStyleSheet(
+            "color:#888;font-size:12px;")
+
+    def _on_sota_spots(self, spots):
+        self._sota_spots = spots
+        self._filter_sota_pota()
+        self._sp_status.setText(
+            f"SOTA: {len(spots)}")
+        self._sp_status.setStyleSheet(
+            "color:#3fbe6f;font-size:12px;")
+
+    def _on_pota_spots(self, spots):
+        self._pota_spots = spots
+        self._filter_sota_pota()
+
+    def _filter_sota_pota(self, _=None):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+        mode = self._sp_mode.currentText()
+        all_spots = []
+        if mode in ("SOTA", "Both"):
+            for s in self._sota_spots:
+                all_spots.append((
+                    s.callsign, f"{s.freq_mhz:.4f}",
+                    s.mode, s.summit, s.summit_name,
+                    s.freq_mhz, "sota"))
+        if mode in ("POTA", "Both"):
+            for s in self._pota_spots:
+                all_spots.append((
+                    s.callsign, f"{s.freq_mhz:.4f}",
+                    s.mode, s.park, s.park_name,
+                    s.freq_mhz, "pota"))
+
+        self._sp_table.setRowCount(0)
+        for spot_data in all_spots[:15]:
+            row = self._sp_table.rowCount()
+            self._sp_table.insertRow(row)
+            for col, val in enumerate(spot_data[:5]):
+                item = QTableWidgetItem(str(val))
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter)
+                self._sp_table.setItem(row, col, item)
+
+    def _tune_to_sota_pota(self, index):
+        """Tune rig to SOTA/POTA spot frequency."""
+        row = index.row()
+        freq_item = self._sp_table.item(row, 1)
+        if not freq_item:
+            return
+        try:
+            freq_hz = int(float(
+                freq_item.text()) * 1_000_000)
+            if self.rig and self.rig.is_connected:
+                self.rig.set_freq(freq_hz)
+            else:
+                # Update VFO display even without rig
+                self._set_freq(freq_hz)
+        except Exception:
+            pass
+
     def _start_dx_cluster(self):
         """Auto-connect to DX cluster if configured."""
         if self.cfg.get("dx_cluster.auto_connect", False):

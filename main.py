@@ -69,6 +69,14 @@ def parse_args():
 def main():
     args = parse_args()
     setup_logging(args.debug)
+    # Apply log level from config if not in debug mode
+    if not args.debug:
+        from core.config import CONFIG_PATH, Config
+        _tmp_cfg = Config(CONFIG_PATH)
+        level_str = _tmp_cfg.get("advanced.log_level", "INFO")
+        import logging as _lg
+        _lg.getLogger().setLevel(
+            getattr(_lg, level_str, _lg.INFO))
     log = logging.getLogger(__name__)
     log.info("=" * 56)
     log.info(f"Squelch starting  lab={args.lab_mode}  debug={args.debug}")

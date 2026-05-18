@@ -609,6 +609,109 @@ Note: Some shortcuts require the rig to be connected
 and the appropriate tab to be active.
 """),
 
+    ("APRS Setup", "Digital Modes",
+     """# APRS Setup Guide
+
+## What is APRS?
+APRS (Automatic Packet Reporting System) is a
+digital system for real-time position reporting,
+weather data, messaging, and object tracking.
+Used by emergency communications, portable ops,
+and vehicle tracking.
+
+## APRS-IS (Internet Gateway)
+Squelch connects to the worldwide APRS-IS network
+for receive-only monitoring. No radio required.
+
+  Local RF tab → APRS-IS panel → Connect
+  Station location must be set in the top bar
+  Receives packets within 150 km of your location
+
+## APRS Beacon (Internet)
+When connected to APRS-IS, you can send a beacon:
+  Local RF tab → APRS-IS panel → Beacon Now
+  Configurable: symbol, comment, path, interval
+  Settings → Station → Beacon comment
+
+## RF APRS (with Radio)
+For RF APRS you need a TNC (Terminal Node Controller):
+  Direwolf: software TNC for PC soundcard (free)
+  github.com/wb2osz/direwolf
+
+  Hardware TNC: Mobilinkd, TNC-Pi, etc.
+  Connect to IC-7100 data port or Baofeng audio jack
+
+## Direwolf Setup
+  Download: github.com/wb2osz/direwolf/releases
+  Configure direwolf.conf with your callsign
+  Set ADEVICE to your audio device
+  Start Direwolf before launching Squelch
+
+## Common APRS Symbols
+  House (default): fixed home station
+  Car: mobile vehicle
+  Portable: /- (backpack/portable)
+  Yaesu walker: moving on foot
+  Emergency: priority station
+
+## APRS Paths
+  WIDE1-1,WIDE2-1: standard path (3 hops)
+  WIDE1-1: one hop (VHF local)
+  Direct: no digipeating (IGate direct only)
+
+## Map Integration
+Connected APRS stations appear on the Squelch map.
+Gray markers show nearby APRS stations.
+"""),
+
+    ("SOTA and POTA", "Operating",
+     """# SOTA and POTA — Portable Operations
+
+## SOTA (Summits on the Air)
+summits on the air (sota.org.uk) awards for
+operating from designated mountain summits.
+
+## How SOTA Works
+  Activators: operate from a summit, earn points
+  Chasers:   work the activator, earn 1 point each
+
+Points depend on summit difficulty (1-10 points).
+Chase the gray line for maximum DX contacts.
+
+## POTA (Parks on the Air)
+pota.app — operate from national/state parks.
+No points per contact — 10 QSOs = activation.
+Over 30,000 parks across 100+ programs worldwide.
+
+## Finding Active Spots in Squelch
+  Modes tab → SOTA/POTA Spots panel
+  Click ▶ Start to begin fetching spots
+  Updates every 5 minutes automatically
+  Double-click a spot to tune the rig
+
+## Frequency Conventions
+  CW:  7.030-7.032 MHz, 14.060 MHz
+  SSB: 7.285 MHz, 14.285-14.290 MHz
+  FT8: standard FT8 frequencies (7.074, 14.074 etc)
+
+## Making the Contact
+  Activator sends: "CQ SOTA [callsign] [summit ref]"
+  Chaser responds: "[callsign]"
+  Quick exchange: signal report + summit reference
+
+## Portable Setup Tips
+  FT-817/818 or IC-705 for HF portable
+  End-fed half-wave antenna (EFHW) — easy portable
+  LiPo battery bank for power
+  Squelch portable mode: use QRZ-1 + Baofeng
+  Log contacts in Squelch — upload ADIF to SOTA/POTA
+
+## Digital Modes for Portable
+  FT8 works great portable — low power, long distance
+  WSJT-X + Squelch auto-logs all SOTA/POTA contacts
+  5 watts FT8 can reach coast to coast
+"""),
+
     ("Propagation Reference", "Reference",
      """# Propagation Quick Reference
 

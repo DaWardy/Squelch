@@ -204,6 +204,27 @@ APPS: list[AppDef] = [
     ),
 
     AppDef(
+        key          = "paths.flrig",
+        name         = "FLRig",
+        description  = "Alternative rig control server (XML-RPC)",
+        category     = "rig",
+        exe_name     = "flrig",
+        common_paths = [
+            r"C:\Program Files\flrig\flrig.exe",
+            r"C:\flrig\flrig.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/flrig",
+            "/usr/local/bin/flrig",
+        ],
+        download_url  = "https://w1hkj.com/files/flrig/",
+        download_note = (
+            "FLRig: free alternative to rigctld\n"
+            "Better support for some Yaesu/Kenwood rigs"),
+        tab           = "rig",
+    ),
+
+    AppDef(
         key          = "paths.dsdplus",
         name         = "DSD+",
         description  = "DMR / NXDN / YSF digital voice decode (Windows)",

@@ -238,6 +238,20 @@ class FT8Engine:
         # return to IDLE after 2 cycles (30 seconds)
         self._cq_timeout = 2
 
+    def _check_cq_timeout(self):
+        """
+        Called each decode cycle.
+        Decrements timeout counter and returns to IDLE if expired.
+        """
+        if self._state == AutoSeqState.CQ_SENT:
+            if self._cq_timeout > 0:
+                self._cq_timeout -= 1
+            else:
+                import logging as _log
+                _log.getLogger(__name__).info(
+                    "CQ timeout — no response. Returning to IDLE.")
+                self._set_state(AutoSeqState.IDLE)
+
     def reconnect(self):
         """Called by Rescan button — reset connection state."""
         self._wsjtx_connected = False

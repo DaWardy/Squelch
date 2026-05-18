@@ -89,6 +89,7 @@ class LogTab(QWidget):
         self.log_db = get_log_db()
         self._all_qsos: list[QSO] = []
         self._build()
+        self._build_awards_panel()
         self._load_log()
         # Refresh every 30 seconds for new auto-logged QSOs
         self._refresh_timer = QTimer(self)
@@ -267,11 +268,88 @@ class LogTab(QWidget):
 
     # ── Data loading ──────────────────────────────────────────────────────
 
+    def _build_awards_panel(self):
+        """Add collapsible awards progress panel."""
+        from PyQt6.QtWidgets import (
+            QGroupBox, QProgressBar, QGridLayout)
+
+        awards_grp = QGroupBox("Award Progress")
+        awards_grp.setCheckable(True)
+        awards_grp.setChecked(False)
+        awards_grp.setToolTip(
+            "Award progress computed from your log\n"
+            "Click to expand/collapse")
+        ag = QGridLayout(awards_grp)
+        ag.setSpacing(4)
+
+        self._award_bars = {}
+        awards_display = [
+            ("DXCC",  "DXCC (100 entities)"),
+            ("WAS",   "WAS (50 states)"),
+            ("WAZ",   "WAZ (40 CQ zones)"),
+            ("VUCC",  "VUCC VHF (100 grids)"),
+            ("DXCC-FT8", "DXCC-FT8"),
+            ("DXCC-CW",  "DXCC-CW"),
+        ]
+        for row, (key, label) in enumerate(awards_display):
+            ag.addWidget(QLabel(label), row, 0)
+            bar = QProgressBar()
+            bar.setRange(0, 100)
+            bar.setValue(0)
+            bar.setFixedHeight(16)
+            bar.setFormat("%v/%m")
+            bar.setTextVisible(True)
+            bar.setStyleSheet(
+                "QProgressBar{background:#141414;"
+                "border:1px solid #1a1a1a;"
+                "border-radius:3px;text-align:center;"
+                "font-size:11px;color:#888;}"
+                "QProgressBar::chunk{"
+                "background:#3fbe6f;border-radius:2px;}")
+            self._award_bars[key] = bar
+            ag.addWidget(bar, row, 1)
+            lbl = QLabel("0/100")
+            lbl.setStyleSheet("color:#555;font-size:11px;")
+            lbl.setFixedWidth(60)
+            ag.addWidget(lbl, row, 2)
+            self._award_bars[key + "_lbl"] = lbl
+
+        # Add to root layout
+        self.layout().addWidget(awards_grp)
+        self._awards_grp = awards_grp
+        QTimer.singleShot(1500, self._update_awards)
+
+    def _update_awards(self):
+        """Compute and display award progress."""
+        try:
+            from core.awards import AwardTracker
+            tracker = AwardTracker(self.log_db)
+            awards  = tracker.compute_all()
+
+            for key, progress in awards.items():
+                bar = self._award_bars.get(key)
+                lbl = self._award_bars.get(key + "_lbl")
+                if bar:
+                    bar.setMaximum(progress.needed)
+                    bar.setValue(min(
+                        progress.worked, progress.needed))
+                    if progress.is_complete:
+                        bar.setStyleSheet(
+                            "QProgressBar::chunk{"
+                            "background:#44aaff;"
+                            "border-radius:2px;}")
+                if lbl:
+                    lbl.setText(
+                        f"{progress.worked}/{progress.needed}")
+        except Exception as e:
+            log.debug(f"Awards update: {e}")
+
     def _load_log(self):
         try:
             self._all_qsos = self.log_db.recent_qsos(limit=5000)
             self._apply_filter()
             self._update_stats()
+            QTimer.singleShot(100, self._update_awards)
         except Exception as e:
             log.error(f"Log load failed: {e}")
 
@@ -470,6 +548,22 @@ class LogTab(QWidget):
                     "Please enter a valid callsign.")
                 return
             try:
+                # Dupe check
+                if self.cfg.get("log.warn_dupes", True):
+                    band = band_combo.currentText()
+                    mode = mode_combo.currentText().upper()
+                    if self.log_db.is_duplicate(
+                            call, band, mode):
+                        reply = QMessageBox.question(
+                            self, "Duplicate QSO",
+                            f"{call} already logged on "
+                            f"{band} {mode}.\n\n"
+                            "Log anyway?",
+                            QMessageBox.StandardButton.Yes |
+                            QMessageBox.StandardButton.No)
+                        if reply == QMessageBox.StandardButton.No:
+                            return
+
                 qso = QSO(
                     call      = call,
                     band      = band_combo.currentText(),

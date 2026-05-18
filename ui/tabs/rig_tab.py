@@ -33,6 +33,8 @@ Rig control tab.
 
 import logging
 from PyQt6.QtWidgets import (
+    QLineEdit,
+    QSpinBox,
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QGroupBox,
     QFrame, QSpinBox, QDoubleSpinBox, QProgressBar,
@@ -417,6 +419,115 @@ class RigTab(QWidget):
         ctrl_row.addStretch()
         root.addLayout(ctrl_row)
 
+        # ── VFO B / Split / RIT row ───────────────────────────────────────
+        vfo_row = QHBoxLayout()
+
+        self._vfo_a_btn = QPushButton("VFO-A")
+        self._vfo_a_btn.setFixedHeight(28)
+        self._vfo_a_btn.setCheckable(True)
+        self._vfo_a_btn.setChecked(True)
+        self._vfo_a_btn.setToolTip("Select VFO A")
+        self._vfo_a_btn.clicked.connect(
+            lambda: self._select_vfo("A"))
+        vfo_row.addWidget(self._vfo_a_btn)
+
+        self._vfo_b_btn = QPushButton("VFO-B")
+        self._vfo_b_btn.setFixedHeight(28)
+        self._vfo_b_btn.setCheckable(True)
+        self._vfo_b_btn.setToolTip("Select VFO B")
+        self._vfo_b_btn.clicked.connect(
+            lambda: self._select_vfo("B"))
+        vfo_row.addWidget(self._vfo_b_btn)
+
+        swap_btn = QPushButton("⇄ Swap")
+        swap_btn.setFixedHeight(28)
+        swap_btn.setFixedWidth(70)
+        swap_btn.setToolTip("Swap VFO A and VFO B")
+        swap_btn.clicked.connect(self._swap_vfo)
+        vfo_row.addWidget(swap_btn)
+
+        vfo_row.addSpacing(10)
+
+        self._split_btn = QPushButton("Split")
+        self._split_btn.setFixedHeight(28)
+        self._split_btn.setCheckable(True)
+        self._split_btn.setToolTip(
+            "Split operation\n"
+            "RX on VFO-A, TX on VFO-B\n"
+            "Tune VFO-B for DX pileup offset")
+        self._split_btn.toggled.connect(self._toggle_split)
+        vfo_row.addWidget(self._split_btn)
+
+        vfo_row.addSpacing(10)
+
+        vfo_row.addWidget(QLabel("RIT:"))
+        self._rit_spin = QSpinBox()
+        self._rit_spin.setRange(-9999, 9999)
+        self._rit_spin.setValue(0)
+        self._rit_spin.setSuffix(" Hz")
+        self._rit_spin.setFixedWidth(90)
+        self._rit_spin.setToolTip(
+            "RIT/XIT offset (Hz)\n"
+            "Receive incremental tuning\n"
+            "0 = disabled")
+        self._rit_spin.valueChanged.connect(self._set_rit)
+        vfo_row.addWidget(self._rit_spin)
+
+        rit_clear = QPushButton("×")
+        rit_clear.setFixedSize(26, 26)
+        rit_clear.setToolTip("Clear RIT")
+        rit_clear.clicked.connect(
+            lambda: self._rit_spin.setValue(0))
+        vfo_row.addWidget(rit_clear)
+
+        vfo_row.addStretch()
+        root.addLayout(vfo_row)
+
+        # ── CW Keyer (collapsible) ───────────────────────────────────────
+        self._cw_toggle = _collapse_btn("CW Keyer")
+        self._cw_toggle.toggled.connect(
+            lambda c: self._cw_body.setVisible(c))
+        root.addWidget(self._cw_toggle)
+
+        self._cw_body = QWidget()
+        self._cw_body.setVisible(False)
+        cw_layout = QHBoxLayout(self._cw_body)
+        cw_layout.setContentsMargins(8, 4, 8, 4)
+
+        self._cw_text = QLineEdit()
+        self._cw_text.setPlaceholderText(
+            "CQ CQ DE N0CALL  or any text to send in Morse")
+        self._cw_text.setFont(
+            __import__("PyQt6.QtGui",
+            fromlist=["QFont"]).QFont("Courier New", 12))
+        self._cw_text.returnPressed.connect(self._send_cw)
+        cw_layout.addWidget(self._cw_text, 1)
+
+        cw_layout.addWidget(QLabel("WPM:"))
+        self._cw_wpm = QSpinBox()
+        self._cw_wpm.setRange(5, 60)
+        self._cw_wpm.setValue(20)
+        self._cw_wpm.setFixedWidth(65)
+        self._cw_wpm.setToolTip("CW speed in words per minute")
+        self._cw_wpm.valueChanged.connect(
+            lambda v: self.rig.set_cw_wpm(v)
+            if self.rig.is_connected else None)
+        cw_layout.addWidget(self._cw_wpm)
+
+        send_btn = QPushButton("▶ Send")
+        send_btn.setFixedHeight(28)
+        send_btn.setToolTip("Send CW text (or press Enter)")
+        send_btn.clicked.connect(self._send_cw)
+        cw_layout.addWidget(send_btn)
+
+        stop_btn = QPushButton("■ Stop")
+        stop_btn.setFixedHeight(28)
+        stop_btn.setToolTip("Stop CW transmission immediately")
+        stop_btn.clicked.connect(self._stop_cw)
+        cw_layout.addWidget(stop_btn)
+
+        root.addWidget(self._cw_body)
+
         # ── Scanner (collapsible) ─────────────────────────────────────────
         self._scan_toggle = _collapse_btn("Scanner")
         self._scan_toggle.toggled.connect(
@@ -773,6 +884,63 @@ class RigTab(QWidget):
 
     # ── Scanner ───────────────────────────────────────────────────────────
 
+    def _send_cw(self):
+        """Send CW text from the keyer input."""
+        text = self._cw_text.text().strip()
+        if not text:
+            return
+        if not self.rig.is_connected:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "CW Keyer",
+                "Connect rig first.")
+            return
+        wpm = self._cw_wpm.value()
+        sent = self.rig.send_cw(text, wpm)
+        if sent:
+            self._cw_text.clear()
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "CW Send",
+                "CW send failed.\n"
+                "Rig must be in CW mode.")
+
+    def _stop_cw(self):
+        """Stop CW immediately."""
+        self.rig.stop_cw()
+
+    def _on_backend_change(self, backend: str):
+        """Switch between rigctld and FLRig backends."""
+        use_flrig = "FLRig" in backend
+        self.cfg.set("rig.backend", "flrig" if use_flrig else "hamlib")
+        self.cfg.save()
+
+    def _select_vfo(self, vfo: str):
+        """Switch active VFO."""
+        self._vfo_a_btn.setChecked(vfo == "A")
+        self._vfo_b_btn.setChecked(vfo == "B")
+        if self.rig.is_connected:
+            self.rig.set_vfo(vfo)
+
+    def _swap_vfo(self):
+        """Swap VFO A and B."""
+        if self.rig.is_connected:
+            self.rig.swap_vfo()
+
+    def _toggle_split(self, enabled: bool):
+        """Toggle split TX/RX operation."""
+        if self.rig.is_connected:
+            self.rig.set_split(enabled)
+        self._split_btn.setStyleSheet(
+            "background:#1a3a1a;color:#3fbe6f;"
+            if enabled else "")
+
+    def _set_rit(self, hz: int):
+        """Set RIT offset."""
+        if self.rig.is_connected:
+            self.rig.set_rit(hz)
+
     def _start_scan(self):
         if not self.rig.is_connected:
             QMessageBox.warning(self, "Scanner",
@@ -1054,6 +1222,27 @@ class RigTab(QWidget):
         self.cfg.save()
 
     def _on_connect(self):
+        # Check selected backend
+        backend = self.cfg.get("rig.backend", "hamlib")
+        if backend == "flrig":
+            from modes.flrig_bridge import FLRigBridge
+            if not FLRigBridge.is_running():
+                QMessageBox.warning(
+                    self, "FLRig Not Running",
+                    "Start FLRig first, then connect.\n\n"
+                    "File → Paths & Executables → FLRig")
+                return
+            # Use FLRig bridge
+            bridge = FLRigBridge(self.cfg)
+            if bridge.connect():
+                self.rig._proc_bridge = bridge
+                self.rig.state.status = RigStatus.CONNECTED
+                self.rig._notify()
+            return
+        # Standard hamlib/rigctld path
+        _on_connect_standard(self)
+
+    def _on_connect_standard(self):
         raw  = self.port_combo.currentText().strip()
         port = ("AUTO" if not raw or raw.startswith("AUTO")
                 else raw.split("  ")[0].strip())

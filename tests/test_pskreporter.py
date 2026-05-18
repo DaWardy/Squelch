@@ -62,7 +62,7 @@ class TestPSKReporterXML:
         assert "NR6U" in xml
 
     def test_xml_well_formed(self):
-        import xml.etree.ElementTree as ET
+        import defusedxml.ElementTree as ET
         spots = [
             ReceptionReport("W4XYZ", 14074000, "FT8")]
         xml = self.psk._build_xml_payload(spots)

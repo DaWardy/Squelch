@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/rig.py
+from __future__ import annotations
+"""Squelch -- core/rig.py
 IC-7100 (and any Hamlib rig) control via rigctld subprocess.
 Auto COM detection, PTT, VFO, mode, preamp/att/filter, S-meter.
 """
@@ -28,10 +28,19 @@ import socket
 import time
 import logging
 import threading
-import serial.tools.list_ports
 from enum import Enum
 from typing import Optional, Callable
 from dataclasses import dataclass, field
+
+try:
+    import serial.tools.list_ports
+    HAS_SERIAL = True
+except ImportError:
+    HAS_SERIAL = False
+    log_pre = logging.getLogger(__name__)
+    log_pre.warning(
+        "pyserial not installed — COM port auto-detect unavailable.\n"
+        "Run: pip install pyserial")
 
 log = logging.getLogger(__name__)
 
@@ -103,10 +112,10 @@ class RigController:
     def __init__(self, config):
         self.cfg   = config
         self.state = RigState()
-        self._proc: Optional[subprocess.Popen] = None
-        self._sock: Optional[socket.socket]    = None
+        self._proc: subprocess.Popen | None = None
+        self._sock: socket.socket | None    = None
         self._lock    = threading.Lock()
-        self._poll_th: Optional[threading.Thread] = None
+        self._poll_th: threading.Thread | None = None
         self._running = False
         self._callbacks: list[Callable] = []
 
@@ -201,6 +210,68 @@ class RigController:
             self.state.filter_num = num
             self._notify()
 
+    def set_vfo(self, vfo: str):
+        """Switch VFO: 'VFOA' or 'VFOB'."""
+        vfo_map = {"A": "VFOA", "B": "VFOB",
+                   "VFOA": "VFOA", "VFOB": "VFOB"}
+        cmd_vfo = vfo_map.get(vfo.upper(), "VFOA")
+        self._cmd(f"V {cmd_vfo}")
+        self.state.vfo = cmd_vfo
+        self._notify()
+
+    def set_split(self, enable: bool,
+                  tx_freq_hz: int = 0):
+        """Enable/disable split operation."""
+        self._cmd(f"S {1 if enable else 0} VFOB")
+        if enable and tx_freq_hz:
+            self._cmd("V VFOB")
+            self._cmd(f"F {tx_freq_hz}")
+            self._cmd("V VFOA")
+        self.state.split = enable
+        self._notify()
+
+    def set_rit(self, hz: int):
+        """Set RIT/XIT offset in Hz. 0 to clear."""
+        self._cmd(f"J {hz}")
+
+    def swap_vfo(self):
+        """Swap VFO A and VFO B."""
+        self._cmd("G")  # Hamlib: swap VFO
+
+    # ── CW Keyer ──────────────────────────────────────────────────────────
+
+    def send_cw(self, text: str, wpm: int = 20) -> bool:
+        """
+        Send Morse code via rigctld keyer interface.
+        Requires rig to be in CW mode.
+        text: ASCII text to send (letters/numbers/punctuation)
+        wpm:  words per minute (5-60)
+        Returns True if command accepted.
+        """
+        if not self.is_connected:
+            return False
+        if self.state.mode not in ("CW", "CWR"):
+            # Switch to CW first
+            self.set_mode("CW")
+        # Set WPM
+        self._cmd(f"L KEYSPD {wpm}")
+        # Send text via hamlib b command (send Morse)
+        text_clean = _sanitize_cw_text(text)
+        if not text_clean:
+            return False
+        result = self._cmd(f"b {text_clean}")
+        return result is not None
+
+    def stop_cw(self):
+        """Stop current CW transmission."""
+        if self.is_connected:
+            self._cmd("b ")  # empty string stops keyer
+
+    def set_cw_wpm(self, wpm: int):
+        """Set CW speed in words per minute."""
+        wpm = max(5, min(60, wpm))
+        self._cmd(f"L KEYSPD {wpm}")
+
     def get_freq(self) -> int:
         r = self._cmd("f")
         if r:
@@ -227,7 +298,12 @@ class RigController:
     @staticmethod
     def list_ports() -> list[dict]:
         out = []
-        for p in serial.tools.list_ports.comports():
+        try:
+            import serial.tools.list_ports as _slp
+            ports_list = _slp.comports()
+        except (ImportError, Exception):
+            return out
+        for p in ports_list:
             desc = (p.description or "").upper()
             likely = any(x in desc for x in
                          ["CP210", "FTDI", "CI-V", "IC-7100",
@@ -240,7 +316,7 @@ class RigController:
             })
         return sorted(out, key=lambda x: (not x["likely_rig"], x["port"]))
 
-    def _detect_port(self) -> Optional[str]:
+    def _detect_port(self) -> str | None:
         candidates = self.list_ports()
         log.info(f"Serial ports: {[p['port'] for p in candidates]}")
         for p in candidates:
@@ -291,7 +367,7 @@ class RigController:
             self._error(f"Cannot connect to rigctld: {e}")
             return False
 
-    def _cmd(self, command: str) -> Optional[str]:
+    def _cmd(self, command: str) -> str | None:
         with self._lock:
             if not self._sock:
                 return None
@@ -372,6 +448,18 @@ class RigController:
     @property
     def is_connected(self) -> bool:
         return self.state.status in (RigStatus.CONNECTED, RigStatus.PTT_TX)
+
+
+def _sanitize_cw_text(text: str) -> str:
+    """
+    Sanitize text for CW transmission.
+    Only allow characters that have Morse equivalents.
+    """
+    import re
+    # Keep alphanumeric, punctuation with Morse equivalents
+    allowed = re.sub(r"[^A-Z0-9 ./\-=+?@]", "",
+                     text.upper().strip())
+    return allowed[:200]  # max 200 chars per send
 
 
 def _freq_to_band(freq_hz: int) -> str:

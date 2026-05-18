@@ -17,6 +17,7 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 """
 Squelch -- ui/tabs/modes_tab.py
 Unified digital modes tab.
@@ -27,6 +28,8 @@ Decode list, auto-sequence state display, QSO log feed.
 
 import logging
 import threading
+from ui.widgets.launch_bar import LaunchBar
+from core.launcher import get_launcher
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QGroupBox,
@@ -42,6 +45,7 @@ from modes.ft8 import FT8Engine, AutoSeqState, DecodedSignal
 from modes.wspr import WSPREngine
 from modes.fldigi_bridge import FldigiBridge, MODE_FREQS
 from core.band_plan import DIGITAL_FREQS, BAND_EDGES
+from core.constants import BAND_EDGES_R2 as BAND_EDGES, FT8_FREQUENCIES
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +114,9 @@ class ModesTab(QWidget):
         self._freq_history: list[int] = []
 
         self._build()
+        self._build_dx_panel()
         self._wire()
+        self._start_dx_cluster()
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -119,12 +125,18 @@ class ModesTab(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        # ── Launch bar ───────────────────────────────────────────────────
+        self._launch_bar = LaunchBar(
+            "modes", self.cfg,
+            rescan_callback=self._rescan_software)
+        root.addWidget(self._launch_bar)
+
         # ── Mode selector tabs ────────────────────────────────────────────
         self._mode_tabs = QTabWidget()
         self._mode_tabs.setFixedHeight(42)
         self._mode_tabs.tabBar().setDocumentMode(True)
         self._mode_tabs.setStyleSheet("""
-            QTabBar::tab{padding:6px 16px;font-size:11px;
+            QTabBar::tab{padding:6px 16px;font-size:13px;
               background:#141414;color:#666;border:none;
               border-bottom:2px solid transparent;}
             QTabBar::tab:selected{color:#3fbe6f;
@@ -206,17 +218,17 @@ class ModesTab(QWidget):
 
         self._state_label = QLabel("● Idle — monitoring")
         self._state_label.setStyleSheet(
-            "color:#555; font-size:11px; font-weight:bold;")
+            "color:#555; font-size:13px; font-weight:bold;")
         state_l.addWidget(self._state_label)
 
         self._qso_label = QLabel("No QSO in progress")
         self._qso_label.setStyleSheet(
-            "color:#444; font-size:10px;")
+            "color:#444; font-size:12px;")
         state_l.addWidget(self._qso_label)
 
         self._tx_msg_label = QLabel("")
         self._tx_msg_label.setStyleSheet(
-            "color:#3fbe6f; font-family:'Courier New'; font-size:10px;")
+            "color:#3fbe6f; font-family:'Courier New'; font-size:12px;")
         self._tx_msg_label.setWordWrap(True)
         state_l.addWidget(self._tx_msg_label)
 
@@ -227,13 +239,20 @@ class ModesTab(QWidget):
         self._cq_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
             "border-radius:4px;font-weight:bold;font-size:12px;")
+        self._cq_btn.setToolTip(
+            "Transmit CQ call\n"
+            "Requires WSJT-X connected via UDP\n"
+            "Auto-returns to IDLE after 2 cycles without response")
         self._cq_btn.clicked.connect(self._send_cq)
 
         self._halt_btn = QPushButton("Halt TX")
         self._halt_btn.setFixedHeight(30)
         self._halt_btn.setStyleSheet(
             "background:#3a1a1a;color:#cc4444;border:1px solid #cc4444;"
-            "border-radius:4px;font-size:11px;")
+            "border-radius:4px;font-size:13px;")
+        self._halt_btn.setToolTip(
+            "Stop transmitting immediately\n"
+            "Cancels auto-sequence and returns to IDLE")
         self._halt_btn.clicked.connect(self._halt_tx)
         btn_row1.addWidget(self._cq_btn)
         btn_row1.addWidget(self._halt_btn)
@@ -300,10 +319,10 @@ class ModesTab(QWidget):
 
         def _stat(label, attr):
             lbl = QLabel(label)
-            lbl.setStyleSheet("color:#555; font-size:10px;")
+            lbl.setStyleSheet("color:#555; font-size:12px;")
             val = QLabel("0")
             val.setStyleSheet(
-                "color:#3fbe6f; font-size:11px; "
+                "color:#3fbe6f; font-size:13px; "
                 "font-family:'Courier New';")
             setattr(self, attr, val)
             return lbl, val
@@ -367,12 +386,12 @@ class ModesTab(QWidget):
         self._decode_table.verticalHeader().setVisible(False)
         self._decode_table.setStyleSheet("""
             QTableWidget{background:#0d0d0d;color:#aaa;
-              gridline-color:#1a1a1a;font-size:11px;
+              gridline-color:#1a1a1a;font-size:13px;
               font-family:'Courier New';
               alternate-background-color:#111111;
               selection-background-color:#1a3a1a;}
             QHeaderView::section{background:#141414;color:#666;
-              border:none;font-size:10px;padding:3px;}
+              border:none;font-size:12px;padding:3px;}
         """)
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
         right_layout.addWidget(self._decode_table, 3)
@@ -392,7 +411,7 @@ class ModesTab(QWidget):
         self._activity_log.setMaximumHeight(120)
         self._activity_log.setStyleSheet(
             "background:#080808; color:#3fbe6f; "
-            "font-family:'Courier New'; font-size:10px; "
+            "font-family:'Courier New'; font-size:12px; "
             "border:1px solid #1a1a1a;")
         right_layout.addWidget(self._activity_log)
 
@@ -411,7 +430,7 @@ class ModesTab(QWidget):
         status_row = QHBoxLayout()
         self._fldigi_status = QLabel("● Not connected")
         self._fldigi_status.setStyleSheet(
-            "color:#888; font-size:11px; font-weight:bold;")
+            "color:#888; font-size:13px; font-weight:bold;")
         self._fldigi_connect_btn = QPushButton("Launch Fldigi")
         self._fldigi_connect_btn.setFixedHeight(26)
         self._fldigi_connect_btn.clicked.connect(self._connect_fldigi)
@@ -439,12 +458,389 @@ class ModesTab(QWidget):
 
     # ── Wire signals ──────────────────────────────────────────────────────
 
+    def _build_dx_panel(self):
+        """
+        Live DX spots panel at bottom of Modes tab.
+        Shows recent DX from cluster, filtered by current band.
+        """
+        from PyQt6.QtWidgets import (
+            QGroupBox, QTableWidget, QTableWidgetItem,
+            QHeaderView, QHBoxLayout, QPushButton,
+            QComboBox, QLabel)
+
+        # Find the root layout and add DX panel
+        dx_grp = QGroupBox("DX Spots (cluster)")
+        dx_grp.setMaximumHeight(160)
+        dl = QVBoxLayout(dx_grp)
+        dl.setContentsMargins(4, 4, 4, 4)
+        dl.setSpacing(3)
+
+        # Controls row
+        ctrl = QHBoxLayout()
+        ctrl.addWidget(QLabel("Band:"))
+        self._dx_band = QComboBox()
+        self._dx_band.addItems([
+            "Current", "160m","80m","40m","30m","20m",
+            "17m","15m","12m","10m","6m","All"])
+        self._dx_band.setFixedWidth(80)
+        self._dx_band.currentTextChanged.connect(
+            self._filter_dx_spots)
+        ctrl.addWidget(self._dx_band)
+
+        ctrl.addWidget(QLabel("Mode:"))
+        self._dx_mode_filter = QComboBox()
+        self._dx_mode_filter.addItems([
+            "All","FT8","CW","SSB","FT4"])
+        self._dx_mode_filter.setFixedWidth(60)
+        self._dx_mode_filter.currentTextChanged.connect(
+            self._filter_dx_spots)
+        ctrl.addWidget(self._dx_mode_filter)
+
+        ctrl.addStretch()
+
+        self._dx_status = QLabel("DX Cluster: not connected")
+        self._dx_status.setStyleSheet("color:#555;font-size:12px;")
+        ctrl.addWidget(self._dx_status)
+
+        conn_btn = QPushButton("Connect")
+        conn_btn.setFixedHeight(22)
+        conn_btn.setFixedWidth(70)
+        conn_btn.clicked.connect(self._toggle_dx_cluster)
+        self._dx_conn_btn = conn_btn
+        ctrl.addWidget(conn_btn)
+        dl.addLayout(ctrl)
+
+        # Spot table
+        self._dx_table = QTableWidget(0, 5)
+        self._dx_table.setHorizontalHeaderLabels([
+            "DX", "Freq", "Spotter", "Comment", "Time"])
+        h = self._dx_table.horizontalHeader()
+        h.setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch)
+        self._dx_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._dx_table.setFixedHeight(90)
+        self._dx_table.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;color:#aaa;"
+            "font-size:13px;font-family:'Courier New';"
+            "border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;"
+            "color:#555;border:none;font-size:13px;}")
+        self._dx_table.doubleClicked.connect(
+            self._tune_to_dx_spot)
+        dl.addWidget(self._dx_table)
+
+        # Add to root layout - find it
+        self.layout().addWidget(dx_grp)
+        self._dx_cluster = None
+        self._dx_spots   = []
+
+        # SOTA/POTA spots panel
+        self._build_sota_pota_panel()
+
+    def _build_sota_pota_panel(self):
+        """SOTA and POTA activator spots panel."""
+        from PyQt6.QtWidgets import (
+            QGroupBox, QTableWidget, QTableWidgetItem,
+            QHeaderView, QHBoxLayout, QComboBox, QLabel)
+
+        sp_grp = QGroupBox("SOTA / POTA Spots")
+        sp_grp.setMaximumHeight(150)
+        sl = QVBoxLayout(sp_grp)
+        sl.setContentsMargins(4, 4, 4, 4)
+        sl.setSpacing(3)
+
+        # Controls
+        ctrl = QHBoxLayout()
+        self._sp_mode = QComboBox()
+        self._sp_mode.addItems(["SOTA", "POTA", "Both"])
+        self._sp_mode.setFixedWidth(80)
+        self._sp_mode.currentTextChanged.connect(
+            self._filter_sota_pota)
+        ctrl.addWidget(QLabel("Show:"))
+        ctrl.addWidget(self._sp_mode)
+
+        self._sp_status = QLabel("Not started")
+        self._sp_status.setStyleSheet(
+            "color:#555;font-size:12px;")
+        ctrl.addStretch()
+        ctrl.addWidget(self._sp_status)
+
+        sp_start = QPushButton("▶ Start")
+        sp_start.setFixedHeight(22)
+        sp_start.setFixedWidth(60)
+        sp_start.setToolTip(
+            "Fetch SOTA/POTA activator spots\n"
+            "Updates every 5 minutes")
+        sp_start.clicked.connect(self._start_sota_pota)
+        ctrl.addWidget(sp_start)
+        sl.addLayout(ctrl)
+
+        # Spot table
+        self._sp_table = QTableWidget(0, 5)
+        self._sp_table.setHorizontalHeaderLabels([
+            "Callsign", "Freq", "Mode",
+            "Reference", "Name"])
+        h = self._sp_table.horizontalHeader()
+        h.setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(
+            4, QHeaderView.ResizeMode.Stretch)
+        self._sp_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._sp_table.setFixedHeight(88)
+        self._sp_table.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;color:#aaa;"
+            "font-size:12px;border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;"
+            "color:#555;border:none;font-size:12px;}")
+        self._sp_table.doubleClicked.connect(
+            self._tune_to_sota_pota)
+        sl.addWidget(self._sp_table)
+
+        self.layout().addWidget(sp_grp)
+        self._sota_spots = []
+        self._pota_spots = []
+        self._sota_client = None
+        self._pota_client = None
+
+    def _start_sota_pota(self):
+        """Start fetching SOTA/POTA spots."""
+        from network.sota_pota import SOTAClient, POTAClient
+        from PyQt6.QtCore import QTimer
+
+        if self._sota_client is None:
+            self._sota_client = SOTAClient()
+            self._sota_client.on_spots(
+                lambda s: QTimer.singleShot(0,
+                    lambda spots=s:
+                        self._on_sota_spots(spots)))
+            self._sota_client.start()
+
+        if self._pota_client is None:
+            self._pota_client = POTAClient()
+            self._pota_client.on_spots(
+                lambda s: QTimer.singleShot(0,
+                    lambda spots=s:
+                        self._on_pota_spots(spots)))
+            self._pota_client.start()
+
+        self._sp_status.setText(
+            "Fetching…")
+        self._sp_status.setStyleSheet(
+            "color:#888;font-size:12px;")
+
+    def _on_sota_spots(self, spots):
+        self._sota_spots = spots
+        self._filter_sota_pota()
+        self._sp_status.setText(
+            f"SOTA: {len(spots)}")
+        self._sp_status.setStyleSheet(
+            "color:#3fbe6f;font-size:12px;")
+
+    def _on_pota_spots(self, spots):
+        self._pota_spots = spots
+        self._filter_sota_pota()
+
+    def _filter_sota_pota(self, _=None):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+        mode = self._sp_mode.currentText()
+        all_spots = []
+        if mode in ("SOTA", "Both"):
+            for s in self._sota_spots:
+                all_spots.append((
+                    s.callsign, f"{s.freq_mhz:.4f}",
+                    s.mode, s.summit, s.summit_name,
+                    s.freq_mhz, "sota"))
+        if mode in ("POTA", "Both"):
+            for s in self._pota_spots:
+                all_spots.append((
+                    s.callsign, f"{s.freq_mhz:.4f}",
+                    s.mode, s.park, s.park_name,
+                    s.freq_mhz, "pota"))
+
+        self._sp_table.setRowCount(0)
+        for spot_data in all_spots[:15]:
+            row = self._sp_table.rowCount()
+            self._sp_table.insertRow(row)
+            for col, val in enumerate(spot_data[:5]):
+                item = QTableWidgetItem(str(val))
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter)
+                self._sp_table.setItem(row, col, item)
+
+    def _tune_to_sota_pota(self, index):
+        """Tune rig to SOTA/POTA spot frequency."""
+        row = index.row()
+        freq_item = self._sp_table.item(row, 1)
+        if not freq_item:
+            return
+        try:
+            freq_hz = int(float(
+                freq_item.text()) * 1_000_000)
+            if self.rig and self.rig.is_connected:
+                self.rig.set_freq(freq_hz)
+            else:
+                # Update VFO display even without rig
+                self._set_freq(freq_hz)
+        except Exception:
+            pass
+
+    def _start_dx_cluster(self):
+        """Auto-connect to DX cluster if configured."""
+        if self.cfg.get("dx_cluster.auto_connect", False):
+            QTimer.singleShot(2000, self._toggle_dx_cluster)
+
+    def _toggle_dx_cluster(self):
+        from network.dx_cluster import DXClusterClient
+        if self._dx_cluster:
+            self._dx_cluster.stop()
+            self._dx_cluster = None
+            self._dx_status.setText(
+                "DX Cluster: disconnected")
+            self._dx_conn_btn.setText("Connect")
+            return
+
+        self._dx_cluster = DXClusterClient(self.cfg)
+        self._dx_cluster.on_spot(self._on_dx_spot)
+        self._dx_status.setText("Connecting…")
+        self._dx_cluster.start()
+        # Check if connected after start
+        QTimer.singleShot(1000, self._check_dx_connected)
+
+    def _check_dx_connected(self):
+        if self._dx_cluster:
+            if getattr(self._dx_cluster, "_running", False):
+                self._apply_dx_status("connected", "DX Cluster")
+            else:
+                self._apply_dx_status("error", "")
+                self._dx_status.setText(
+                    "DX Cluster: configure HamAlert API key")
+
+    def _on_dx_status(self, status: str, node: str = ""):
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, lambda s=status, n=node:
+            self._apply_dx_status(s, n))
+
+    def _apply_dx_status(self, status: str, node: str):
+        if status == "connected":
+            self._dx_status.setText(
+                f"DX Cluster: {node}")
+            self._dx_status.setStyleSheet(
+                "color:#3fbe6f;font-size:12px;")
+            self._dx_conn_btn.setText("Disconnect")
+            self.cfg.set("dx_cluster.auto_connect", True)
+        else:
+            self._dx_status.setText(
+                "DX Cluster: disconnected")
+            self._dx_status.setStyleSheet(
+                "color:#555;font-size:12px;")
+            self._dx_conn_btn.setText("Connect")
+
+    def _on_dx_spot(self, spot):
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0,
+            lambda s=spot: self._add_dx_spot(s))
+
+    def _add_dx_spot(self, spot):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        # Remove duplicate DX call
+        self._dx_spots = [
+            s for s in self._dx_spots
+            if s.dx_call != spot.dx_call]
+        self._dx_spots.insert(0, spot)
+        if len(self._dx_spots) > 100:
+            self._dx_spots = self._dx_spots[:100]
+        self._filter_dx_spots()
+
+    def _filter_dx_spots(self):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+        band = self._dx_band.currentText()
+        mode = self._dx_mode_filter.currentText()
+
+        if band == "Current":
+            band = self._current_band or ""
+        elif band == "All":
+            band = ""
+
+        self._dx_table.setRowCount(0)
+        shown = 0
+        for spot in self._dx_spots:
+            if band and spot.band != band:
+                continue
+            if mode != "All" and spot.mode and                spot.mode.upper() != mode.upper():
+                continue
+            row = self._dx_table.rowCount()
+            self._dx_table.insertRow(row)
+            for col, val in enumerate([
+                    spot.dx_call,
+                    f"{spot.freq_khz:.1f}",
+                    spot.spotter,
+                    spot.comment[:30],
+                    spot.time_utc]):
+                item = QTableWidgetItem(val)
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter)
+                self._dx_table.setItem(row, col, item)
+            shown += 1
+            if shown >= 10:
+                break
+
+    def _tune_to_dx_spot(self, index):
+        """Double-click DX spot to tune rig."""
+        row = index.row()
+        if row >= len(self._dx_spots):
+            return
+        spot = self._dx_spots[row]
+        freq_hz = int(spot.freq_khz * 1000)
+        if self.rig and self.rig.is_connected:
+            try:
+                self.rig.set_freq(freq_hz)
+            except Exception:
+                pass
+
     def _wire(self):
         self._band_combo.currentTextChanged.connect(self._on_band_change)
         self._tx_freq_spin.valueChanged.connect(
             self.ft8_engine.set_tx_freq)
 
     # ── Mode tab switching ────────────────────────────────────────────────
+
+    def _rescan_software(self):
+        """Re-check for running software instances."""
+        try:
+            self._ft8_engine.reconnect()
+        except Exception:
+            pass
+        self._launch_bar.refresh()
+
+    def _auto_launch_wsjtx(self):
+        """Auto-launch WSJT-X when FT8/FT4/WSPR selected."""
+        launcher = get_launcher(self.cfg)
+        if not launcher.is_available("paths.wsjtx"):
+            return
+        # Check if already running
+        import subprocess, sys
+        try:
+            if sys.platform == "win32":
+                out = subprocess.run(
+                    ["tasklist"], capture_output=True,
+                    text=True).stdout.lower()
+                if "wsjtx" in out:
+                    return  # already running
+            else:
+                out = subprocess.run(
+                    ["pgrep", "-x", "wsjtx"],
+                    capture_output=True).returncode
+                if out == 0:
+                    return
+        except Exception:
+            pass
+        launcher.launch("paths.wsjtx")
 
     def _on_mode_tab(self, idx: int):
         modes = ["FT8","FT4","WSPR","JS8","PSK31","RTTY","CW","SSTV"]
@@ -471,6 +867,7 @@ class ModesTab(QWidget):
     # ── Band / frequency ──────────────────────────────────────────────────
 
     def _on_band_change(self, band: str):
+        self._current_band = band
         self._active_band = band
         mode  = self._current_mode
         freq  = self._get_mode_freq(mode, band)
@@ -528,12 +925,12 @@ class ModesTab(QWidget):
         if ok:
             self._fldigi_status.setText("● Connected")
             self._fldigi_status.setStyleSheet(
-                "color:#3fbe6f; font-size:11px; font-weight:bold;")
+                "color:#3fbe6f; font-size:13px; font-weight:bold;")
             self.fldigi.set_mode(self._current_mode)
         else:
             self._fldigi_status.setText("● Failed — check Fldigi install")
             self._fldigi_status.setStyleSheet(
-                "color:#cc4444; font-size:11px; font-weight:bold;")
+                "color:#cc4444; font-size:13px; font-weight:bold;")
 
     def _fldigi_tx(self):
         text = self._fldigi_tx_edit.text()
@@ -635,7 +1032,7 @@ class ModesTab(QWidget):
         color = STATE_COLORS.get(state, "#555")
         self._state_label.setText(f"● {state.value}")
         self._state_label.setStyleSheet(
-            f"color:{color}; font-size:11px; font-weight:bold;")
+            f"color:{color}; font-size:13px; font-weight:bold;")
         qso = self.ft8_engine.current_qso
         if qso.their_call:
             self._qso_label.setText(

@@ -1,6 +1,11 @@
 @echo off
 title Squelch — Debug Mode
 cd /d "%~dp0"
-call venv\Scripts\activate.bat
-python main.py --debug %*
-if errorlevel 1 pause
+venv\Scripts\python.exe main.py --debug %*
+if errorlevel 1 (
+    echo.
+    echo Squelch exited with an error.
+    echo Check %APPDATA%\Squelch\logs\squelch.log
+    echo.
+    pause
+)

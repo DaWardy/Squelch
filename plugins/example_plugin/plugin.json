@@ -1,0 +1,8 @@
+{
+  "name": "Example Plugin",
+  "version": "1.0.0",
+  "author": "github.com/dawardy/squelch",
+  "description": "Demonstrates the Squelch plugin API",
+  "apex_min_version": "0.6.0",
+  "hooks": ["on_load", "on_frequency_change", "on_decode"]
+}

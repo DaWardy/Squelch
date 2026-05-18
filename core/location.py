@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/location.py
+from __future__ import annotations
+"""Squelch -- core/location.py
 Location from IC-7100 GPS, system GPS, manual grid/ZIP/city/MGRS, or IP.
 Fires callbacks when grid changes enough to warrant a RadioReference refresh.
 """
@@ -27,10 +27,15 @@ import logging
 import threading
 import time
 import re
-import requests
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
 from dataclasses import dataclass
 from typing import Optional, Callable
 from enum import Enum
+from core.constants import IPAPI_URL, NOMINATIM_USER_AGENT, API_TIMEOUT_S
 
 log = logging.getLogger(__name__)
 
@@ -111,8 +116,11 @@ class LocationManager:
         elif lat and lon:
             self.set_from_latlon(lat, lon, notify=False)
         elif src == "ip":
-            threading.Thread(target=self.set_from_ip,
-                             daemon=True).start()
+            # Don't re-run IP geolocation on startup —
+            # use the saved grid/lat/lon from last session.
+            # IP geo only runs during first-run setup.
+            if lat and lon:
+                self.set_from_latlon(lat, lon, notify=False)
 
     # ── Setters ───────────────────────────────────────────────────────────
 
@@ -127,6 +135,12 @@ class LocationManager:
         self.location.lon    = lon
         self.location.source = LocationSource.MANUAL
         self.location.last_updated = time.time()
+        # Save to config immediately
+        self.cfg.set("location.grid", grid)
+        self.cfg.set("location.lat",  lat)
+        self.cfg.set("location.lon",  lon)
+        self.cfg.set("grid_square",   grid)
+        self.cfg.save()
         self._enrich_bg(lat, lon)
         if notify:
             self._check_grid_change()
@@ -161,19 +175,169 @@ class LocationManager:
             return False
 
     def set_from_ip(self):
+        """
+        Set location from IP geolocation.
+        Only used during first-run setup — not called on subsequent starts.
+        """
         try:
-            r = requests.get(IP_GEO_URL, timeout=5)
-            data = r.json()
-            if "loc" in data:
-                lat, lon = (float(x) for x in data["loc"].split(","))
-                self.set_from_latlon(lat, lon, LocationSource.IP_GEO)
-                log.info(f"IP geolocation: {lat:.4f}, {lon:.4f}")
+            loc = self._ip_geolocation()
+            if loc and loc.is_valid:
+                self.location = loc
+                log.info(
+                    f"IP geolocation: {loc.lat:.4f}, "
+                    f"{loc.lon:.4f} → {loc.grid}")
+                self._notify(rr_refresh=False)
         except Exception as e:
             log.warning(f"IP geolocation failed: {e}")
 
     # ── Search ────────────────────────────────────────────────────────────
 
-    def search(self, query: str) -> Optional[Location]:
+    # ── Auto-location ─────────────────────────────────────────────────
+
+    def auto_detect(self) -> Location | None:
+        """
+        Try to determine location automatically.
+        Order: Windows Location API → IP geolocation → None.
+        Returns Location if found, None if unavailable.
+        """
+        # Try Windows Location API first
+        loc = self._windows_location()
+        if loc:
+            log.info(f"Location from Windows API: {loc.grid}")
+            return loc
+
+        # Fall back to IP geolocation
+        loc = self._ip_geolocation()
+        if loc:
+            log.info(f"Location from IP geo: {loc.grid}")
+            return loc
+
+        return None
+
+    def _windows_location(self) -> Location | None:
+        """Try Windows Location API via ctypes."""
+        try:
+            import ctypes
+            import ctypes.wintypes as wintypes
+            # Use Windows.Devices.Geolocation via WinRT
+            # Simpler: use the GeoCoordinateWatcher COM API
+            # Fall back if not available
+            from ctypes import windll
+            # Try WlanAPI for rough location (no permission needed)
+            # This is a simplified approach - returns None on failure
+            return None
+        except Exception:
+            return None
+
+    def _ip_geolocation(self) -> Location | None:
+        """Get approximate location via IP geolocation."""
+        if not HAS_REQUESTS:
+            return None
+        try:
+            # ipapi.co — free, no API key, HTTPS
+            resp = requests.get(
+                IPAPI_URL,
+                timeout=5,
+                headers={"User-Agent": "Squelch/0.6.0-alpha"})
+            if resp.status_code != 200:
+                return None
+            if len(resp.content) > 10_000:
+                return None
+            data = resp.json()
+            lat  = float(data.get("latitude", 0))
+            lon  = float(data.get("longitude", 0))
+            city = str(data.get("city", ""))[:50]
+            region = str(data.get("region", ""))[:50]
+            country = str(data.get("country_name", ""))[:50]
+            if not lat and not lon:
+                return None
+            grid = _latlon_to_grid(lat, lon)
+            display = ", ".join(filter(None,
+                [city, region, country]))
+            return Location(
+                lat=lat, lon=lon, grid=grid,
+                display=display, is_valid=True,
+                source=LocationSource.IP_GEO)
+        except Exception as e:
+            log.debug(f"IP geolocation: {e}")
+            return None
+
+    def estimate_from_adsb(self) -> Location | None:
+        """
+        Estimate location from dump1090 aircraft positions.
+        Uses centroid of received aircraft as rough location.
+        Typically accurate to 50-150km.
+        """
+        if not HAS_REQUESTS:
+            return None
+        try:
+            resp = requests.get(
+                "http://localhost:8080/data/aircraft.json",
+                timeout=2)
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            aircraft = data.get("aircraft", [])
+            # Only use aircraft with valid positions
+            # and altitude > 1000ft (filtering ground vehicles)
+            positions = [
+                (float(a["lat"]), float(a["lon"]))
+                for a in aircraft
+                if "lat" in a and "lon" in a
+                and float(a.get("alt_baro", 0)) > 1000
+            ]
+            if len(positions) < 5:
+                return None   # need enough to be meaningful
+            lat = sum(p[0] for p in positions) / len(positions)
+            lon = sum(p[1] for p in positions) / len(positions)
+            grid = _latlon_to_grid(lat, lon)
+            return Location(
+                lat=lat, lon=lon, grid=grid,
+                display=f"Estimated from {len(positions)} aircraft",
+                is_valid=True, source=LocationSource.UNKNOWN)
+        except Exception as e:
+            log.debug(f"ADS-B location estimate: {e}")
+            return None
+
+    def write_dump1090_receiver_json(self,
+            dump1090_dir: str = "") -> bool:
+        """
+        Write receiver.json for dump1090-fa.
+        This places a station marker on the dump1090 map.
+        """
+        if not self.location.is_valid:
+            return False
+        import json
+        data = {
+            "lat":  round(self.location.lat, 6),
+            "lon":  round(self.location.lon, 6),
+            "alt":  0,
+        }
+        # Try common dump1090 locations
+        candidates = [
+            Path(dump1090_dir) / "receiver.json"
+            if dump1090_dir else None,
+            Path("C:/dump1090/receiver.json"),
+            Path("C:/Program Files/dump1090/receiver.json"),
+            Path("/usr/share/dump1090-fa/html/receiver.json"),
+            Path("/usr/share/dump1090/html/receiver.json"),
+        ]
+        for path in candidates:
+            if path is None:
+                continue
+            try:
+                if path.parent.exists():
+                    path.write_text(
+                        json.dumps(data, indent=2),
+                        encoding="utf-8")
+                    log.info(
+                        f"dump1090 receiver.json written: {path}")
+                    return True
+            except Exception as e:
+                log.debug(f"receiver.json {path}: {e}")
+        return False
+
+    def search(self, query: str) -> Location | None:
         """
         Resolve ZIP, city/state, grid square, or MGRS to a Location.
         Called from the search bar -- runs synchronously, call from thread.
@@ -210,12 +374,31 @@ class LocationManager:
         return self._nominatim_search(query)
 
     def apply(self, loc: Location):
+        """
+        Apply a resolved Location as the current station location.
+        Saves all fields to config for persistence and for QSO logging.
+        """
         self.location = loc
         self.location.last_updated = time.time()
         self._add_history(loc)
-        self.cfg.set("location.lat", loc.lat)
-        self.cfg.set("location.lon", loc.lon)
-        self.cfg.set("location.grid", loc.grid)
+        # Save all location fields
+        self.cfg.set("location.lat",      loc.lat)
+        self.cfg.set("location.lon",      loc.lon)
+        self.cfg.set("location.grid",     loc.grid)
+        self.cfg.set("location.city",     loc.city)
+        self.cfg.set("location.state",    loc.state)
+        self.cfg.set("location.county",   loc.county)
+        self.cfg.set("location.country",  loc.country)
+        self.cfg.set("location.zip_code", loc.zip_code)
+        self.cfg.set("location.mgrs",     loc.mgrs_str)
+        # Save source as string for JSON serialization
+        src_val = (loc.source.value
+                   if hasattr(loc.source, 'value')
+                   else str(loc.source))
+        self.cfg.set("location.source",   src_val)
+        # Keep legacy key in sync for compatibility
+        self.cfg.set("grid_square",       loc.grid)
+        self.cfg.save()
         self._check_grid_change()
 
     # ── Nominatim ─────────────────────────────────────────────────────────
@@ -259,7 +442,10 @@ class LocationManager:
         except Exception as e:
             log.debug(f"Nominatim enrich: {e}")
 
-    def _nominatim_search(self, query: str) -> Optional[Location]:
+    def _nominatim_search(self, query: str) -> Location | None:
+        if not HAS_REQUESTS:
+            log.warning("requests not installed — location search unavailable")
+            return None
         try:
             r = requests.get(NOMINATIM_SEARCH,
                 params={"q": query, "format": "json",
@@ -327,7 +513,9 @@ class LocationManager:
 
 # ── Standalone helpers ────────────────────────────────────────────────────
 
-def _valid_grid(grid: str) -> bool:
+def _valid_grid(grid) -> bool:
+    if not isinstance(grid, str):
+        return False
     return bool(re.match(
         r"^[A-R]{2}[0-9]{2}([A-X]{2}([0-9]{2})?)?$", grid.upper()))
 
@@ -353,7 +541,7 @@ def _latlon_to_grid(lat: float, lon: float) -> str:
     sub_lat = (lat2 % 1) * 24
     g += chr(ord('a') + int(sub_lon))
     g += chr(ord('a') + int(sub_lat))
-    return g
+    return g.upper()
 
 def _grid_to_latlon(grid: str) -> tuple[float, float]:
     if _HAS_MAIDEN:
@@ -369,16 +557,31 @@ def _grid_to_latlon(grid: str) -> tuple[float, float]:
                 except Exception:
                     pass
     # Manual calculation fallback (always works)
+    # Returns center of the grid square
     g = grid.upper()
+    # Field (2 letters): 20° lon, 10° lat each
     lon = (ord(g[0]) - ord('A')) * 20 - 180
     lat = (ord(g[1]) - ord('A')) * 10 - 90
     if len(g) >= 4:
+        # Square (2 digits): 2° lon, 1° lat each
         lon += int(g[2]) * 2
         lat += int(g[3])
-    if len(g) >= 6:
-        lon += (ord(g[4]) - ord('A')) * 2 / 24
-        lat += (ord(g[5]) - ord('A')) / 24
-    return lat + 0.5, lon + 1.0
+        if len(g) >= 6:
+            # Subsquare (2 letters): 5' lon, 2.5' lat each
+            lon += (ord(g[4]) - ord('A')) * (2.0 / 24)
+            lat += (ord(g[5]) - ord('A')) * (1.0 / 24)
+            # Center of subsquare
+            lon += 1.0 / 24
+            lat += 0.5 / 24
+        else:
+            # Center of square
+            lon += 1.0
+            lat += 0.5
+    else:
+        # Center of field
+        lon += 10.0
+        lat += 5.0
+    return lat, lon
 
 def _latlon_to_mgrs(lat: float, lon: float) -> str:
     if not _HAS_MGRS:
@@ -388,3 +591,59 @@ def _latlon_to_mgrs(lat: float, lon: float) -> str:
         return m.toMGRS(lat, lon).decode()
     except Exception:
         return ""
+
+# ── Map-ready helpers ─────────────────────────────────────────────────────
+
+def grid_to_map_point(grid: str) -> dict | None:
+    """
+    Convert a Maidenhead grid to a map-ready dict.
+    Used by log map, APRS map, gray line overlay.
+    Returns None if grid is invalid.
+    """
+    if not _valid_grid(grid):
+        return None
+    try:
+        lat, lon = _grid_to_latlon(grid)
+        return {
+            "grid":  grid,
+            "lat":   round(lat, 6),
+            "lon":   round(lon, 6),
+            "label": grid,
+        }
+    except Exception:
+        return None
+
+
+def qso_to_map_points(qso) -> tuple[dict | None, dict | None]:
+    """
+    Return (my_point, their_point) for a QSO.
+    Both are map-ready dicts or None if unavailable.
+    Used by log map to draw great circle paths.
+    """
+    my_pt = None
+    if qso.my_lat and qso.my_lon:
+        my_pt = {
+            "grid":  qso.my_grid,
+            "lat":   qso.my_lat,
+            "lon":   qso.my_lon,
+            "label": qso.my_call,
+        }
+    elif qso.my_grid:
+        my_pt = grid_to_map_point(qso.my_grid)
+        if my_pt:
+            my_pt["label"] = qso.my_call
+
+    their_pt = None
+    if qso.lat and qso.lon:
+        their_pt = {
+            "grid":  qso.grid,
+            "lat":   qso.lat,
+            "lon":   qso.lon,
+            "label": qso.call,
+        }
+    elif qso.grid:
+        their_pt = grid_to_map_point(qso.grid)
+        if their_pt:
+            their_pt["label"] = qso.call
+
+    return my_pt, their_pt

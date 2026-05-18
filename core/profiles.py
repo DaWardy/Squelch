@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/profiles.py
+from __future__ import annotations
+"""Squelch -- core/profiles.py
 User profile system. Each profile has:
   - Separate config.json
   - Separate QSO log database
@@ -43,7 +43,8 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-PROFILES_DIR  = Path("profiles")
+from core.config import PROFILES_DIR as _PROFILES_DIR
+PROFILES_DIR  = _PROFILES_DIR
 PROFILES_META = PROFILES_DIR / "profiles.json"
 
 
@@ -81,7 +82,7 @@ class ProfileManager:
 
     def __init__(self):
         self._profiles:  dict[str, Profile] = {}
-        self._current:   Optional[Profile]  = None
+        self._current:   Profile | None  = None
         self._loaded     = False
 
     # ── Load / Save ───────────────────────────────────────────────────────
@@ -185,7 +186,7 @@ class ProfileManager:
 
     # ── Selection ─────────────────────────────────────────────────────────
 
-    def select(self, name: str) -> Optional[Profile]:
+    def select(self, name: str) -> Profile | None:
         """Select a profile as current."""
         profile = self._profiles.get(name)
         if not profile:
@@ -197,7 +198,7 @@ class ProfileManager:
         self.save()
         return profile
 
-    def last_used(self) -> Optional[Profile]:
+    def last_used(self) -> Profile | None:
         """Return the last used profile."""
         if not PROFILES_META.exists():
             return None
@@ -258,12 +259,46 @@ class ProfileManager:
 
     # ── Properties ───────────────────────────────────────────────────────
 
+    def list_profiles(self) -> list[str]:
+        """Return list of profile display names."""
+        pm = get_profile_manager()
+        return [p.display_name or p.name
+                for p in pm.profiles.values()]
+
+    def current_name(self) -> str:
+        """Return current profile display name."""
+        pm = get_profile_manager()
+        cur = pm.current()
+        if cur:
+            return cur.display_name or cur.name
+        return "Default"
+
+    def switch_to(self, display_name: str) -> bool:
+        """Switch to profile by display name."""
+        pm = get_profile_manager()
+        for name, p in pm.profiles.items():
+            if (p.display_name == display_name or
+                    p.name == display_name):
+                result = pm.select(name)
+                return result is not None
+        return False
+
+    def create(self, display_name: str) -> bool:
+        """Create a new profile with given display name."""
+        pm = get_profile_manager()
+        slug = display_name.upper().replace(" ", "_")[:20]
+        try:
+            pm.create(slug, display_name, display_name)
+            return True
+        except Exception:
+            return False
+
     @property
     def profiles(self) -> dict[str, Profile]:
         return dict(self._profiles)
 
     @property
-    def current(self) -> Optional[Profile]:
+    def current(self) -> Profile | None:
         return self._current
 
     @property
@@ -272,7 +307,7 @@ class ProfileManager:
 
 
 # Module-level singleton
-_manager: Optional[ProfileManager] = None
+_manager: ProfileManager | None = None
 
 def get_profile_manager() -> ProfileManager:
     global _manager

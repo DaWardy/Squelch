@@ -4,7 +4,6 @@
   "callsign": "",
   "grid_square": "",
   "operator_name": "",
-
   "rig": {
     "model": "IC-7100",
     "hamlib_model": 370,
@@ -18,7 +17,6 @@
     "attenuator": 0,
     "filter": 1
   },
-
   "sdr": {
     "device": "AUTO",
     "device_string": "",
@@ -31,7 +29,6 @@
     "bias_tee": false,
     "antenna": "RX"
   },
-
   "location": {
     "source": "manual",
     "format": "grid",
@@ -44,14 +41,12 @@
     "use_rig_gps": true,
     "search_history": []
   },
-
   "apis": {
     "radioreference_key": "",
     "radioreference_user": "",
     "qrz_user": "",
     "qrz_pass": ""
   },
-
   "ft8": {
     "tx_power_dbm": 37,
     "auto_sequence": true,
@@ -67,35 +62,32 @@
     "priority_dxcc": [],
     "log_path": "logs/ft8_log.adi"
   },
-
   "wspr": {
     "tx_power_dbm": 27,
     "tx_pct": 20,
-    "bands": ["20m"],
+    "bands": [
+      "20m"
+    ],
     "upload_to_wsprnet": true,
     "background_mode": true
   },
-
   "js8": {
     "tcp_host": "127.0.0.1",
     "tcp_port": 2442,
     "tx_power_dbm": 37,
     "speed": "NORMAL"
   },
-
   "fldigi": {
     "xmlrpc_host": "127.0.0.1",
     "xmlrpc_port": 7362,
     "tx_power_dbm": 37
   },
-
   "vara": {
     "tcp_host": "127.0.0.1",
     "vara_hf_port": 8300,
     "vara_fm_port": 8400,
     "auto_launch": true
   },
-
   "audio": {
     "vb_cable_input": "",
     "vb_cable_output": "",
@@ -103,7 +95,6 @@
     "rig_output": "",
     "monitor_volume": 0.5
   },
-
   "paths": {
     "wsjtx": "",
     "js8call": "",
@@ -114,23 +105,30 @@
     "dsdplus": "",
     "dump1090": "",
     "hamlib_rigctld": "rigctld",
-    "tqsl": ""
+    "tqsl": "",
+    "iq_recordings": "recordings",
+    "pat": "",
+    "rms_express": "",
+    "chirp": "",
+    "rt_systems": ""
   },
-
   "logging": {
     "db_path": "logs/squelch_log.db",
     "adif_export_path": "logs/adif_exports/",
     "lotw_auto_queue": true,
     "qrz_auto_queue": true
   },
-
   "propagation": {
     "noaa_refresh_minutes": 15,
     "voacap_tx_power_w": 5,
     "voacap_antenna": "Dipole",
-    "wspr_bands_monitor": ["40m", "20m", "15m", "10m"]
+    "wspr_bands_monitor": [
+      "40m",
+      "20m",
+      "15m",
+      "10m"
+    ]
   },
-
   "aprs": {
     "enabled": true,
     "beacon_interval_min": 10,
@@ -140,21 +138,35 @@
     "aprs_is_port": 14580,
     "use_rig_aprs": true
   },
-
   "ui": {
     "theme": "dark",
     "waterfall_palette": "jet",
     "font_size": 11,
     "show_tooltips": true,
     "confirm_tx": false,
-    "startup_tab": "rig"
+    "startup_tab": "rig",
+    "layout_locked": false,
+    "tab_visible": {}
   },
-
   "classroom": {
     "lab_mode": false,
     "instructor_callsign": "",
     "session_logging": true,
     "lock_settings": false,
     "log_path": "logs/sessions/"
+  },
+  "modes": {
+    "auto_launch_wsjtx": true,
+    "auto_launch_fldigi": false,
+    "ft8_tx_power_dbm": 37
+  },
+  "dump1090": {
+    "host": "localhost",
+    "port": 8080,
+    "auto_launch": false
+  },
+  "security": {
+    "master_password_enabled": false,
+    "profile_name": "default"
   }
 }

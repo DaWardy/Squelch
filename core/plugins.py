@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/plugins.py
+from __future__ import annotations
+"""Squelch -- core/plugins.py
 Plugin system. Discovers, loads, and manages community plugins
 from the plugins/ directory.
 
@@ -211,7 +211,7 @@ class PluginManager:
     def __init__(self):
         self._plugins:  dict[str, ApexPlugin] = {}
         self._meta:     dict[str, PluginMeta] = {}
-        self._api:      Optional[PluginAPI]   = None
+        self._api:      PluginAPI | None   = None
         self._hooks:    dict[str, list[Callable]] = {}
 
     def set_api(self, api: PluginAPI):
@@ -379,7 +379,7 @@ class PluginManager:
 
 
 # Module-level singleton
-_manager: Optional[PluginManager] = None
+_manager: PluginManager | None = None
 
 def get_plugin_manager() -> PluginManager:
     global _manager

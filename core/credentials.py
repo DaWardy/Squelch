@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/credentials.py
+from __future__ import annotations
+"""Squelch -- core/credentials.py
 Secure credential storage using OS keyring.
 Passwords and API keys are never written to config.json.
 Optional master password per profile for shared/classroom machines.
@@ -52,14 +52,14 @@ except ImportError:
 SERVICE_PREFIX = "squelch"
 
 # Credential keys
-QRZ_PASSWORD       = "qrz_password"
+QRZ_PASSWORD       = "qrz_password"    # nosec B105
 QRZ_SESSION        = "qrz_session"
-HAMQTH_PASSWORD    = "hamqth_password"
+HAMQTH_PASSWORD    = "hamqth_password" # nosec B105
 RR_API_KEY         = "radioreference_key"
 HAMALERT_KEY       = "hamalert_key"
-LOTW_PASSWORD      = "lotw_password"
+LOTW_PASSWORD      = "lotw_password"   # nosec B105
 CLUBLOG_KEY        = "clublog_key"
-EQSL_PASSWORD      = "eqsl_password"
+EQSL_PASSWORD      = "eqsl_password"   # nosec B105
 HRDLOG_KEY         = "hrdlog_key"
 
 # Human-readable labels for UI
@@ -135,7 +135,7 @@ class CredentialStore:
             if not sentinel:
                 self._unlocked = True
                 return True
-            if sentinel == self._hash_password(password):
+            if self._verify_hash(password, sentinel):
                 self._unlocked = True
                 log.info(f"Profile unlocked: {self._profile}")
                 return True
@@ -254,14 +254,48 @@ class CredentialStore:
     # ── Internal ──────────────────────────────────────────────────────────
 
     @staticmethod
-    def _hash_password(password: str) -> str:
-        """Hash a password for sentinel storage."""
+    def _hash_password(password: str,
+                       salt: bytes = None) -> str:
+        """
+        Hash a password for sentinel storage.
+        Uses random salt per password (stored with hash).
+        Format: base64(salt) + ":" + base64(hash)
+        """
+        import os
+        if salt is None:
+            salt = os.urandom(32)  # 256-bit random salt
         h = hashlib.pbkdf2_hmac(
             'sha256',
             password.encode('utf-8'),
-            b'squelch-salt-2026',
-            100_000)
-        return base64.b64encode(h).decode('ascii')
+            salt,
+            200_000)  # 200k iterations (OWASP 2024 recommendation)
+        salt_b64 = base64.b64encode(salt).decode('ascii')
+        hash_b64  = base64.b64encode(h).decode('ascii')
+        return f"{salt_b64}:{hash_b64}"
+
+    @staticmethod
+    def _verify_hash(password: str, stored: str) -> bool:
+        """Verify a password against a stored hash."""
+        try:
+            if ':' in stored:
+                # New format: salt:hash
+                salt_b64, _ = stored.split(':', 1)
+                salt = base64.b64decode(salt_b64)
+                candidate = CredentialStore._hash_password(
+                    password, salt)
+                return candidate == stored
+            else:
+                # Legacy format (static salt) — upgrade on next set
+                import hmac
+                h = hashlib.pbkdf2_hmac(
+                    'sha256',
+                    password.encode('utf-8'),
+                    b'squelch-salt-2026',
+                    100_000)
+                legacy = base64.b64encode(h).decode('ascii')
+                return hmac.compare_digest(legacy, stored)
+        except Exception:
+            return False
 
     @property
     def is_unlocked(self) -> bool:

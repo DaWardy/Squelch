@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/widgets/spectrum_widget.py
+from __future__ import annotations
+"""Squelch -- ui/widgets/spectrum_widget.py
 Mini spectrum analyzer + waterfall for the Rig tab.
 Driven by IC-7100 audio (primary) or SoapySDR (if available).
 Band plan segments overlaid with color coding and hover tooltips.
@@ -51,6 +51,7 @@ except ImportError:
     HAS_SD = False
 
 from core.band_plan import segments_in_range, band_at_freq, SEG_COLORS, SegType
+from core.constants import FFT_SIZE
 
 # FFT config
 FFT_SIZE    = 2048
@@ -182,12 +183,12 @@ class SpectrumWidget(QWidget):
         bar.setContentsMargins(4, 0, 4, 0)
 
         lbl = QLabel("Spectrum / Waterfall")
-        lbl.setStyleSheet("color:#777; font-size:10px;")
+        lbl.setStyleSheet("color:#777; font-size:12px;")
         bar.addWidget(lbl)
         bar.addStretch()
 
         span_lbl = QLabel("Span:")
-        span_lbl.setStyleSheet("color:#666; font-size:10px;")
+        span_lbl.setStyleSheet("color:#666; font-size:12px;")
         bar.addWidget(span_lbl)
         self._span_combo = QComboBox()
         self._span_combo.addItems(["5 kHz", "10 kHz", "25 kHz",
@@ -195,12 +196,12 @@ class SpectrumWidget(QWidget):
         self._span_combo.setCurrentIndex(3)
         self._span_combo.setFixedWidth(75)
         self._span_combo.setStyleSheet(
-            "font-size:10px; background:#1a1a1a; color:#aaa; border:1px solid #333;")
+            "font-size:12px; background:#1a1a1a; color:#aaa; border:1px solid #333;")
         self._span_combo.currentIndexChanged.connect(self._on_span)
         bar.addWidget(self._span_combo)
 
         gain_lbl = QLabel("Gain:")
-        gain_lbl.setStyleSheet("color:#666; font-size:10px;")
+        gain_lbl.setStyleSheet("color:#666; font-size:12px;")
         bar.addWidget(gain_lbl)
         self._gain_slider = QSlider(Qt.Orientation.Horizontal)
         self._gain_slider.setRange(1, 20)
@@ -214,13 +215,13 @@ class SpectrumWidget(QWidget):
         self._axis_toggle.setToolTip(
             "Toggle between absolute MHz and kHz offset display")
         self._axis_toggle.setStyleSheet(
-            "font-size:9px;border:1px solid #333;border-radius:3px;"
+            "font-size:13px;border:1px solid #333;border-radius:3px;"
             "background:#1a1a1a;color:#888;")
         self._axis_toggle.clicked.connect(self._toggle_axis_mode)
         bar.addWidget(self._axis_toggle)
 
         self._src_lbl = QLabel("● Audio")
-        self._src_lbl.setStyleSheet("color:#555; font-size:10px;")
+        self._src_lbl.setStyleSheet("color:#555; font-size:12px;")
         bar.addWidget(self._src_lbl)
 
         root.addLayout(bar)
@@ -231,7 +232,7 @@ class SpectrumWidget(QWidget):
                 "pyqtgraph not installed\n"
                 "Run: pip install pyqtgraph --no-cache-dir")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder.setStyleSheet("color:#555; font-size:11px;")
+            placeholder.setStyleSheet("color:#555; font-size:13px;")
             root.addWidget(placeholder)
             return
 
@@ -350,12 +351,12 @@ class SpectrumWidget(QWidget):
             self._stream.start()
             dev_name = sd.query_devices(dev)["name"] if dev is not None else "default"
             self._src_lbl.setText(f"● {dev_name[:20]}")
-            self._src_lbl.setStyleSheet("color:#3fbe6f; font-size:10px;")
+            self._src_lbl.setStyleSheet("color:#3fbe6f; font-size:12px;")
             log.info(f"Spectrum audio: {dev_name}")
         except Exception as e:
             log.warning(f"Spectrum audio start failed: {e}")
             self._src_lbl.setText("● No audio")
-            self._src_lbl.setStyleSheet("color:#cc4444; font-size:10px;")
+            self._src_lbl.setStyleSheet("color:#cc4444; font-size:12px;")
 
     def _stop_audio(self):
         if self._stream:
@@ -371,7 +372,7 @@ class SpectrumWidget(QWidget):
             self._audio_buf = indata[:, 0].copy()
 
     @staticmethod
-    def _find_rig_audio() -> Optional[int]:
+    def _find_rig_audio() -> int | None:
         if not HAS_SD:
             return None
         devs = sd.query_devices()

@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- modes/ft8.py
+from __future__ import annotations
+"""Squelch -- modes/ft8.py
 FT8 and FT4 auto-sequence engine.
 Controls WSJT-X via UDP and shared log file.
 Full auto-sequence state machine matching WSJT-X behavior plus enhancements.
@@ -127,7 +127,9 @@ class FT8Engine:
         self.freq_hz  = 14_074_000
         self.tx_freq  = 1500    # audio offset Hz
 
-        self._state       = AutoSeqState.IDLE
+        self._state           = AutoSeqState.IDLE
+        self._wsjtx_connected = False
+        self._cq_timeout      = 0   # cycles remaining before CQ timeout
         self._qso         = QSOInProgress()
         self._decodes:    list[DecodedSignal] = []
         self._tx_even     = True
@@ -139,15 +141,15 @@ class FT8Engine:
         self._priority_calls: list[str] = []
         self._lockout:    set[str]  = set()
 
-        self._sock:       Optional[socket.socket] = None
-        self._rx_thread:  Optional[threading.Thread] = None
+        self._sock:       socket.socket | None = None
+        self._rx_thread:  threading.Thread | None = None
         self._running     = False
 
         # Callbacks
-        self._on_decode:   Optional[Callable] = None
-        self._on_state:    Optional[Callable] = None
-        self._on_tx:       Optional[Callable] = None
-        self._on_qso_done: Optional[Callable] = None
+        self._on_decode:   Callable | None = None
+        self._on_state:    Callable | None = None
+        self._on_tx:       Callable | None = None
+        self._on_qso_done: Callable | None = None
 
         # Cycle tracking
         self._cycle_timer = threading.Event()
@@ -214,11 +216,49 @@ class FT8Engine:
 
     def send_cq(self):
         """Transmit a CQ call."""
-        cs   = self.cfg.callsign
+        # Guard: need callsign
+        cs = self.cfg.callsign
+        if not cs or cs in ("No callsign set", ""):
+            log.warning("Cannot CQ — no callsign configured")
+            return
+        # Guard: need WSJT-X running (UDP socket active)
+        if not self._wsjtx_connected:
+            log.warning(
+                "Cannot CQ — WSJT-X not connected. "
+                "Launch WSJT-X from the Modes tab.")
+            if self._on_state:
+                self._on_state(AutoSeqState.IDLE,
+                               "WSJT-X not connected")
+            return
         grid = self.cfg.grid[:4] if self.cfg.grid else ""
         msg  = f"CQ {cs} {grid}"
         self._queue_tx(msg)
         self._set_state(AutoSeqState.CQ_SENT)
+        # Schedule timeout — if no decodes come back,
+        # return to IDLE after 2 cycles (30 seconds)
+        self._cq_timeout = 2
+
+    def _check_cq_timeout(self):
+        """
+        Called each decode cycle.
+        Decrements timeout counter and returns to IDLE if expired.
+        """
+        if self._state == AutoSeqState.CQ_SENT:
+            if self._cq_timeout > 0:
+                self._cq_timeout -= 1
+            else:
+                import logging as _log
+                _log.getLogger(__name__).info(
+                    "CQ timeout — no response. Returning to IDLE.")
+                self._set_state(AutoSeqState.IDLE)
+
+    def reconnect(self):
+        """Called by Rescan button — reset connection state."""
+        self._wsjtx_connected = False
+        self._cq_timeout = 0
+        if self._state != AutoSeqState.IDLE:
+            self._set_state(AutoSeqState.IDLE)
+        log.info("FT8 engine reconnect requested")
 
     def halt_tx(self):
         """Stop transmitting after current transmission."""
@@ -255,6 +295,11 @@ class FT8Engine:
                     log.warning(f"UDP receive error: {e}")
 
     def _parse_wsjtx_packet(self, data: bytes):
+        # Mark WSJT-X as connected on first packet
+        if not self._wsjtx_connected:
+            self._wsjtx_connected = True
+            log.info("WSJT-X UDP connected")
+
         """
         Parse WSJT-X UDP protocol packets.
         Packet format: magic(4) + schema(4) + type(4) + id_len(4) + id + payload
@@ -324,7 +369,7 @@ class FT8Engine:
             log.debug(f"Decode parse error: {e}")
 
     def _parse_ft8_message(self, msg: str, snr: int,
-                            dt: float, df: int) -> Optional[DecodedSignal]:
+                            dt: float, df: int) -> DecodedSignal | None:
         """Parse an FT8 message string into a DecodedSignal."""
         parts = msg.strip().split()
         if not parts:

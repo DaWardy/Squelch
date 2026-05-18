@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/tabs/log_tab.py
+from __future__ import annotations
+"""Squelch -- ui/tabs/log_tab.py
 QSO logbook tab. Sortable table, awards tracking,
 ADIF import/export, LoTW/QRZ queue, manual entry,
 callsign lookup integration.
@@ -89,6 +89,7 @@ class LogTab(QWidget):
         self.log_db = get_log_db()
         self._all_qsos: list[QSO] = []
         self._build()
+        self._build_awards_panel()
         self._load_log()
         # Refresh every 30 seconds for new auto-logged QSOs
         self._refresh_timer = QTimer(self)
@@ -178,13 +179,13 @@ class LogTab(QWidget):
         self._table.setStyleSheet("""
             QTableWidget{
               background:#0d0d0d;color:#aaa;
-              gridline-color:#1a1a1a;font-size:11px;
+              gridline-color:#1a1a1a;font-size:13px;
               font-family:'Courier New';
               alternate-background-color:#111;
               selection-background-color:#1a3a1a;}
             QHeaderView::section{
               background:#141414;color:#666;
-              border:none;font-size:10px;padding:3px;}
+              border:none;font-size:12px;padding:3px;}
         """)
         root.addWidget(self._table, 4)
 
@@ -192,6 +193,7 @@ class LogTab(QWidget):
         btn_row = QHBoxLayout()
 
         add_btn = QPushButton(self.tr("+ Manual Entry"))
+        add_btn.setToolTip("Add a QSO manually\nOpens entry form with dropdowns")
         add_btn.clicked.connect(self._manual_entry)
         btn_row.addWidget(add_btn)
 
@@ -204,10 +206,12 @@ class LogTab(QWidget):
         btn_row.addWidget(adif_imp)
 
         lotw_btn = QPushButton(self.tr("Upload LoTW queue"))
+        lotw_btn.setToolTip("Upload pending QSOs to ARRL LoTW\nRequires TQSL and LoTW credentials in Settings → APIs")
         lotw_btn.clicked.connect(self._show_lotw_queue)
         btn_row.addWidget(lotw_btn)
 
         qrz_btn = QPushButton(self.tr("Upload QRZ queue"))
+        qrz_btn.setToolTip("Sync log with QRZ logbook\nRequires QRZ subscription and credentials")
         qrz_btn.clicked.connect(self._show_qrz_queue)
         btn_row.addWidget(qrz_btn)
 
@@ -215,7 +219,7 @@ class LogTab(QWidget):
 
         self._queue_label = QLabel("")
         self._queue_label.setStyleSheet(
-            "color:#666; font-size:10px;")
+            "color:#666; font-size:12px;")
         btn_row.addWidget(self._queue_label)
 
         root.addLayout(btn_row)
@@ -264,11 +268,88 @@ class LogTab(QWidget):
 
     # ── Data loading ──────────────────────────────────────────────────────
 
+    def _build_awards_panel(self):
+        """Add collapsible awards progress panel."""
+        from PyQt6.QtWidgets import (
+            QGroupBox, QProgressBar, QGridLayout)
+
+        awards_grp = QGroupBox("Award Progress")
+        awards_grp.setCheckable(True)
+        awards_grp.setChecked(False)
+        awards_grp.setToolTip(
+            "Award progress computed from your log\n"
+            "Click to expand/collapse")
+        ag = QGridLayout(awards_grp)
+        ag.setSpacing(4)
+
+        self._award_bars = {}
+        awards_display = [
+            ("DXCC",  "DXCC (100 entities)"),
+            ("WAS",   "WAS (50 states)"),
+            ("WAZ",   "WAZ (40 CQ zones)"),
+            ("VUCC",  "VUCC VHF (100 grids)"),
+            ("DXCC-FT8", "DXCC-FT8"),
+            ("DXCC-CW",  "DXCC-CW"),
+        ]
+        for row, (key, label) in enumerate(awards_display):
+            ag.addWidget(QLabel(label), row, 0)
+            bar = QProgressBar()
+            bar.setRange(0, 100)
+            bar.setValue(0)
+            bar.setFixedHeight(16)
+            bar.setFormat("%v/%m")
+            bar.setTextVisible(True)
+            bar.setStyleSheet(
+                "QProgressBar{background:#141414;"
+                "border:1px solid #1a1a1a;"
+                "border-radius:3px;text-align:center;"
+                "font-size:11px;color:#888;}"
+                "QProgressBar::chunk{"
+                "background:#3fbe6f;border-radius:2px;}")
+            self._award_bars[key] = bar
+            ag.addWidget(bar, row, 1)
+            lbl = QLabel("0/100")
+            lbl.setStyleSheet("color:#555;font-size:11px;")
+            lbl.setFixedWidth(60)
+            ag.addWidget(lbl, row, 2)
+            self._award_bars[key + "_lbl"] = lbl
+
+        # Add to root layout
+        self.layout().addWidget(awards_grp)
+        self._awards_grp = awards_grp
+        QTimer.singleShot(1500, self._update_awards)
+
+    def _update_awards(self):
+        """Compute and display award progress."""
+        try:
+            from core.awards import AwardTracker
+            tracker = AwardTracker(self.log_db)
+            awards  = tracker.compute_all()
+
+            for key, progress in awards.items():
+                bar = self._award_bars.get(key)
+                lbl = self._award_bars.get(key + "_lbl")
+                if bar:
+                    bar.setMaximum(progress.needed)
+                    bar.setValue(min(
+                        progress.worked, progress.needed))
+                    if progress.is_complete:
+                        bar.setStyleSheet(
+                            "QProgressBar::chunk{"
+                            "background:#44aaff;"
+                            "border-radius:2px;}")
+                if lbl:
+                    lbl.setText(
+                        f"{progress.worked}/{progress.needed}")
+        except Exception as e:
+            log.debug(f"Awards update: {e}")
+
     def _load_log(self):
         try:
             self._all_qsos = self.log_db.recent_qsos(limit=5000)
             self._apply_filter()
             self._update_stats()
+            QTimer.singleShot(100, self._update_awards)
         except Exception as e:
             log.error(f"Log load failed: {e}")
 
@@ -372,26 +453,85 @@ class LogTab(QWidget):
     # ── Manual entry ──────────────────────────────────────────────────────
 
     def _manual_entry(self):
+        from PyQt6.QtWidgets import QComboBox
         dlg = QDialog(self)
         dlg.setWindowTitle(self.tr("Manual QSO Entry"))
-        dlg.setMinimumWidth(380)
+        dlg.setMinimumWidth(420)
         lay = QFormLayout(dlg)
+        lay.setSpacing(8)
 
-        fields = {}
-        for label, key, placeholder in [
-            ("Callsign:",  "call",     "W4XYZ"),
-            ("Band:",      "band",     "20m"),
-            ("Mode:",      "mode",     "SSB"),
-            ("RST Sent:",  "rst_sent", "59"),
-            ("RST Rcvd:",  "rst_rcvd", "59"),
-            ("Grid:",      "grid",     "FM18"),
-            ("Name:",      "name",     ""),
-            ("Comment:",   "comment",  ""),
-        ]:
-            edit = QLineEdit()
-            edit.setPlaceholderText(placeholder)
-            lay.addRow(label, edit)
-            fields[key] = edit
+        # Common bands
+        BANDS = [
+            "160m","80m","60m","40m","30m","20m",
+            "17m","15m","12m","10m","6m","2m",
+            "1.25m","70cm","33cm","23cm",
+        ]
+        # Common modes
+        MODES = [
+            "SSB","USB","LSB","AM","FM","CW",
+            "FT8","FT4","WSPR","JS8","PSK31",
+            "RTTY","SSTV","D-STAR","DMR","P25",
+            "YSF","NXDN","Olivia","MFSK","Other",
+        ]
+        # RST defaults by mode
+        RST_DEFAULTS = {
+            "SSB":"59","USB":"59","LSB":"59",
+            "AM":"59","FM":"59",
+            "CW":"599","FT8":"-10","FT4":"-10",
+            "WSPR":"-10",
+        }
+
+        # Callsign
+        cs_edit = QLineEdit()
+        cs_edit.setPlaceholderText("e.g. W4XYZ")
+        cs_edit.setMaxLength(15)
+        lay.addRow("Callsign:", cs_edit)
+
+        # Band dropdown
+        band_combo = QComboBox()
+        band_combo.addItems(BANDS)
+        band_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        band_combo.setCurrentText("20m")
+        lay.addRow("Band:", band_combo)
+
+        # Mode dropdown
+        mode_combo = QComboBox()
+        mode_combo.addItems(MODES)
+        mode_combo.setEditable(True)  # allow custom modes
+        mode_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        mode_combo.setCurrentText("SSB")
+        lay.addRow("Mode:", mode_combo)
+
+        # RST - auto-fills based on mode
+        rst_sent = QLineEdit("59")
+        rst_sent.setMaxLength(6)
+        rst_rcvd = QLineEdit("59")
+        rst_rcvd.setMaxLength(6)
+
+        def _update_rst(mode):
+            default = RST_DEFAULTS.get(mode, "59")
+            rst_sent.setText(default)
+            rst_rcvd.setText(default)
+
+        mode_combo.currentTextChanged.connect(_update_rst)
+        lay.addRow("RST Sent:", rst_sent)
+        lay.addRow("RST Rcvd:", rst_rcvd)
+
+        # Other fields
+        grid_edit = QLineEdit()
+        grid_edit.setPlaceholderText("e.g. DM79rr")
+        grid_edit.setMaxLength(8)
+        lay.addRow("Their Grid:", grid_edit)
+
+        name_edit = QLineEdit()
+        name_edit.setMaxLength(50)
+        lay.addRow("Name:", name_edit)
+
+        comment_edit = QLineEdit()
+        comment_edit.setMaxLength(200)
+        lay.addRow("Comment:", comment_edit)
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
@@ -401,32 +541,53 @@ class LogTab(QWidget):
         lay.addRow(btns)
 
         if dlg.exec():
-            call = callsign_soft(fields["call"].text())
+            call = callsign_soft(cs_edit.text())
             if not call:
                 QMessageBox.warning(
-                    self, "Invalid",
+                    self, "Invalid Callsign",
                     "Please enter a valid callsign.")
                 return
             try:
+                # Dupe check
+                if self.cfg.get("log.warn_dupes", True):
+                    band = band_combo.currentText()
+                    mode = mode_combo.currentText().upper()
+                    if self.log_db.is_duplicate(
+                            call, band, mode):
+                        reply = QMessageBox.question(
+                            self, "Duplicate QSO",
+                            f"{call} already logged on "
+                            f"{band} {mode}.\n\n"
+                            "Log anyway?",
+                            QMessageBox.StandardButton.Yes |
+                            QMessageBox.StandardButton.No)
+                        if reply == QMessageBox.StandardButton.No:
+                            return
+
                 qso = QSO(
                     call      = call,
-                    band      = fields["band"].text().strip(),
-                    mode      = fields["mode"].text().strip().upper(),
-                    rst_sent  = fields["rst_sent"].text().strip() or "59",
-                    rst_rcvd  = fields["rst_rcvd"].text().strip() or "59",
-                    grid      = grid_square_soft(
-                        fields["grid"].text()),
-                    name      = fields["name"].text().strip()[:50],
-                    comment   = fields["comment"].text().strip()[:200],
+                    band      = band_combo.currentText(),
+                    mode      = mode_combo.currentText().upper(),
+                    rst_sent  = rst_sent.text().strip() or "59",
+                    rst_rcvd  = rst_rcvd.text().strip() or "59",
+                    grid      = grid_square_soft(grid_edit.text()),
+                    name      = name_edit.text().strip()[:50],
+                    comment   = comment_edit.text().strip()[:200],
                     my_call   = self.cfg.callsign,
                     my_grid   = self.cfg.grid,
+                    my_lat    = self.cfg.get(
+                        "location.lat", 0.0),
+                    my_lon    = self.cfg.get(
+                        "location.lon", 0.0),
                     source    = "manual",
                 )
                 self.log_db.log_qso(qso)
                 self._load_log()
                 QMessageBox.information(
                     self, self.tr("QSO Logged"),
-                    f"QSO with {call} logged successfully.")
+                    f"QSO with {call} on "
+                    f"{band_combo.currentText()} "
+                    f"{mode_combo.currentText()} logged.")
             except Exception as e:
                 QMessageBox.warning(
                     self, "Error", f"Could not log QSO: {e}")
@@ -450,6 +611,101 @@ class LogTab(QWidget):
                 self, "Export Failed", str(e))
 
     # ── ADIF import ───────────────────────────────────────────────────────
+
+    def _export_cabrillo(self):
+        """Export log in Cabrillo format for contest submission."""
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Cabrillo",
+            f"{self.cfg.callsign or 'log'}.cbr",
+            "Cabrillo (*.cbr *.log);;All Files (*)")
+        if not path:
+            return
+        try:
+            qsos    = self.log_db.recent_qsos(limit=9999)
+            cs      = self.cfg.callsign or "NOCALL"
+            grid    = self.cfg.grid or ""
+            lines   = [
+                "START-OF-LOG: 3.0",
+                f"CALLSIGN: {cs}",
+                f"GRID-LOCATOR: {grid}",
+                "CONTEST: ",
+                f"OPERATORS: {cs}",
+                "CREATED-BY: Squelch v0.9.0-alpha",
+                "",
+            ]
+            for q in qsos:
+                # Cabrillo QSO line format:
+                # QSO: freq mode date time my-call rst-sent exch
+                #      dx-call rst-rcvd exch
+                freq_khz = int(q.freq_hz / 1000)                            if hasattr(q, "freq_hz") and q.freq_hz                            else 14074
+                dt = q.datetime_on[:16].replace("T", " ")                      if "T" in q.datetime_on                      else q.datetime_on[:16]
+                lines.append(
+                    f"QSO: {freq_khz:>5} "
+                    f"{q.mode:<2} "
+                    f"{dt} "
+                    f"{cs:<13} "
+                    f"{q.rst_sent:<3} "
+                    f"{'':>6}  "
+                    f"{q.call:<13} "
+                    f"{q.rst_rcvd:<3} "
+                    f"{'':>6}")
+            lines.append("END-OF-LOG:")
+            Path(path).write_text(
+                "\n".join(lines), encoding="utf-8")
+            QMessageBox.information(
+                self, "Cabrillo Exported",
+                f"Exported {len(qsos)} QSOs to:\n{path}\n\n"
+                "Fill in CONTEST: and exchange fields\n"
+                "before submitting to contest robot.")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed", str(e))
+
+    def _export_csv(self):
+        """Export log as CSV spreadsheet."""
+        import csv
+        import io
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV",
+            f"{self.cfg.callsign or 'log'}_qsos.csv",
+            "CSV (*.csv);;All Files (*)")
+        if not path:
+            return
+        try:
+            qsos = self.log_db.recent_qsos(limit=9999)
+            output = io.StringIO()
+            writer = csv.writer(output)
+            # Header
+            writer.writerow([
+                "Date", "Time UTC", "Callsign",
+                "Band", "Mode", "Freq MHz",
+                "RST Sent", "RST Rcvd",
+                "Their Grid", "Name", "Country",
+                "My Callsign", "My Grid",
+                "LoTW Status", "Comment"])
+            for q in qsos:
+                dt  = q.datetime_on
+                date = dt[:10] if len(dt) >= 10 else dt
+                time = dt[11:16] if len(dt) >= 16 else ""
+                freq = f"{q.freq_hz/1e6:.6f}"                        if hasattr(q, "freq_hz") and q.freq_hz                        else ""
+                writer.writerow([
+                    date, time, q.call,
+                    q.band, q.mode, freq,
+                    q.rst_sent, q.rst_rcvd,
+                    q.grid, q.name,
+                    getattr(q, "country", ""),
+                    q.my_call, q.my_grid,
+                    q.lotw_status, q.comment])
+            Path(path).write_text(
+                output.getvalue(), encoding="utf-8")
+            QMessageBox.information(
+                self, "CSV Exported",
+                f"Exported {len(qsos)} QSOs to:\n{path}")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed", str(e))
 
     def _import_adif(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -500,19 +756,85 @@ class LogTab(QWidget):
     # ── LoTW / QRZ queue ─────────────────────────────────────────────────
 
     def _show_lotw_queue(self):
+        from network.lotw_sync import LoTWSync
+        from PyQt6.QtWidgets import QProgressDialog
         pending = self.log_db.lotw_pending()
-        QMessageBox.information(
-            self, self.tr("LoTW Upload Queue"),
-            f"{len(pending)} QSOs pending LoTW upload.\n\n"
-            "LoTW upload via TQSL will be available in Chunk 10.\n"
-            "Export ADIF and upload manually via TQSL for now.")
+        if not pending:
+            QMessageBox.information(
+                self, "LoTW Queue",
+                "No QSOs pending LoTW upload.\n\n"
+                "All logged QSOs have been uploaded.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Upload to LoTW",
+            f"{len(pending)} QSOs pending upload.\n\n"
+            "Upload to LoTW now via TQSL?\n\n"
+            "Requires:\n"
+            "• TQSL installed (tqsl.arrl.org)\n"
+            "• LoTW credentials in Settings → APIs",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Show progress
+        prog = QProgressDialog(
+            "Uploading to LoTW…", "Cancel",
+            0, 100, self)
+        prog.setWindowTitle("LoTW Upload")
+        prog.setWindowModality(
+            Qt.WindowModality.WindowModal)
+        prog.show()
+
+        sync = LoTWSync(self.cfg)
+
+        def _on_progress(msg: str, pct: int):
+            QTimer.singleShot(0, lambda:
+                (prog.setLabelText(msg),
+                 prog.setValue(pct)))
+
+        def _on_complete(result):
+            QTimer.singleShot(0, lambda r=result:
+                self._lotw_done(r, prog))
+
+        sync.on_progress(_on_progress)
+        sync.on_complete(_on_complete)
+        sync.upload_async(self.log_db, pending)
+
+    def _lotw_done(self, result, prog):
+        prog.close()
+        if result.success:
+            QMessageBox.information(
+                self, "LoTW Upload Complete",
+                f"{result.message}\n\n"
+                "LoTW confirmations typically arrive "
+                "within 24-48 hours.")
+            # Mark as uploaded
+            for q in self.log_db.lotw_pending():
+                self.log_db.mark_lotw_uploaded(q)
+            self._load_log()
+        else:
+            QMessageBox.warning(
+                self, "LoTW Upload Failed",
+                f"Upload failed:\n{result.error}\n\n"
+                "Check Settings → APIs for credentials\n"
+                "and Settings → Paths for TQSL location.")
 
     def _show_qrz_queue(self):
+        from network.qrz_lookup import CallsignLookup
         pending = self.log_db.qrz_pending()
+        if not pending:
+            QMessageBox.information(
+                self, "QRZ Queue",
+                "No QSOs pending QRZ sync.")
+            return
         QMessageBox.information(
-            self, self.tr("QRZ Upload Queue"),
+            self, "QRZ Logbook Sync",
             f"{len(pending)} QSOs pending QRZ upload.\n\n"
-            "QRZ logbook sync will be available in Chunk 10.")
+            "QRZ logbook sync requires a QRZ subscription.\n"
+            "Set credentials in Settings → APIs.\n\n"
+            "Full sync coming in v0.9.1.")
 
     # ── Public ────────────────────────────────────────────────────────────
 

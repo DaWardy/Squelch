@@ -44,10 +44,19 @@ class BandConditionsTab(QWidget):
         super().__init__(parent)
         self.cfg   = config
         self._feed = get_prop_feed()
+        # Start fetching BEFORE building UI so data arrives sooner
         self._feed.on_solar_update(self._on_solar)
         self._feed.on_alert(self._on_alert)
+        if not self._feed._running:
+            self._feed.start()
         self._build()
-        self._feed.start()
+        self._show_fetching_state()
+        # If feed already has data (re-opened tab), show immediately
+        if self._feed.solar.sfi > 0:
+            QTimer.singleShot(50, self._refresh_display)
+        else:
+            # Wait for first fetch - check every 2 seconds
+            QTimer.singleShot(2000, self._refresh_display)
 
         # Refresh UI every 60 seconds
         self._timer = QTimer(self)
@@ -78,7 +87,7 @@ class BandConditionsTab(QWidget):
 
         self._age_lbl = QLabel("")
         self._age_lbl.setStyleSheet(
-            "color:#555;font-size:10px;")
+            "color:#555;font-size:12px;")
         hdr.addWidget(self._age_lbl)
         root.addLayout(hdr)
 
@@ -110,7 +119,7 @@ class BandConditionsTab(QWidget):
         ]
         for row, (key, label, default, tip) in enumerate(indices):
             lbl = QLabel(label)
-            lbl.setStyleSheet("color:#888;font-size:11px;")
+            lbl.setStyleSheet("color:#888;font-size:13px;")
             lbl.setToolTip(tip)
             sg.addWidget(lbl, row, 0)
 
@@ -122,7 +131,7 @@ class BandConditionsTab(QWidget):
             sg.addWidget(val, row, 1)
 
             trend = QLabel("")
-            trend.setStyleSheet("color:#555;font-size:11px;")
+            trend.setStyleSheet("color:#555;font-size:13px;")
             trend.setFixedWidth(20)
             sg.addWidget(trend, row, 2)
 
@@ -136,7 +145,7 @@ class BandConditionsTab(QWidget):
         self._rec_labels = []
         for _ in range(4):
             lbl = QLabel("—")
-            lbl.setStyleSheet("color:#666;font-size:11px;")
+            lbl.setStyleSheet("color:#666;font-size:13px;")
             lbl.setWordWrap(True)
             rl.addWidget(lbl)
             self._rec_labels.append(lbl)
@@ -148,7 +157,7 @@ class BandConditionsTab(QWidget):
         self._aurora_lbl = QLabel("")
         self._aurora_lbl.setWordWrap(True)
         self._aurora_lbl.setStyleSheet(
-            "color:#ffaa00;font-size:11px;")
+            "color:#ffaa00;font-size:13px;")
         aw.addWidget(self._aurora_lbl)
         self._aurora_widget.hide()
         ll.addWidget(self._aurora_widget)
@@ -171,7 +180,7 @@ class BandConditionsTab(QWidget):
         for col, h in enumerate(headers):
             lbl = QLabel(h)
             lbl.setStyleSheet(
-                "color:#555;font-size:10px;font-weight:bold;")
+                "color:#555;font-size:12px;font-weight:bold;")
             bg.addWidget(lbl, 0, col)
 
         self._band_rows = {}
@@ -187,7 +196,7 @@ class BandConditionsTab(QWidget):
 
             cond_lbl = QLabel("—")
             cond_lbl.setStyleSheet(
-                "color:#555;font-size:11px;")
+                "color:#555;font-size:13px;")
             bg.addWidget(cond_lbl, row, 1)
 
             bar = QProgressBar()
@@ -229,10 +238,10 @@ class BandConditionsTab(QWidget):
             QTableWidget.EditTrigger.NoEditTriggers)
         self._spots_table.setStyleSheet(
             "QTableWidget{background:#0d0d0d;color:#aaa;"
-            "gridline-color:#1a1a1a;font-size:10px;"
+            "gridline-color:#1a1a1a;font-size:12px;"
             "alternate-background-color:#111;}"
             "QHeaderView::section{background:#141414;"
-            "color:#666;border:none;font-size:10px;}")
+            "color:#666;border:none;font-size:12px;}")
         self._spots_table.setAlternatingRowColors(True)
         spl.addWidget(self._spots_table)
         rl2.addWidget(spots_grp)
@@ -243,6 +252,53 @@ class BandConditionsTab(QWidget):
         root.addWidget(splitter)
 
     # ── Callbacks ─────────────────────────────────────────────────────────
+
+    def _update_grayline(self):
+        """Update gray line status from config location."""
+        try:
+            lat = self.cfg.get("location.lat", 0.0) or 0.0
+            lon = self.cfg.get("location.lon", 0.0) or 0.0
+            if not (lat or lon):
+                grid = self.cfg.grid or ""
+                if grid:
+                    from core.location import _grid_to_latlon
+                    lat, lon = _grid_to_latlon(grid)
+            if lat or lon:
+                info   = gray_line_info(lat, lon)
+                status = format_gray_line_status(info)
+                self._gl_lbl.setText(status)
+                if info.is_gray_line:
+                    self._gl_lbl.setStyleSheet(
+                        "background:#0a1a0a;color:#3fbe6f;"
+                        "font-size:12px;"
+                        "font-family:'Courier New';"
+                        "border:1px solid #3fbe6f;"
+                        "border-radius:3px;padding:2px 8px;")
+                else:
+                    self._gl_lbl.setStyleSheet(
+                        "background:#0a0a0a;color:#666;"
+                        "font-size:12px;"
+                        "font-family:'Courier New';"
+                        "border:1px solid #1a1a1a;"
+                        "border-radius:3px;padding:2px 8px;")
+            else:
+                self._gl_lbl.setText(
+                    "Set location to see gray line status")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(
+                f"Gray line update: {e}")
+        # Update every 60s
+        QTimer.singleShot(60_000, self._update_grayline)
+
+    def _show_fetching_state(self):
+        """Show placeholder while solar data is being fetched."""
+        if self._feed.solar.sfi == 0.0:
+            self._summary_lbl.setText(
+                "Fetching solar data from NOAA…")
+            self._summary_lbl.setStyleSheet(
+                "font-size:13px;color:#555;")
+            self._age_lbl.setText("Connecting…")
 
     def _on_solar(self, solar: SolarData):
         QTimer.singleShot(0,
@@ -345,7 +401,7 @@ class BandConditionsTab(QWidget):
             cond_lbl.setText(c.condition.capitalize())
             cond_lbl.setStyleSheet(
                 f"color:{color_map.get(c.condition,'#555')};"
-                "font-size:11px;")
+                "font-size:13px;")
             bar.setValue(level_map.get(c.condition, 0))
             bar.setStyleSheet(
                 f"QProgressBar{{background:#111;"
@@ -383,3 +439,18 @@ class BandConditionsTab(QWidget):
         solar = self._feed.solar
         if solar.sfi > 0:
             self._apply_solar(solar)
+        else:
+            # Still waiting - try again in 3 seconds
+            QTimer.singleShot(3000, self._poll_for_data)
+
+    def _poll_for_data(self):
+        """Keep checking until data arrives."""
+        solar = self._feed.solar
+        if solar.sfi > 0:
+            self._apply_solar(solar)
+        elif self._feed._running:
+            # Still fetching - check again
+            QTimer.singleShot(3000, self._poll_for_data)
+        else:
+            self._summary_lbl.setText(
+                "Could not fetch solar data — check internet connection")

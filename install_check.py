@@ -379,3 +379,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # Keep window open when double-clicked
+    import os
+    if os.environ.get("PROMPT") or os.name == "nt":
+        input("\nPress Enter to close...")

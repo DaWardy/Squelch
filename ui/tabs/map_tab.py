@@ -1,0 +1,513 @@
+from __future__ import annotations
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
+# Licensed under GNU GPL v3 — see LICENSE
+"""
+Squelch -- ui/tabs/map_tab.py
+Embedded Leaflet map tab.
+Shows: station location, QSO paths, gray line,
+       APRS stations, ADS-B aircraft, repeaters.
+Requires QtWebEngine (PyQtWebEngine).
+Shows a graceful fallback if not installed.
+"""
+
+import sys
+import logging
+from datetime import datetime, timezone
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QFrame,
+    QCheckBox, QComboBox, QSizePolicy,
+    QMessageBox
+)
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QDesktopServices
+
+from network.grayline import (
+    gray_line_info, format_gray_line_status)
+
+log = logging.getLogger(__name__)
+
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWebEngineCore import QWebEngineSettings
+    HAS_WEBENGINE = True
+except ImportError:
+    HAS_WEBENGINE = False
+
+# Map refresh interval — gray line moves visibly over ~60s
+MAP_REFRESH_S = 60
+
+
+class MapTab(QWidget):
+    """
+    Full-featured map tab with Leaflet.
+    Falls back to a setup guide if QtWebEngine not installed.
+    """
+
+    def __init__(self, config, log_db=None,
+                 parent=None):
+        super().__init__(parent)
+        self.cfg     = config
+        self.log_db  = log_db
+        self._timer  = None
+        self._repeaters      = []
+        self._aprs_stations  = []
+        self._satellites     = []
+        self._build()
+
+    # ── Build ─────────────────────────────────────────────────
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        if not HAS_WEBENGINE:
+            self._build_no_webengine(root)
+            return  # fallback map handles its own refresh
+
+        # Toolbar
+        root.addWidget(self._build_toolbar())
+
+        # Map view
+        self._view = QWebEngineView()
+        self._view.settings().setAttribute(
+            QWebEngineSettings.WebAttribute
+            .JavascriptEnabled, True)
+        self._view.settings().setAttribute(
+            QWebEngineSettings.WebAttribute
+            .LocalContentCanAccessRemoteUrls, True)
+        self._view.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding)
+        root.addWidget(self._view, 1)
+
+        # Gray line status bar
+        self._gl_bar = QLabel("Computing gray line…")
+        self._gl_bar.setFixedHeight(24)
+        self._gl_bar.setAlignment(
+            Qt.AlignmentFlag.AlignCenter)
+        self._gl_bar.setStyleSheet(
+            "background:#0a0a0a;color:#3fbe6f;"
+            "font-size:13px;font-family:'Courier New';"
+            "border-top:1px solid #1a1a1a;")
+        root.addWidget(self._gl_bar)
+
+        # Load initial map
+        QTimer.singleShot(500, self._refresh_map)
+
+        # Auto-refresh for gray line
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._refresh_map)
+        self._timer.start(MAP_REFRESH_S * 1000)
+
+    def _build_toolbar(self) -> QFrame:
+        bar = QFrame()
+        bar.setFixedHeight(38)
+        bar.setStyleSheet(
+            "background:#0d0d0d;"
+            "border-bottom:1px solid #1a1a1a;")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(8)
+
+        # Layer toggles
+        self._show_gl = QCheckBox("Gray line")
+        self._show_gl.setChecked(True)
+        self._show_gl.setToolTip(
+            "Show day/night terminator on map\n"
+            "The gray line is the best time for DX\n"
+            "Updates every 60 seconds")
+        self._show_gl.toggled.connect(
+            lambda _: self._refresh_map())
+        lay.addWidget(self._show_gl)
+
+        self._show_qso = QCheckBox("QSO paths")
+        self._show_qso.setChecked(True)
+        self._show_qso.setToolTip(
+            "Draw great circle paths to logged QSOs\n"
+            "Color-coded by mode (FT8=blue, CW=orange, SSB=green)")
+        self._show_qso.toggled.connect(
+            lambda _: self._refresh_map())
+        lay.addWidget(self._show_qso)
+
+        self._show_rep = QCheckBox("Repeaters")
+        self._show_rep.setChecked(False)
+        self._show_rep.toggled.connect(
+            lambda _: self._refresh_map())
+        lay.addWidget(self._show_rep)
+
+        self._show_adsb = QCheckBox("ADS-B")
+        self._show_adsb.setChecked(True)
+        self._show_adsb.setToolTip(
+            "Show aircraft from dump1090-fa\n"
+            "Requires dump1090-fa running locally")
+        self._show_adsb.toggled.connect(
+            lambda _: self._refresh_map())
+        lay.addWidget(self._show_adsb)
+
+        self._show_aprs = QCheckBox("APRS")
+        self._show_aprs.setChecked(True)
+        self._show_aprs.setToolTip(
+            "Show APRS stations from APRS-IS\n"
+            "Connect in Local RF tab first")
+        self._show_aprs.toggled.connect(
+            lambda _: self._refresh_map())
+        lay.addWidget(self._show_aprs)
+
+        lay.addWidget(_vsep())
+
+        # QSO filter
+        lay.addWidget(QLabel("QSOs:"))
+        self._qso_filter = QComboBox()
+        self._qso_filter.addItems([
+            "All", "Last 50", "Last 24h",
+            "Last 7 days", "Current band"])
+        self._qso_filter.setFixedWidth(100)
+        self._qso_filter.currentTextChanged.connect(
+            lambda _: self._refresh_map())
+        lay.addWidget(self._qso_filter)
+
+        lay.addStretch()
+
+        # Refresh button
+        refresh_btn = QPushButton("↺ Refresh")
+        refresh_btn.setFixedHeight(26)
+        refresh_btn.setFixedWidth(80)
+        refresh_btn.clicked.connect(self._refresh_map)
+        lay.addWidget(refresh_btn)
+
+        # Center on station
+        center_btn = QPushButton("⌂ My Station")
+        center_btn.setFixedHeight(26)
+        center_btn.setFixedWidth(90)
+        center_btn.clicked.connect(self._center_on_station)
+        lay.addWidget(center_btn)
+
+        return bar
+
+    def _build_no_webengine(self, layout):
+        """
+        Fallback map — pure Qt drawing, no WebEngine needed.
+        Shows gray line terminator, station marker, QSO paths.
+        Works on Python 3.14 and any system without WebEngine.
+        """
+        from ui.tabs.map_fallback import WorldMapWidget
+
+        # Controls toolbar
+        bar = QFrame()
+        bar.setFixedHeight(36)
+        bar.setStyleSheet(
+            "background:#0d0d0d;"
+            "border-bottom:1px solid #1a1a1a;")
+        tl = QHBoxLayout(bar)
+        tl.setContentsMargins(8, 4, 8, 4)
+        tl.setSpacing(8)
+
+        self._show_gl = QCheckBox("Gray line")
+        self._show_gl.setChecked(True)
+        self._show_gl.setToolTip(
+            "Show the day/night terminator\n"
+            "Best DX propagation near the gray line")
+        self._show_gl.toggled.connect(
+            self._refresh_fallback_map)
+        tl.addWidget(self._show_gl)
+
+        self._show_qso = QCheckBox("QSO paths")
+        self._show_qso.setChecked(True)
+        self._show_qso.setToolTip(
+            "Draw great circle paths to logged QSOs")
+        self._show_qso.toggled.connect(
+            self._refresh_fallback_map)
+        tl.addWidget(self._show_qso)
+
+        self._show_aprs = QCheckBox("APRS")
+        self._show_aprs.setChecked(True)
+        self._show_aprs.setToolTip(
+            "Show APRS stations — connect in Local RF tab")
+        self._show_aprs.toggled.connect(
+            self._refresh_fallback_map)
+        tl.addWidget(self._show_aprs)
+
+        tl.addStretch()
+
+        note = QLabel("ℹ  Qt fallback renderer")
+        note.setStyleSheet("color:#444;font-size:11px;")
+        tl.addWidget(note)
+
+        refresh_btn = QPushButton("↺")
+        refresh_btn.setFixedSize(28, 26)
+        refresh_btn.setToolTip(
+            "Refresh gray line and QSO paths")
+        refresh_btn.clicked.connect(
+            self._refresh_fallback_map)
+        tl.addWidget(refresh_btn)
+
+        layout.addWidget(bar)
+
+        # Map canvas
+        self._fallback_map = WorldMapWidget()
+        layout.addWidget(self._fallback_map, 1)
+
+        # Status bar
+        self._gl_bar = QLabel("Computing gray line…")
+        self._gl_bar.setFixedHeight(24)
+        self._gl_bar.setAlignment(
+            Qt.AlignmentFlag.AlignCenter)
+        self._gl_bar.setStyleSheet(
+            "background:#0a0a0a;color:#666;"
+            "font-size:12px;font-family:'Courier New';"
+            "border-top:1px solid #1a1a1a;")
+        layout.addWidget(self._gl_bar)
+
+        # Auto-refresh every 60 seconds
+        self._fb_timer = QTimer(self)
+        self._fb_timer.timeout.connect(
+            self._refresh_fallback_map)
+        self._fb_timer.start(60_000)
+
+    # ── Map rendering ──────────────────────────────────────────
+
+    def _refresh_map(self):
+        """Rebuild and reload the map HTML."""
+        if not HAS_WEBENGINE:
+            return
+
+        try:
+            from network.map_data import build_map_html
+
+            reps = self._repeaters \
+                   if self._show_rep.isChecked() else []
+
+            html = build_map_html(
+                config            = self.cfg,
+                log_db            = self.log_db,
+                repeaters         = reps,
+                aprs_stations     = (self._aprs_stations
+                    if self._show_aprs.isChecked() else []),
+                show_grayline     = self._show_gl.isChecked(),
+                show_qso_paths    = self._show_qso.isChecked(),
+                show_adsb         = self._show_adsb.isChecked(),
+                show_aprs         = self._show_aprs.isChecked(),
+                center_on_station = True,
+            )
+            self._view.setHtml(html)
+
+            # Update gray line status bar
+            self._update_gl_status()
+
+        except Exception as e:
+            log.error(f"Map refresh: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _update_gl_status(self):
+        """Update the gray line status bar text."""
+        try:
+            lat = self.cfg.get("location.lat", 0.0)
+            lon = self.cfg.get("location.lon", 0.0)
+            if lat or lon:
+                info   = gray_line_info(lat, lon)
+                status = format_gray_line_status(info)
+                self._gl_bar.setText(status)
+                if info.is_gray_line:
+                    self._gl_bar.setStyleSheet(
+                        "background:#0a1a0a;color:#3fbe6f;"
+                        "font-size:13px;"
+                        "font-family:'Courier New';"
+                        "border-top:1px solid #3fbe6f;")
+                else:
+                    self._gl_bar.setStyleSheet(
+                        "background:#0a0a0a;color:#666;"
+                        "font-size:13px;"
+                        "font-family:'Courier New';"
+                        "border-top:1px solid #1a1a1a;")
+        except Exception as e:
+            log.debug(f"GL status: {e}")
+
+    def _center_on_station(self):
+        """Re-center map on station location."""
+        self._refresh_map()
+
+    # ── Public API ────────────────────────────────────────────
+
+    def set_repeaters(self, repeaters: list):
+        """Called by Local RF tab when search results arrive."""
+        self._repeaters = repeaters
+        if self._show_rep.isChecked():
+            self._refresh_map()
+
+    def set_satellite_positions(self, sats: list):
+        """Called when satellite positions update."""
+        self._satellites = sats
+        if not HAS_WEBENGINE:
+            if hasattr(self, "_fallback_map"):
+                self._fallback_map.set_satellite_positions(
+                    sats)
+        else:
+            # Refresh Leaflet map
+            QTimer.singleShot(0, self._refresh_map)
+
+    def set_aprs_stations(self, stations: list):
+        """Called when APRS packet received — update map."""
+        self._aprs_stations = stations
+        if self._show_aprs.isChecked():
+            # Throttle refreshes — don't rebuild map every packet
+            if not hasattr(self, '_aprs_refresh_pending'):
+                self._aprs_refresh_pending = False
+            if not self._aprs_refresh_pending:
+                self._aprs_refresh_pending = True
+                QTimer.singleShot(
+                    5000,   # Batch updates every 5 seconds
+                    self._refresh_aprs)
+
+    # ── Fallback map (no WebEngine) ──────────────────────────────────────
+
+    def _refresh_fallback_map(self):
+        """
+        Refresh the Qt-drawn fallback map.
+        Computes current gray line, draws station + QSO paths.
+        Called on tab show, checkbox toggle, and every 60 s.
+        """
+        if not hasattr(self, "_fallback_map"):
+            return
+        try:
+            from datetime import datetime, timezone
+            from network.grayline import (
+                terminator_points, gray_line_info,
+                format_gray_line_status)
+
+            now = datetime.now(timezone.utc)
+            lat = float(self.cfg.get("location.lat", 0.0) or 0.0)
+            lon = float(self.cfg.get("location.lon", 0.0) or 0.0)
+
+            # Station marker
+            self._fallback_map.set_station(
+                lat, lon, self.cfg.callsign or "")
+
+            # Gray line terminator
+            if hasattr(self, "_show_gl") and                self._show_gl.isChecked():
+                pts = terminator_points(now, steps=120)
+                self._fallback_map.set_terminator(pts)
+            else:
+                self._fallback_map.set_terminator([])
+
+            # QSO paths
+            if hasattr(self, "_show_qso") and                self._show_qso.isChecked() and self.log_db:
+                paths = self._build_qso_paths()
+                self._fallback_map.set_qso_paths(paths)
+            else:
+                self._fallback_map.set_qso_paths([])
+
+            # Satellites
+            if hasattr(self, '_show_sats') and \
+               self._show_sats.isChecked():
+                self._fallback_map.set_satellite_positions(
+                    self._satellites)
+            else:
+                self._fallback_map.set_satellite_positions([])
+
+            # Status bar
+            if lat or lon:
+                info = gray_line_info(lat, lon, now)
+                self._fallback_map.set_gl_info(info)
+                status = format_gray_line_status(info)
+                self._gl_bar.setText(status)
+                if info.is_gray_line:
+                    self._gl_bar.setStyleSheet(
+                        "background:#0a1a0a;color:#3fbe6f;"
+                        "font-size:12px;"
+                        "font-family:'Courier New';"
+                        "border-top:1px solid #3fbe6f;")
+                else:
+                    self._gl_bar.setStyleSheet(
+                        "background:#0a0a0a;color:#555;"
+                        "font-size:12px;"
+                        "font-family:'Courier New';"
+                        "border-top:1px solid #1a1a1a;")
+            else:
+                self._gl_bar.setText(
+                    "Set location in top bar to show "
+                    "gray line")
+
+        except Exception as e:
+            log.debug(f"Fallback map refresh: {e}")
+
+    def _build_qso_paths(self) -> list:
+        """Build QSO path dicts for map drawing."""
+        paths = []
+        try:
+            qsos = self.log_db.recent_qsos(limit=200)
+            for q in qsos:
+                # My location
+                my_lat = float(
+                    getattr(q, "my_lat", 0.0) or
+                    self.cfg.get("location.lat", 0.0) or 0.0)
+                my_lon = float(
+                    getattr(q, "my_lon", 0.0) or
+                    self.cfg.get("location.lon", 0.0) or 0.0)
+                # Their location
+                their_lat = float(getattr(q, "lat", 0.0) or 0.0)
+                their_lon = float(getattr(q, "lon", 0.0) or 0.0)
+                # Derive from grid if lat/lon missing
+                if (not their_lat) and q.grid:
+                    try:
+                        from core.location import _grid_to_latlon
+                        their_lat, their_lon =                             _grid_to_latlon(q.grid)
+                    except Exception:
+                        pass
+                if my_lat and my_lon and                    their_lat and their_lon:
+                    paths.append({
+                        "from": [my_lat, my_lon],
+                        "to":   [their_lat, their_lon],
+                        "mode": q.mode,
+                        "call": q.call,
+                    })
+        except Exception as e:
+            log.debug(f"QSO paths: {e}")
+        return paths
+
+    def _refresh_aprs(self):
+        self._aprs_refresh_pending = False
+        if HAS_WEBENGINE:
+            self._refresh_map()
+
+    def on_location_change(self, loc, _rr=False):
+        """Called when station location changes."""
+        QTimer.singleShot(0, self._refresh_map)
+
+    def showEvent(self, event):
+        """Refresh map when tab becomes visible."""
+        super().showEvent(event)
+        if HAS_WEBENGINE:
+            QTimer.singleShot(200, self._refresh_map)
+        else:
+            QTimer.singleShot(200, self._refresh_fallback_map)
+
+
+def _vsep() -> QFrame:
+    f = QFrame()
+    f.setFrameShape(QFrame.Shape.VLine)
+    f.setStyleSheet("color:#1e1e1e;")
+    f.setFixedWidth(1)
+    return f

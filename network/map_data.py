@@ -1,0 +1,432 @@
+from __future__ import annotations
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
+#
+# This program is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General
+# Public License as published by the Free Software
+# Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will
+# be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General
+# Public License along with this program. If not, see
+# <https://www.gnu.org/licenses/>.
+# Squelch — Amateur Radio Operations Platform
+# Copyright (C) 2026  github.com/dawardy/squelch
+# Licensed under GNU GPL v3 — see LICENSE
+"""
+Squelch -- network/map_data.py
+Aggregates all map data for the Leaflet map view:
+  - Station location marker
+  - QSO log great circle paths
+  - Gray line terminator
+  - APRS stations
+  - ADS-B aircraft (from dump1090)
+  - Repeaters from Local RF tab
+
+Generates self-contained HTML with embedded Leaflet.
+QWebEngineView renders it inside Squelch.
+"""
+
+import json
+import logging
+from core.constants import PORT_DUMP1090_HTTP
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from network.grayline import (
+    day_night_geojson, gray_line_info,
+    format_gray_line_status, sun_elevation)
+from core.location import (
+    _grid_to_latlon, _valid_grid,
+    qso_to_map_points)
+
+log = logging.getLogger(__name__)
+
+# Leaflet CDN — offline fallback uses bundled version if available
+LEAFLET_CSS = (
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css")
+LEAFLET_JS  = (
+    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js")
+
+
+def build_map_html(config,
+                   log_db=None,
+                   repeaters=None,
+                   aprs_stations=None,
+                   show_grayline: bool = True,
+                   show_qso_paths: bool = True,
+                   show_adsb: bool = True,
+                   show_aprs: bool = True,
+                   center_on_station: bool = True,
+                   ) -> str:
+    """
+    Build self-contained HTML for the Leaflet map.
+    Embeds all data as JavaScript variables.
+    Returns HTML string ready for QWebEngineView.
+    """
+    now_utc = datetime.now(timezone.utc)
+
+    # Station location
+    grid    = config.get("location.grid", "") or \
+              config.grid or ""
+    my_lat  = config.get("location.lat", 0.0) or 0.0
+    my_lon  = config.get("location.lon", 0.0) or 0.0
+    my_call = config.callsign or "Station"
+
+    if not (my_lat or my_lon) and _valid_grid(grid):
+        try:
+            my_lat, my_lon = _grid_to_latlon(grid)
+        except Exception:
+            pass
+
+    # Gray line GeoJSON
+    grayline_json = "null"
+    grayline_status = ""
+    if show_grayline:
+        try:
+            gl = day_night_geojson(now_utc)
+            grayline_json = json.dumps(gl)
+            if my_lat or my_lon:
+                info = gray_line_info(
+                    my_lat, my_lon, now_utc)
+                grayline_status = format_gray_line_status(
+                    info)
+        except Exception as e:
+            log.debug(f"Gray line: {e}")
+
+    # QSO paths
+    qso_paths = []
+    if show_qso_paths and log_db:
+        try:
+            qsos = log_db.recent_qsos(limit=200)
+            for q in qsos:
+                my_pt, their_pt = qso_to_map_points(q)
+                if my_pt and their_pt:
+                    qso_paths.append({
+                        "from":    [my_pt["lat"],
+                                    my_pt["lon"]],
+                        "to":      [their_pt["lat"],
+                                    their_pt["lon"]],
+                        "call":    q.call,
+                        "band":    q.band,
+                        "mode":    q.mode,
+                        "time":    q.datetime_on[:16],
+                        "my_grid": q.my_grid,
+                        "grid":    q.grid,
+                    })
+        except Exception as e:
+            log.debug(f"QSO paths: {e}")
+
+    # APRS stations from APRS-IS client
+    aprs_stations = aprs_stations or []
+
+    # ADS-B aircraft
+    aircraft = []
+    if show_adsb:
+        aircraft = _fetch_adsb()
+
+    # Repeaters
+    rep_markers = []
+    if repeaters:
+        for r in repeaters[:50]:
+            rep_markers.append({
+                "lat":      r.lat,
+                "lon":      r.lon,
+                "call":     r.callsign,
+                "freq":     r.output_str,
+                "tone":     r.tone_str,
+                "mode":     r.mode,
+                "city":     r.city,
+                "dist_km":  r.distance_km,
+            })
+
+    # Grid square overlays for station
+    grid_squares = []
+    if _valid_grid(grid) and my_lat and my_lon:
+        # 4-char grid square
+        g4 = grid[:4]
+        try:
+            g4_lat, g4_lon = _grid_to_latlon(g4)
+            grid_squares.append({
+                "label":    g4,
+                "lat":      g4_lat,
+                "lon":      g4_lon,
+                "size":     "4char",
+                # 4-char grid = 2° lon × 1° lat
+                "dlat":     1.0,
+                "dlon":     2.0,
+            })
+        except Exception:
+            pass
+        # 6-char grid square
+        if len(grid) >= 6:
+            try:
+                g6_lat, g6_lon = _grid_to_latlon(grid)
+                grid_squares.append({
+                    "label":    grid[:6],
+                    "lat":      g6_lat,
+                    "lon":      g6_lon,
+                    "size":     "6char",
+                    # 6-char grid = 5' lon × 2.5' lat
+                    "dlat":     1/24,
+                    "dlon":     2/24,
+                })
+            except Exception:
+                pass
+
+    # Center map
+    if center_on_station and (my_lat or my_lon):
+        center = [my_lat, my_lon]
+        zoom   = 6
+    else:
+        center = [20, 0]
+        zoom   = 2
+
+    html = _render_html(
+        center         = center,
+        zoom           = zoom,
+        my_lat         = my_lat,
+        my_lon         = my_lon,
+        my_call        = my_call,
+        my_grid        = grid,
+        grayline_json  = grayline_json,
+        grayline_status= grayline_status,
+        qso_paths      = qso_paths,
+        aprs_stations  = aprs_stations,
+        aircraft       = aircraft,
+        repeaters      = rep_markers,
+        grid_squares   = grid_squares,
+        utc_str        = now_utc.strftime("%H:%M UTC"),
+    )
+    return html
+
+
+def _fetch_adsb() -> list[dict]:
+    """Fetch aircraft from dump1090-fa JSON feed."""
+    try:
+        import urllib.request
+        with urllib.request.urlopen(   # nosec B310
+                f"http://localhost:{PORT_DUMP1090_HTTP}/data/aircraft.json",
+                timeout=1) as resp:
+            data = json.loads(resp.read(500_000))
+            aircraft = []
+            for a in data.get("aircraft", [])[:100]:
+                if "lat" not in a or "lon" not in a:
+                    continue
+                aircraft.append({
+                    "lat":    float(a["lat"]),
+                    "lon":    float(a["lon"]),
+                    "icao":   str(a.get("hex", ""))[:6],
+                    "flight": str(a.get("flight",
+                               "")).strip()[:8],
+                    "alt":    int(a.get("alt_baro", 0)),
+                    "speed":  int(a.get("gs", 0)),
+                    "track":  int(a.get("track", 0)),
+                })
+            return aircraft
+    except Exception:
+        return []
+
+
+def _render_html(**ctx) -> str:
+    """Render the Leaflet map HTML."""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squelch Map</title>
+<link rel="stylesheet" href="{LEAFLET_CSS}">
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  html,body,#map {{ width:100%; height:100%; }}
+  body {{ background:#0a0a0a; }}
+  .gl-status {{
+    position:absolute; bottom:10px; left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.75);
+    color:#3fbe6f; font-size:12px;
+    padding:6px 14px; border-radius:4px;
+    border:1px solid #3fbe6f; z-index:1000;
+    font-family:'Courier New',monospace;
+  }}
+  .qso-popup {{
+    font-family:'Courier New',monospace;
+    font-size:11px; color:#aaa;
+  }}
+  .qso-popup b {{ color:#3fbe6f; }}
+  .grid-label {{
+    background:transparent; border:none;
+    color:#3fbe6f; font-size:10px;
+    font-family:'Courier New',monospace;
+    text-shadow: 1px 1px 2px #000;
+  }}
+</style>
+</head>
+<body>
+<div id="map"></div>
+{"<div class='gl-status'>" + ctx['grayline_status'] + "</div>" if ctx['grayline_status'] else ""}
+<script src="{LEAFLET_JS}"></script>
+<script>
+// ── Data ────────────────────────────────────────────────────
+var MY_LAT     = {ctx['my_lat']};
+var MY_LON     = {ctx['my_lon']};
+var MY_CALL    = {json.dumps(ctx['my_call'])};
+var MY_GRID    = {json.dumps(ctx['my_grid'])};
+var UTC_STR    = {json.dumps(ctx['utc_str'])};
+var QSO_PATHS  = {json.dumps(ctx['qso_paths'])};
+var APRS       = {json.dumps(ctx['aprs_stations'])};
+var AIRCRAFT   = {json.dumps(ctx['aircraft'])};
+var REPEATERS  = {json.dumps(ctx['repeaters'])};
+var GRIDS      = {json.dumps(ctx['grid_squares'])};
+var GRAYLINE   = {ctx['grayline_json']};
+
+// ── Map init ─────────────────────────────────────────────────
+var map = L.map('map', {{
+  center: {json.dumps(ctx['center'])},
+  zoom: {ctx['zoom']},
+  zoomControl: true,
+}});
+
+// Dark tile layer
+L.tileLayer(
+  'https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',
+  {{attribution: '© OpenStreetMap © CARTO',
+    maxZoom: 19, subdomains:'abcd'}}
+).addTo(map);
+
+// ── Gray line ─────────────────────────────────────────────────
+if (GRAYLINE) {{
+  L.geoJSON(GRAYLINE, {{
+    style: {{
+      fillColor: '#000033',
+      fillOpacity: 0.45,
+      color: '#3355aa',
+      weight: 1.5,
+      opacity: 0.8,
+    }}
+  }}).addTo(map);
+}}
+
+// ── Station marker ────────────────────────────────────────────
+if (MY_LAT || MY_LON) {{
+  var stIcon = L.divIcon({{
+    html: '<div style="background:#3fbe6f;width:12px;height:12px;'
+         +'border-radius:50%;border:2px solid #fff;'
+         +'box-shadow:0 0 8px #3fbe6f;"></div>',
+    className: '', iconSize:[12,12], iconAnchor:[6,6]
+  }});
+  L.marker([MY_LAT, MY_LON], {{icon:stIcon}})
+    .bindPopup('<b style="color:#3fbe6f">' + MY_CALL + '</b><br>'
+               + MY_GRID + '<br>' + UTC_STR)
+    .addTo(map);
+}}
+
+// ── Grid square overlays ──────────────────────────────────────
+GRIDS.forEach(function(g) {{
+  var color = g.size === '4char' ? '#3fbe6f' : '#44aaff';
+  var opacity = g.size === '4char' ? 0.3 : 0.5;
+  var bounds = [
+    [g.lat - g.dlat/2, g.lon - g.dlon/2],
+    [g.lat + g.dlat/2, g.lon + g.dlon/2]
+  ];
+  L.rectangle(bounds, {{
+    color: color, weight: 1,
+    fillOpacity: 0.05, opacity: opacity
+  }}).addTo(map);
+  L.marker([g.lat, g.lon], {{
+    icon: L.divIcon({{
+      html: '<span class="grid-label">' + g.label + '</span>',
+      className:'', iconSize:[60,16], iconAnchor:[30,8]
+    }})
+  }}).addTo(map);
+}});
+
+// ── QSO paths ─────────────────────────────────────────────────
+var modeColors = {{
+  FT8:'#44aaff', FT4:'#44aaff', WSPR:'#8844ff',
+  SSB:'#3fbe6f', CW:'#ffaa22', DMR:'#ff6644',
+  DEFAULT:'#558855'
+}};
+QSO_PATHS.forEach(function(q) {{
+  var col = modeColors[q.mode] || modeColors.DEFAULT;
+  var line = L.polyline([q.from, q.to], {{
+    color: col, weight: 1, opacity: 0.5,
+    dashArray: '4 4'
+  }}).addTo(map);
+  line.bindPopup(
+    '<div class="qso-popup">'
+    +'<b>'+q.call+'</b> via '+q.mode+'<br>'
+    +q.band+'  '+q.grid+'<br>'
+    +q.time
+    +'</div>');
+  // DX marker
+  var dxIcon = L.divIcon({{
+    html: '<div style="background:' + col
+         +';width:6px;height:6px;border-radius:50%;'
+         +'border:1px solid #fff;opacity:0.8;"></div>',
+    className:'', iconSize:[6,6], iconAnchor:[3,3]
+  }});
+  L.marker(q.to, {{icon:dxIcon}})
+    .bindPopup('<div class="qso-popup"><b>'+q.call+'</b><br>'
+              +q.grid+'<br>'+q.mode+'  '+q.band+'</div>')
+    .addTo(map);
+}});
+
+// ── Repeaters ─────────────────────────────────────────────────
+REPEATERS.forEach(function(r) {{
+  var modeColor = r.mode==='DMR'?'#44aaff':
+                  r.mode==='P25'?'#ffaa22':'#3fbe6f';
+  var repIcon = L.divIcon({{
+    html: '<div style="background:' + modeColor
+         +';width:8px;height:8px;'
+         +'border:1px solid #fff;opacity:0.9;'
+         +'transform:rotate(45deg);"></div>',
+    className:'', iconSize:[8,8], iconAnchor:[4,4]
+  }});
+  L.marker([r.lat, r.lon], {{icon:repIcon}})
+    .bindPopup('<div class="qso-popup">'
+      +'<b>'+r.call+'</b><br>'
+      +r.freq+' MHz  '+r.mode+'<br>'
+      +(r.tone?r.tone+'<br>':'')
+      +r.city+'  ('+r.dist_km.toFixed(1)+' km)'
+      +'</div>')
+    .addTo(map);
+}});
+
+// ── APRS stations ─────────────────────────────────────────────
+APRS.forEach(function(a) {{
+  L.circleMarker([a.lat, a.lon], {{
+    radius:5, color:'#ff8844', fillColor:'#ff8844',
+    fillOpacity:0.7, weight:1
+  }}).bindPopup('<div class="qso-popup"><b>'+a.call+'</b><br>'
+    +a.comment+'</div>').addTo(map);
+}});
+
+// ── ADS-B aircraft ────────────────────────────────────────────
+AIRCRAFT.forEach(function(a) {{
+  var icon = L.divIcon({{
+    html: '<div style="color:#aaaaff;font-size:16px;'
+         +'transform:rotate('+a.track+'deg);'
+         +'text-shadow:0 0 3px #000;">✈</div>',
+    className:'', iconSize:[16,16], iconAnchor:[8,8]
+  }});
+  L.marker([a.lat, a.lon], {{icon:icon}})
+    .bindPopup('<div class="qso-popup">'
+      +(a.flight||a.icao)+'<br>'
+      +'Alt: '+a.alt.toLocaleString()+' ft<br>'
+      +'Speed: '+a.speed+' kts'
+      +'</div>')
+    .addTo(map);
+}});
+</script>
+</body>
+</html>"""

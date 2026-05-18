@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- network/propagation.py
+from __future__ import annotations
+"""Squelch -- network/propagation.py
 Solar and propagation data.
 NOAA SWPC solar indices, aurora alerts, WSPRnet band conditions.
 All responses validated before use.
@@ -27,19 +27,26 @@ All responses validated before use.
 import time
 import logging
 import threading
-import requests
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
 from dataclasses import dataclass, field
 from typing import Optional, Callable
 from core.validator import api_float, api_int, api_string
 
 log = logging.getLogger(__name__)
 
+from core.constants import (
+    NOAA_SOLAR_URL, NOAA_KP_URL,
+    NOAA_ALERTS_URL)
+
 # NOAA SWPC endpoints
-NOAA_SOLAR_URL  = "https://services.swpc.noaa.gov/json/solar-cycle/observed-solar-cycle-indices.json"
-NOAA_KP_URL     = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
-NOAA_XRAY_URL   = "https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json"
-NOAA_ALERTS_URL = "https://services.swpc.noaa.gov/products/alerts.json"
-WSPRNET_URL     = "https://www.wsprnet.org/drupal/wsprnet/spotquery"
+NOAA_XRAY_URL  = (
+    "https://services.swpc.noaa.gov/json/goes/primary/"
+    "xrays-1-day.json")
+WSPRNET_URL    = "https://www.wsprnet.org/drupal/wsprnet/spotquery"
 
 REQUEST_TIMEOUT = 10
 POLL_INTERVAL   = 300    # 5 minutes - respect rate limits
@@ -139,11 +146,11 @@ class PropagationFeed:
         self._bands:    list[BandCondition] = []
         self._alerts:   list[str] = []
         self._running   = False
-        self._thread:   Optional[threading.Thread] = None
+        self._thread:   threading.Thread | None = None
         self._lock      = threading.Lock()
 
-        self._on_solar:  Optional[Callable] = None
-        self._on_alert:  Optional[Callable] = None
+        self._on_solar:  Callable | None = None
+        self._on_alert:  Callable | None = None
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -211,6 +218,8 @@ class PropagationFeed:
                 pass
 
     def _fetch_solar(self):
+        if not HAS_REQUESTS:
+            return None
         resp = requests.get(
             NOAA_SOLAR_URL, timeout=REQUEST_TIMEOUT)
         if resp.status_code != 200:
@@ -246,6 +255,8 @@ class PropagationFeed:
             self._solar.fetched_at  = time.time()
 
     def _fetch_kp(self):
+        if not HAS_REQUESTS:
+            return None
         resp = requests.get(
             NOAA_KP_URL, timeout=REQUEST_TIMEOUT)
         if resp.status_code != 200:
@@ -306,6 +317,8 @@ class PropagationFeed:
                 pass
 
     def _fetch_alerts(self):
+        if not HAS_REQUESTS:
+            return None
         resp = requests.get(
             NOAA_ALERTS_URL, timeout=REQUEST_TIMEOUT)
         if resp.status_code != 200:
@@ -373,7 +386,7 @@ class PropagationFeed:
 
 
 # Module singleton
-_feed: Optional[PropagationFeed] = None
+_feed: PropagationFeed | None = None
 
 def get_prop_feed() -> PropagationFeed:
     global _feed

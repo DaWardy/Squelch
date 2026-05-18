@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- ui/widgets/freq_display.py
+from __future__ import annotations
+"""Squelch -- ui/widgets/freq_display.py
 Click-to-edit VFO frequency display. Green on black, band color coded.
 """
 
@@ -87,7 +87,7 @@ class FreqDisplay(QWidget):
             "font-family:'Courier New'; font-weight:bold;")
         self._mhz_lbl = QLabel("MHz")
         self._mhz_lbl.setStyleSheet(
-            "color:#334433; font-size:11px; font-family:'Courier New';")
+            "color:#334433; font-size:13px; font-family:'Courier New';")
         self._mhz_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         info.addWidget(self._band_lbl)
         info.addStretch()

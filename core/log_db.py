@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- core/log_db.py
+from __future__ import annotations
+"""Squelch -- core/log_db.py
 SQLite QSO log. ADIF import/export. LoTW and QRZ upload queues.
 Duplicate detection. Awards tracking (DXCC, WAS, grids).
 """
@@ -33,7 +33,8 @@ from dataclasses import dataclass, field, asdict
 
 log = logging.getLogger(__name__)
 
-DB_PATH = Path("logs/squelch_log.db")
+from core.config import USER_DIR, LOG_DIR
+DB_PATH = LOG_DIR / "squelch_log.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS qso (
@@ -49,6 +50,8 @@ CREATE TABLE IF NOT EXISTS qso (
     rst_rcvd      TEXT,
     name          TEXT,
     grid          TEXT,
+    lat           REAL DEFAULT 0,
+    lon           REAL DEFAULT 0,
     dxcc          TEXT,
     country       TEXT,
     state         TEXT,
@@ -58,6 +61,8 @@ CREATE TABLE IF NOT EXISTS qso (
     comment       TEXT,
     my_call       TEXT,
     my_grid       TEXT,
+    my_lat        REAL DEFAULT 0,
+    my_lon        REAL DEFAULT 0,
     lotw_status   TEXT    DEFAULT 'none',
     qrz_status    TEXT    DEFAULT 'none',
     source        TEXT    DEFAULT 'manual',
@@ -105,6 +110,8 @@ class QSO:
     rst_rcvd:     str      = "599"
     name:         str      = ""
     grid:         str      = ""
+    lat:          float    = 0.0   # their lat (derived from grid)
+    lon:          float    = 0.0   # their lon (derived from grid)
     dxcc:         str      = ""
     country:      str      = ""
     state:        str      = ""
@@ -114,6 +121,8 @@ class QSO:
     comment:      str      = ""
     my_call:      str      = ""
     my_grid:      str      = ""
+    my_lat:       float    = 0.0   # our lat at time of QSO
+    my_lon:       float    = 0.0   # our lon at time of QSO
     lotw_status:  str      = STATUS_PENDING
     qrz_status:   str      = STATUS_PENDING
     source:       str      = "manual"
@@ -124,6 +133,14 @@ class QSO:
         if not self.datetime_on:
             self.datetime_on = _utcnow()
         self.call = self.call.upper().strip()
+        # Auto-derive lat/lon from grid if not supplied
+        if self.grid and not (self.lat or self.lon):
+            try:
+                from core.location import _grid_to_latlon
+                self.lat, self.lon = _grid_to_latlon(
+                    self.grid)
+            except Exception:
+                pass
 
 
 class LogDB:
@@ -138,6 +155,7 @@ class LogDB:
         self._open()
 
     def _open(self):
+        self._path = Path(self._path)  # ensure Path object
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
             str(self._path),
@@ -157,15 +175,15 @@ class LogDB:
             cur = self._conn.execute("""
                 INSERT INTO qso
                   (datetime_on, datetime_off, call, band, freq_hz,
-                   mode, submode, rst_sent, rst_rcvd, name, grid,
+                   mode, submode, rst_sent, rst_rcvd, name, grid, lat, lon,
                    dxcc, country, state, cqz, ituz, tx_pwr_w,
-                   comment, my_call, my_grid, lotw_status, qrz_status,
+                   comment, my_call, my_grid, my_lat, my_lon, lotw_status, qrz_status,
                    source, adif_extra)
                 VALUES
                   (:datetime_on, :datetime_off, :call, :band, :freq_hz,
-                   :mode, :submode, :rst_sent, :rst_rcvd, :name, :grid,
+                   :mode, :submode, :rst_sent, :rst_rcvd, :name, :grid, :lat, :lon,
                    :dxcc, :country, :state, :cqz, :ituz, :tx_pwr_w,
-                   :comment, :my_call, :my_grid, :lotw_status, :qrz_status,
+                   :comment, :my_call, :my_grid, :my_lat, :my_lon, :lotw_status, :qrz_status,
                    :source, :adif_extra)
             """, asdict(qso))
             qso_id = cur.lastrowid
@@ -187,7 +205,7 @@ class LogDB:
 
     # ── Read ──────────────────────────────────────────────────────────────
 
-    def get_qso(self, qso_id: int) -> Optional[QSO]:
+    def get_qso(self, qso_id: int) -> QSO | None:
         with self._lock:
             row = self._conn.execute(
                 "SELECT * FROM qso WHERE id=?", (qso_id,)).fetchone()
@@ -280,7 +298,7 @@ class LogDB:
 
     # ── ADIF export ───────────────────────────────────────────────────────
 
-    def export_adif(self, path: Path, qsos: Optional[list[QSO]] = None) -> int:
+    def export_adif(self, path: Path, qsos: list[QSO] | None = None) -> int:
         """Export to ADIF. Returns number of records written."""
         if qsos is None:
             qsos = self.recent_qsos(limit=999999)
@@ -380,6 +398,14 @@ def _qso_to_adif(q: QSO) -> str:
     parts.append(_adif_field("RST_RCVD",    q.rst_rcvd))
     parts.append(_adif_field("NAME",        q.name))
     parts.append(_adif_field("GRIDSQUARE",  q.grid))
+    if q.lat:
+        parts.append(_adif_field("LAT",
+            f"{'N' if q.lat>=0 else 'S'}"
+            f"{abs(q.lat):010.6f}"))
+    if q.lon:
+        parts.append(_adif_field("LON",
+            f"{'E' if q.lon>=0 else 'W'}"
+            f"{abs(q.lon):011.6f}"))
     parts.append(_adif_field("DXCC",        q.dxcc))
     parts.append(_adif_field("COUNTRY",     q.country))
     parts.append(_adif_field("STATE",       q.state))
@@ -396,7 +422,7 @@ def _qso_to_adif(q: QSO) -> str:
 
 
 # Module-level singleton
-_instance: Optional[LogDB] = None
+_instance: LogDB | None = None
 
 def get_log_db() -> LogDB:
     global _instance

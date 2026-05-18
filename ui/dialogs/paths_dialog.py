@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
 #
@@ -19,236 +20,114 @@
 
 """
 Squelch -- ui/dialogs/paths_dialog.py
-Settings → Paths & Executables dialog.
-Browse + Test + Auto-detect for each external program.
+Settings → Paths & Executables.
+Driven by core/launcher.py AppDef database.
+Browse, Test, Launch, Auto-detect all.
 """
 
-import os
 import sys
-import logging
 import subprocess
+import logging
 from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QGroupBox,
     QDialogButtonBox, QFileDialog, QScrollArea,
-    QWidget, QMessageBox, QFrame
+    QWidget, QMessageBox, QFrame, QTabWidget
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QUrl
 
-from core.validator import executable_path, ALLOWED_EXECUTABLES
+from core.launcher import APPS, AppDef, get_launcher
 
 log = logging.getLogger(__name__)
 
-# Executable definitions
-EXECUTABLES = [
-    {
-        "key":    "paths.rigctld",
-        "label":  "rigctld (Hamlib)",
-        "hint":   "CAT rig control — required for rig tab",
-        "exe":    "rigctld",
-        "test":   ["--version"],
-        "common": [
-            r"C:\hamlib\bin\rigctld.exe",
-            "/usr/bin/rigctld",
-            "/usr/local/bin/rigctld",
-        ],
-        "download": "https://github.com/Hamlib/Hamlib/releases",
-    },
-    {
-        "key":    "paths.wsjtx",
-        "label":  "WSJT-X",
-        "hint":   "FT8 / FT4 / WSPR / JS8 modes",
-        "exe":    "wsjtx",
-        "test":   ["--version"],
-        "common": [
-            r"C:\Program Files\WSJT-X\bin\wsjtx.exe",
-            r"C:\Program Files (x86)\WSJT-X\bin\wsjtx.exe",
-            "/usr/bin/wsjtx",
-            "/usr/local/bin/wsjtx",
-        ],
-        "download": "https://wsjt.sourceforge.io/wsjtx.html",
-    },
-    {
-        "key":    "paths.fldigi",
-        "label":  "Fldigi",
-        "hint":   "PSK31, RTTY, CW, SSTV digital modes",
-        "exe":    "fldigi",
-        "test":   ["--version"],
-        "common": [
-            r"C:\Program Files\fldigi\fldigi.exe",
-            r"C:\Program Files (x86)\fldigi\fldigi.exe",
-            "/usr/bin/fldigi",
-            "/usr/local/bin/fldigi",
-        ],
-        "download": "https://sourceforge.net/projects/fldigi/",
-    },
-    {
-        "key":    "paths.js8call",
-        "label":  "JS8Call",
-        "hint":   "JS8 keyboard-to-keyboard messaging",
-        "exe":    "js8call",
-        "test":   [],
-        "common": [
-            r"C:\Program Files\JS8Call\js8call.exe",
-            "/usr/bin/js8call",
-        ],
-        "download": "https://js8call.com/",
-    },
-    {
-        "key":    "paths.vara_hf",
-        "label":  "VARA HF",
-        "hint":   "Winlink HF modem (paid license for full speed)",
-        "exe":    "VARAHF",
-        "test":   [],
-        "common": [
-            r"C:\VARA HF\VARAHF.exe",
-            r"C:\VARA\VARAHF.exe",
-            r"C:\Program Files\VARA HF\VARAHF.exe",
-        ],
-        "download": "https://rosmodem.wordpress.com/",
-    },
-    {
-        "key":    "paths.vara_fm",
-        "label":  "VARA FM",
-        "hint":   "Winlink VHF/UHF modem",
-        "exe":    "VARAFM",
-        "test":   [],
-        "common": [
-            r"C:\VARA FM\VARAFM.exe",
-            r"C:\Program Files\VARA FM\VARAFM.exe",
-        ],
-        "download": "https://rosmodem.wordpress.com/",
-    },
-    {
-        "key":    "paths.dsdplus",
-        "label":  "DSD+",
-        "hint":   "DMR / NXDN / YSF decode (Windows)",
-        "exe":    "DSDPlus",
-        "test":   [],
-        "common": [
-            r"C:\DSDPlus\DSDPlus.exe",
-            r"C:\Program Files\DSDPlus\DSDPlus.exe",
-        ],
-        "download": "https://www.dsdplus.com/",
-    },
-    {
-        "key":    "paths.dump1090",
-        "label":  "dump1090-fa",
-        "hint":   "ADS-B aircraft tracking decoder",
-        "exe":    "dump1090-fa",
-        "test":   ["--version"],
-        "common": [
-            r"C:\dump1090\dump1090-fa.exe",
-            "/usr/bin/dump1090-fa",
-            "/usr/local/bin/dump1090-fa",
-        ],
-        "download": "https://github.com/flightaware/dump1090",
-    },
-    {
-        "key":    "paths.tqsl",
-        "label":  "TQSL (LoTW)",
-        "hint":   "LoTW QSO signing and upload",
-        "exe":    "tqsl",
-        "test":   [],
-        "common": [
-            r"C:\Program Files\TQSL\tqsl.exe",
-            r"C:\Program Files (x86)\TQSL\tqsl.exe",
-            "/usr/bin/tqsl",
-            "/usr/local/bin/tqsl",
-        ],
-        "download": "https://lotw.arrl.org/lotw-user-guide/",
-    },
-    {
-        "key":    "paths.iq_recordings",
-        "label":  "IQ Recordings Folder",
-        "hint":   "Where SDR IQ recordings are saved",
-        "exe":    None,   # directory, not executable
-        "test":   [],
-        "common": [str(Path.home() / "squelch_recordings")],
-        "download": "",
-    },
-]
+CATEGORY_LABELS = {
+    "rig":         "🔌  Rig Control",
+    "digital":     "📡  Digital Modes",
+    "winlink":     "✉️  Winlink / VARA",
+    "sdr":         "〰️  SDR",
+    "programming": "🔧  Radio Programming",
+    "log":         "📒  Logging",
+}
 
 
-class PathRow(QWidget):
-    """Single path entry row with browse, test, and status."""
+class AppRow(QWidget):
+    """Single app row: path field + browse + test + launch + status."""
 
-    def __init__(self, defn: dict, config, parent=None):
+    def __init__(self, app: AppDef, config, parent=None):
         super().__init__(parent)
-        self._defn   = defn
+        self._app    = app
         self._cfg    = config
-        self._is_dir = defn["exe"] is None
         self._build()
         self._load()
 
     def _build(self):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 2, 0, 2)
-        lay.setSpacing(6)
+        lay.setSpacing(4)
 
         self._edit = QLineEdit()
         self._edit.setPlaceholderText(
-            "Path to executable…" if not self._is_dir
-            else "Path to folder…")
-        self._edit.setMinimumWidth(280)
+            "Path to executable…")
+        self._edit.setMinimumWidth(260)
         lay.addWidget(self._edit, 1)
 
-        browse = QPushButton("Browse…")
-        browse.setFixedWidth(70)
+        browse = QPushButton(self.tr("Browse…"))
+        browse.setFixedWidth(65)
         browse.clicked.connect(self._browse)
         lay.addWidget(browse)
 
-        self._test_btn = QPushButton("Test")
-        self._test_btn.setFixedWidth(50)
-        self._test_btn.clicked.connect(self._test)
-        if not self._defn.get("test") and not self._is_dir:
-            self._test_btn.setEnabled(False)
-        lay.addWidget(self._test_btn)
+        if self._app.args is not None:
+            test = QPushButton(self.tr("Test"))
+            test.setFixedWidth(44)
+            test.clicked.connect(self._test)
+            lay.addWidget(test)
+
+        launch = QPushButton(self.tr("▶"))
+        launch.setFixedWidth(28)
+        launch.setToolTip(self.tr(
+            f"Launch {self._app.name}"))
+        launch.clicked.connect(self._launch)
+        lay.addWidget(launch)
 
         self._status = QLabel("—")
         self._status.setFixedWidth(22)
-        self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._status.setFont(QFont("Segoe UI", 12))
+        self._status.setAlignment(
+            Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self._status)
 
-        if self._defn.get("download"):
+        if self._app.download_url:
             dl = QPushButton("↓")
-            dl.setFixedWidth(26)
+            dl.setFixedWidth(24)
             dl.setToolTip(
-                f"Download: {self._defn['download']}")
-            dl.clicked.connect(
-                lambda: self._open_url(
-                    self._defn["download"]))
+                f"Download: {self._app.download_url}")
+            dl.clicked.connect(self._download)
             lay.addWidget(dl)
 
     def _load(self):
-        val = self._cfg.get(self._defn["key"], "")
-        if val:
-            self._edit.setText(val)
-            self._check_exists(val)
+        launcher = get_launcher(self._cfg)
+        path = launcher.get_path(self._app.key)
+        if path:
+            self._edit.setText(path)
+            self._set_status("✅", "#3fbe6f")
         else:
-            # Try auto-detect
-            found = self._auto_detect()
-            if found:
-                self._edit.setText(found)
-                self._set_status("✅", "#3fbe6f")
-            else:
-                self._set_status("⚠", "#888888")
+            configured = self._cfg.get(
+                self._app.key, "")
+            if configured:
+                self._edit.setText(configured)
+            self._set_status("⚠", "#888888")
 
     def _browse(self):
-        if self._is_dir:
-            path = QFileDialog.getExistingDirectory(
-                self, f"Select {self._defn['label']} folder")
+        if IS_WINDOWS := sys.platform == "win32":
+            exts = "Executables (*.exe);;All files (*)"
         else:
-            exts = ("*.exe" if sys.platform == "win32"
-                    else "")
-            path, _ = QFileDialog.getOpenFileName(
-                self,
-                f"Select {self._defn['label']}",
-                "",
-                f"Executables ({exts});;All files (*)")
+            exts = "All files (*)"
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Select {self._app.name}",
+            "", exts)
         if path:
             self._edit.setText(path)
             self._check_exists(path)
@@ -256,47 +135,54 @@ class PathRow(QWidget):
     def _test(self):
         path = self._edit.text().strip()
         if not path:
+            QMessageBox.warning(
+                self, "No Path",
+                "Enter a path first.")
             return
         self._set_status("…", "#aaaa22")
         try:
-            cmd = [path] + self._defn.get("test", [])
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=5,
-                shell=False)
-            output = (result.stdout or result.stderr or "").strip()
-            if result.returncode == 0 or output:
-                self._set_status("✅", "#3fbe6f")
-                QMessageBox.information(
-                    self, "Test Result",
-                    f"{self._defn['label']} OK\n\n{output[:200]}")
-            else:
-                self._set_status("❌", "#cc4444")
+                [path, "--version"],
+                capture_output=True, text=True,
+                timeout=5, shell=False)
+            out = (result.stdout or
+                   result.stderr or "").strip()[:200]
+            self._set_status("✅", "#3fbe6f")
+            QMessageBox.information(
+                self, f"{self._app.name} — Test OK",
+                f"Path: {path}\n\n{out or 'OK'}")
         except FileNotFoundError:
             self._set_status("❌", "#cc4444")
             QMessageBox.warning(
                 self, "Not Found",
-                f"Could not run: {path}\n"
-                "Check the path is correct.")
+                f"Could not run:\n{path}")
         except Exception as e:
             self._set_status("⚠", "#aaaa22")
-            QMessageBox.warning(self, "Test Error", str(e))
+            QMessageBox.warning(
+                self, "Test Error", str(e))
 
-    def _auto_detect(self) -> str:
-        """Try common install locations."""
-        for candidate in self._defn.get("common", []):
-            if Path(candidate).exists():
-                return candidate
-        # Also try PATH
-        exe = self._defn.get("exe")
-        if exe:
-            import shutil
-            found = shutil.which(exe)
-            if found:
-                return found
-        return ""
+    def _launch(self):
+        path = self._edit.text().strip()
+        if not path or not Path(path).exists():
+            QMessageBox.warning(
+                self, "Not Found",
+                f"{self._app.name} not found.\n"
+                f"Configure path or click ↓ to download.")
+            return
+        try:
+            import subprocess
+            subprocess.Popen(
+                [path],
+                shell=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Launch Failed", str(e))
+
+    def _download(self):
+        QDesktopServices.openUrl(
+            QUrl(self._app.download_url))
 
     def _check_exists(self, path: str):
         if Path(path).exists():
@@ -308,107 +194,127 @@ class PathRow(QWidget):
         self._status.setText(icon)
         self._status.setStyleSheet(f"color:{color};")
 
-    def _open_url(self, url: str):
-        from PyQt6.QtGui import QDesktopServices
-        from PyQt6.QtCore import QUrl
-        QDesktopServices.openUrl(QUrl(url))
-
     def save(self):
         val = self._edit.text().strip()
-        self._cfg.set(self._defn["key"], val)
+        self._cfg.set(self._app.key, val)
+        self._cfg.save()
 
-    def auto_detect(self):
-        found = self._auto_detect()
-        if found:
-            self._edit.setText(found)
-            self._check_exists(found)
-        return bool(found)
+    def auto_detect(self) -> bool:
+        launcher = get_launcher(self._cfg)
+        path = launcher.get_path(self._app.key)
+        if path:
+            self._edit.setText(path)
+            self._set_status("✅", "#3fbe6f")
+            return True
+        return False
 
 
 class PathsDialog(QDialog):
-    """Settings → Paths & Executables dialog."""
+    """Settings → Paths & Executables."""
 
-    def __init__(self, config, parent=None):
+    def __init__(self, config,
+                 scroll_to: str = None,
+                 parent=None):
         super().__init__(parent)
-        self.cfg  = config
+        self.cfg       = config
+        self._rows:    list[AppRow] = []
+        self._scroll_to = scroll_to
         self.setWindowTitle(
             self.tr("Paths & Executables"))
-        self.setMinimumWidth(680)
-        self.setMinimumHeight(500)
-        self._rows: list[PathRow] = []
+        self.setMinimumWidth(720)
+        self.setMinimumHeight(560)
         self._build()
 
     def _build(self):
         lay = QVBoxLayout(self)
 
-        intro = QLabel(
-            self.tr(
-                "Configure paths to external programs. "
-                "Squelch launches these automatically when needed.\n"
-                "Click Test to verify each path. "
-                "Click ↓ to open the download page for missing tools."))
+        intro = QLabel(self.tr(
+            "Configure paths to external programs. "
+            "Click ▶ to launch. "
+            "Click ↓ to open the download page. "
+            "Green ✅ = found, ⚠ = not configured."))
         intro.setWordWrap(True)
-        intro.setStyleSheet("color:#888;font-size:10px;")
+        intro.setStyleSheet(
+            "color:#888;font-size:12px;")
         lay.addWidget(intro)
 
-        # Scroll area for all rows
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Tabs by category
+        tabs = QTabWidget()
+        tabs.setStyleSheet(
+            "QTabBar::tab{padding:5px 10px;"
+            "font-size:12px;}")
 
-        inner  = QWidget()
-        grid   = QGridLayout(inner)
-        grid.setSpacing(6)
-        grid.setContentsMargins(4, 4, 4, 4)
+        # Group apps by category
+        cats: dict[str, list[AppDef]] = {}
+        for app in APPS:
+            cats.setdefault(app.category, []).append(app)
 
-        # Column headers
-        for col, hdr in enumerate([
-                self.tr("Program"),
-                self.tr("Path"),
-                "", "", "", ""]):
-            if hdr:
-                lbl = QLabel(hdr)
-                lbl.setStyleSheet(
-                    "color:#555;font-size:10px;"
+        for cat_key, apps in cats.items():
+            cat_label = CATEGORY_LABELS.get(
+                cat_key, cat_key.title())
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+            inner  = QWidget()
+            grid   = QGridLayout(inner)
+            grid.setSpacing(6)
+            grid.setContentsMargins(6, 6, 6, 6)
+
+            # Header
+            for col, hdr in enumerate([
+                    self.tr("Program"),
+                    self.tr("Path / Status"), "", "", "", ""]):
+                if hdr:
+                    lbl = QLabel(hdr)
+                    lbl.setStyleSheet(
+                        "color:#555;font-size:12px;"
+                        "font-weight:bold;")
+                    grid.addWidget(lbl, 0, col)
+
+            sep = QFrame()
+            sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setStyleSheet("color:#222;")
+            grid.addWidget(sep, 1, 0, 1, 6)
+
+            for i, app in enumerate(apps):
+                row_idx = i + 2
+                lbl_w   = QWidget()
+                lbl_lay = QVBoxLayout(lbl_w)
+                lbl_lay.setContentsMargins(0, 0, 0, 0)
+                lbl_lay.setSpacing(0)
+                name = QLabel(app.name)
+                name.setStyleSheet(
+                    "color:#ccc;font-size:13px;"
                     "font-weight:bold;")
-                grid.addWidget(lbl, 0, col)
+                desc = QLabel(app.description)
+                desc.setStyleSheet(
+                    "color:#555;font-size:13px;")
+                if app.download_note:
+                    note = QLabel(app.download_note)
+                    note.setStyleSheet(
+                        "color:#446644;font-size:13px;")
+                    note.setWordWrap(True)
+                    lbl_lay.addWidget(note)
+                lbl_lay.addWidget(name)
+                lbl_lay.addWidget(desc)
+                grid.addWidget(lbl_w, row_idx, 0)
 
-        # Separator
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#222;")
-        grid.addWidget(sep, 1, 0, 1, 6)
+                row = AppRow(app, self.cfg)
+                grid.addWidget(row, row_idx, 1, 1, 5)
+                self._rows.append(row)
 
-        for i, defn in enumerate(EXECUTABLES):
-            row_idx = i + 2
+            scroll.setWidget(inner)
+            tabs.addTab(scroll, cat_label)
 
-            # Label + hint
-            lbl_widget = QWidget()
-            lbl_lay    = QVBoxLayout(lbl_widget)
-            lbl_lay.setContentsMargins(0, 0, 0, 0)
-            lbl_lay.setSpacing(0)
-            lbl = QLabel(defn["label"])
-            lbl.setStyleSheet(
-                "color:#ccc;font-size:11px;"
-                "font-weight:bold;")
-            hint = QLabel(defn["hint"])
-            hint.setStyleSheet(
-                "color:#555;font-size:9px;")
-            lbl_lay.addWidget(lbl)
-            lbl_lay.addWidget(hint)
-            grid.addWidget(lbl_widget, row_idx, 0)
+        lay.addWidget(tabs)
 
-            path_row = PathRow(defn, self.cfg)
-            grid.addWidget(path_row, row_idx, 1, 1, 5)
-            self._rows.append(path_row)
-
-        scroll.setWidget(inner)
-        lay.addWidget(scroll)
-
-        # Buttons
+        # Bottom buttons
         btn_row = QHBoxLayout()
-        auto_btn = QPushButton(self.tr("Auto-detect all"))
-        auto_btn.clicked.connect(self._auto_detect_all)
+        auto_btn = QPushButton(
+            self.tr("Auto-detect all"))
+        auto_btn.clicked.connect(
+            self._auto_detect_all)
         btn_row.addWidget(auto_btn)
         btn_row.addStretch()
         lay.addLayout(btn_row)
@@ -427,7 +333,8 @@ class PathsDialog(QDialog):
                 found += 1
         QMessageBox.information(
             self, self.tr("Auto-detect"),
-            f"Found {found} of {len(self._rows)} programs.")
+            f"Found {found} of "
+            f"{len(self._rows)} programs.")
 
     def _save_and_accept(self):
         for row in self._rows:

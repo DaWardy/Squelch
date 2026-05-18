@@ -1,5 +1,5 @@
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
+# APEX — Amateur Platform for EXperimentation
+# Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
 # and/or modify it under the terms of the GNU General
@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- network/cty_data.py
+from __future__ import annotations
+"""APEX -- network/cty_data.py
 CTY.DAT country file parser (AD1C format).
 Maps callsign prefixes to DXCC entities, CQ zones, ITU zones.
 Bundled copy updated periodically from:
@@ -76,6 +76,8 @@ class CTYData:
         for url in (CTY_URL, CTY_BACKUP):
             try:
                 resp = requests.get(url, timeout=15)
+                if len(resp.content) > 2_000_000:
+                    return None  # response too large
                 if resp.status_code == 200:
                     CTY_LOCAL.parent.mkdir(parents=True, exist_ok=True)
                     CTY_LOCAL.write_text(resp.text, encoding="utf-8")
@@ -158,7 +160,7 @@ class CTYData:
                  f"{len(self._prefixes)} prefixes")
         return self._loaded
 
-    def lookup(self, callsign: str) -> Optional[DXCCEntity]:
+    def lookup(self, callsign: str) -> DXCCEntity | None:
         """
         Look up a callsign and return its DXCC entity.
         Uses longest prefix match.
@@ -203,7 +205,7 @@ class CTYData:
 
 
 # Module-level singleton
-_cty: Optional[CTYData] = None
+_cty: CTYData | None = None
 
 def get_cty() -> CTYData:
     global _cty

@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        pip install requests defusedxml python-dateutil maidenhead adif-io
+        pip install keyring appdirs psutil
+
+    - name: Run tests
+      run: |
+        python -m pytest tests/ -v --tb=short \
+          --cov=core --cov=network --cov=modes \
+          --cov=aprs --cov=winlink \
+          --cov-report=term-missing \
+          --cov-report=xml
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+      with:
+        file: coverage.xml
+        fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install bandit
+      run: pip install bandit
+
+    - name: Run security scan
+      run: |
+        bandit -r . \
+          --exclude ./.git,./venv,./offline_packages \
+          --severity-level high \
+          -f txt
+        echo "Security scan complete"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Syntax check all files
+      run: |
+        python -c "
+        import ast, sys
+        from pathlib import Path
+        errors = 0
+        for f in Path('.').rglob('*.py'):
+            if any(x in str(f) for x in ['__pycache__','venv']):
+                continue
+            try:
+                ast.parse(f.read_text(encoding='utf-8', errors='replace'))
+            except SyntaxError as e:
+                print(f'SYNTAX ERROR {f}: {e}')
+                errors += 1
+        print(f'Checked {len(list(Path(\".\").rglob(\"*.py\")))} files, {errors} errors')
+        sys.exit(errors)
+        "
+
+    - name: Check from __future__ placement
+      run: |
+        python -c "
+        from pathlib import Path
+        bad = []
+        for f in Path('.').rglob('*.py'):
+            if any(x in str(f) for x in ['__pycache__','venv']):
+                continue
+            content = f.read_text(encoding='utf-8', errors='replace')
+            if '\"\"\"\\nfrom __future__' in content:
+                bad.append(str(f))
+        if bad:
+            print('BAD __future__ placement:')
+            for f in bad: print(f'  {f}')
+            exit(1)
+        print('All __future__ placements OK')
+        "

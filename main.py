@@ -17,8 +17,8 @@
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 
-"""
-Squelch -- main.py
+from __future__ import annotations
+"""Squelch -- main.py
 Amateur Radio Operations Platform entry point.
 
 Usage:
@@ -33,11 +33,15 @@ import os
 import logging
 import argparse
 from pathlib import Path
+from core.config import LOG_DIR
+from typing import Optional, Callable, List, Dict, Tuple  # safety net for module imports
 
 os.chdir(Path(__file__).parent)
 
 
 def setup_logging(debug: bool = False):
+    # Ensure log directory exists before FileHandler tries to open it
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     Path("logs").mkdir(exist_ok=True)
     level = logging.DEBUG if debug else logging.INFO
     fmt   = "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s"
@@ -45,7 +49,7 @@ def setup_logging(debug: bool = False):
         level=level, format=fmt,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler("logs/squelch.log", encoding="utf-8"),
+            logging.FileHandler(str(LOG_DIR / "squelch.log"), encoding="utf-8"),
         ])
 
 
@@ -53,7 +57,9 @@ def parse_args():
     p = argparse.ArgumentParser(description="Squelch Amateur Radio Operations Platform")
     p.add_argument("--lab-mode", action="store_true",
                    help="Start in classroom lab mode")
-    p.add_argument("--config", default="config.json",
+    from core.config import CONFIG_PATH
+    p.add_argument("--config",
+                   default=str(CONFIG_PATH),
                    help="Config file path")
     p.add_argument("--debug", action="store_true",
                    help="Verbose debug logging")
@@ -63,6 +69,14 @@ def parse_args():
 def main():
     args = parse_args()
     setup_logging(args.debug)
+    # Apply log level from config if not in debug mode
+    if not args.debug:
+        from core.config import CONFIG_PATH, Config
+        _tmp_cfg = Config(CONFIG_PATH)
+        level_str = _tmp_cfg.get("advanced.log_level", "INFO")
+        import logging as _lg
+        _lg.getLogger().setLevel(
+            getattr(_lg, level_str, _lg.INFO))
     log = logging.getLogger(__name__)
     log.info("=" * 56)
     log.info(f"Squelch starting  lab={args.lab_mode}  debug={args.debug}")
@@ -87,14 +101,15 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Squelch")
-    app.setApplicationVersion("1.5.0")
+    app.setApplicationVersion("0.9.0-alpha")
 
     from core.config   import Config
     from core.safety   import get_safety
     from core.rig      import RigController
     from core.location import LocationManager
 
-    config   = Config(Path(args.config))
+    config   = Config(
+        Path(args.config).expanduser().resolve())
     rig      = RigController(config)
     location = LocationManager(config)
 
@@ -113,6 +128,8 @@ def main():
     from ui.main_window import MainWindow
     window = MainWindow(config, rig, location)
     window.show()
+    window.raise_()
+    window.activateWindow()
     log.info("Window ready")
 
     ret = app.exec()

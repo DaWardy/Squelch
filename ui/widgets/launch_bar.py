@@ -32,8 +32,6 @@ from PyQt6.QtWidgets import (
     QLabel, QFrame
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtCore import QUrl
 
 from core.launcher import get_launcher, AppDef
 
@@ -66,7 +64,7 @@ class LaunchButton(QPushButton):
                 QPushButton{
                   background:#1a3a1a;color:#3fbe6f;
                   border:1px solid #3fbe6f;
-                  border-radius:4px;font-size:12px;
+                  border-radius:4px;
                   padding:2px 8px;}
                 QPushButton:hover{background:#2a4a2a;}
             """)
@@ -77,12 +75,12 @@ class LaunchButton(QPushButton):
         else:
             self.setStyleSheet("""
                 QPushButton{
-                  background:#1a1a1a;color:#555;
+                  background:#1a1a1a;
                   border:1px solid #2a2a2a;
-                  border-radius:4px;font-size:12px;
+                  border-radius:4px;
                   padding:2px 8px;}
                 QPushButton:hover{
-                  background:#1e1e1e;color:#888;}
+                  background:#1e1e1e;}
             """)
             self.setToolTip(
                 f"{self._app.name} — not found\n"
@@ -141,7 +139,7 @@ class LaunchBar(QWidget):
 
         lbl = QLabel(self.tr("External software:"))
         lbl.setStyleSheet(
-            "color:#555;font-size:12px;")
+            "")
         lay.addWidget(lbl)
 
         for app in apps:
@@ -156,9 +154,9 @@ class LaunchBar(QWidget):
         rescan.setFixedHeight(24)
         rescan.setFixedWidth(70)
         rescan.setStyleSheet(
-            "font-size:12px;background:#1a1a1a;"
+            "background:#1a1a1a;"
             "border:1px solid #2a2a2a;"
-            "border-radius:3px;color:#666;")
+            "border-radius:3px;")
         rescan.setToolTip(
             self.tr("Re-scan for running software"))
         rescan.clicked.connect(self._do_rescan)

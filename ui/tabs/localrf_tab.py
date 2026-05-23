@@ -17,19 +17,6 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- ui/tabs/localrf_tab.py
-Local RF tab.
-Nearest repeaters via RepeaterBook (free).
-RadioReference stub (requires Premium API key).
-APRS stations display.
-Auto-tune rig to selected repeater.
-Radio programming via CHIRP.
-"""
-
 import logging
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
@@ -112,6 +99,17 @@ class LocalRFTab(QWidget):
         lay.addWidget(QLabel("Nearest repeaters:"))
 
         # Radius
+        lay.addWidget(QLabel("From:"))
+        from PyQt6.QtWidgets import QLineEdit as _QLE
+        self._from_edit = _QLE()
+        self._from_edit.setPlaceholderText("grid / ZIP / city (blank = my location)")
+        self._from_edit.setMaximumWidth(220)
+        self._from_edit.setToolTip(
+            "Search from a different location than your station — "
+            "enter a Maidenhead grid, ZIP code, or city. Leave blank to "
+            "use your configured location.")
+        lay.addWidget(self._from_edit)
+
         lay.addWidget(QLabel("Within:"))
         self._radius = QDoubleSpinBox()
         self._radius.setRange(5, 200)
@@ -137,7 +135,7 @@ class LocalRFTab(QWidget):
         self._search_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
             "border:1px solid #3fbe6f;border-radius:4px;"
-            "font-size:12px;")
+            "")
         self._search_btn.setToolTip(
             "Search RepeaterBook for nearby repeaters\n"
             "Free, no API key required\n"
@@ -147,7 +145,7 @@ class LocalRFTab(QWidget):
 
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
-            "color:#555;font-size:12px;")
+            "")
         lay.addWidget(self._status_lbl)
 
         lay.addStretch()
@@ -155,7 +153,7 @@ class LocalRFTab(QWidget):
         # Location display
         self._loc_lbl = QLabel("Location: not set")
         self._loc_lbl.setStyleSheet(
-            "color:#444;font-size:12px;")
+            "")
         lay.addWidget(self._loc_lbl)
 
         return bar
@@ -183,15 +181,15 @@ class LocalRFTab(QWidget):
         self._table.setAlternatingRowColors(True)
         self._table.setStyleSheet(
             "QTableWidget{"
-            "background:#0a0a0a;color:#aaa;"
+            "background:#0a0a0a;"
             "gridline-color:#1a1a1a;"
             "alternate-background-color:#0d0d0d;"
-            "font-size:12px;font-family:'Courier New';"
+            "font-family:'Courier New';"
             "selection-background-color:#1a3a1a;"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{"
-            "background:#141414;color:#555;"
-            "border:none;font-size:12px;padding:3px;}")
+            "background:#141414;"
+            "border:none;padding:3px;}")
         self._table.clicked.connect(self._on_row_click)
         self._table.doubleClicked.connect(self._tune_to_selected)
         lay.addWidget(self._table)
@@ -206,7 +204,7 @@ class LocalRFTab(QWidget):
         self._no_results.setAlignment(
             Qt.AlignmentFlag.AlignCenter)
         self._no_results.setStyleSheet(
-            "color:#333;font-size:13px;")
+            "")
         lay.addWidget(self._no_results)
 
         # Action buttons
@@ -240,6 +238,14 @@ class LocalRFTab(QWidget):
             "Export all search results to CHIRP CSV format")
         export_btn.clicked.connect(self._export_all_to_chirp)
         btn_row.addWidget(export_btn)
+
+        manual_btn = QPushButton("✏️ Add Manually")
+        manual_btn.setToolTip(
+            "Add a repeater manually by frequency and tone\n"
+            "Useful when RepeaterBook search is unavailable")
+        manual_btn.clicked.connect(self._add_manual_repeater)
+        btn_row.addWidget(manual_btn)
+
         lay.addLayout(btn_row)
 
         return w
@@ -257,8 +263,8 @@ class LocalRFTab(QWidget):
         self._detail_text.setReadOnly(True)
         self._detail_text.setMaximumHeight(220)
         self._detail_text.setStyleSheet(
-            "background:#0a0a0a;color:#888;"
-            "font-size:12px;font-family:'Courier New';"
+            "background:#0a0a0a;"
+            "font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         self._detail_text.setPlaceholderText(
             "Select a repeater to see details…")
@@ -275,13 +281,13 @@ class LocalRFTab(QWidget):
             "Requires a Premium subscription.\n"
             "Configure API key in Settings.")
         rr_msg.setStyleSheet(
-            "color:#444;font-size:12px;")
+            "")
         rr_msg.setWordWrap(True)
         rl.addWidget(rr_msg)
 
         rr_btn = QPushButton("Configure API Key →")
         rr_btn.setStyleSheet(
-            "color:#555;font-size:12px;")
+            "")
         rr_btn.clicked.connect(self._open_rr_settings)
         rl.addWidget(rr_btn)
         lay.addWidget(rr_grp)
@@ -292,13 +298,13 @@ class LocalRFTab(QWidget):
 
         self._aprs_status = QLabel("● Not connected")
         self._aprs_status.setStyleSheet(
-            "color:#555;font-size:12px;"
+            ""
             "font-family:'Courier New';")
         al.addWidget(self._aprs_status)
 
         self._aprs_count = QLabel("Stations: 0")
         self._aprs_count.setStyleSheet(
-            "color:#555;font-size:12px;")
+            "")
         al.addWidget(self._aprs_count)
 
         aprs_btns = QHBoxLayout()
@@ -318,7 +324,7 @@ class LocalRFTab(QWidget):
             "APRS-IS: internet receive-only.\n"
             "RF TX requires Direwolf + TNC.")
         aprs_note.setStyleSheet(
-            "color:#444;font-size:12px;")
+            "")
         aprs_note.setWordWrap(True)
         al.addWidget(aprs_note)
         lay.addWidget(aprs_grp)
@@ -330,11 +336,28 @@ class LocalRFTab(QWidget):
     # ── Search ────────────────────────────────────────────────────────────
 
     def _do_search(self):
-        # Get location from config
-        grid = self.cfg.get("location.grid_square", "") or \
-               self.cfg.grid or ""
-        lat  = self.cfg.get("location.lat", 0.0)
-        lon  = self.cfg.get("location.lon", 0.0)
+        # Configurable start point (C-04, Marcus): if the From field is set,
+        # search from there instead of the station's configured location.
+        override = ""
+        if hasattr(self, "_from_edit"):
+            override = self._from_edit.text().strip()
+        if override:
+            grid, lat, lon = override, 0.0, 0.0
+            from core.location import _grid_to_latlon
+            try:
+                lat, lon = _grid_to_latlon(override)
+            except Exception:
+                # Not a grid — try ZIP/city via geocode
+                try:
+                    from core.location import geocode_place
+                    lat, lon = geocode_place(override)
+                except Exception:
+                    lat, lon = 0.0, 0.0
+        else:
+            grid = self.cfg.get("location.grid_square", "") or \
+                   self.cfg.grid or ""
+            lat  = self.cfg.get("location.lat", 0.0)
+            lon  = self.cfg.get("location.lon", 0.0)
 
         if not lat and not lon and not grid:
             QMessageBox.warning(
@@ -364,6 +387,8 @@ class LocalRFTab(QWidget):
 
         self._search_btn.setEnabled(False)
         self._search_btn.setText("Searching…")
+        self._no_results.hide()
+        self._table.setRowCount(0)
         self._status_lbl.setText(
             f"Searching within {radius:.0f}km…")
         self._loc_lbl.setText(
@@ -373,9 +398,37 @@ class LocalRFTab(QWidget):
             lat, lon,
             callback=self._on_results,
             radius_km=radius,
-            mode=mode)
+            mode=mode,
+            error_callback=self._on_search_error)
+
+        # Watchdog: if no results in 20s, reset UI so it never hangs forever
+        self._search_pending = True
+        def _watchdog():
+            if getattr(self, "_search_pending", False):
+                self._search_btn.setEnabled(True)
+                self._search_btn.setText("🔍 Search")
+                self._status_lbl.setText(
+                    "Search timed out — RepeaterBook may be slow or "
+                    "unreachable. Try again.")
+        QTimer.singleShot(20000, _watchdog)
+
+
+    def _on_search_error(self, message: str, needs_token: bool):
+        """Show RepeaterBook errors (esp. missing API token) with guidance."""
+        from PyQt6.QtCore import QTimer
+        def _show():
+            self._search_pending = False
+            self._search_btn.setEnabled(True)
+            self._search_btn.setText("\U0001F50D Search")
+            self._status_lbl.setText(
+                "RepeaterBook needs an API token" if needs_token
+                else "Search error")
+            self._no_results.setText(message)
+            self._no_results.show()
+        QTimer.singleShot(0, _show)
 
     def _on_results(self, repeaters: list[Repeater]):
+        self._search_pending = False
         QTimer.singleShot(0,
             lambda r=repeaters: self._populate(r))
 
@@ -387,8 +440,20 @@ class LocalRFTab(QWidget):
         self._table.setRowCount(0)
 
         if not repeaters:
-            self._status_lbl.setText("No repeaters found")
+            self._status_lbl.setText(
+                "No repeaters found — check internet connection")
+            self._no_results.setText(
+                "No repeaters found.\n\n"
+                "Possible causes:\n"
+                "  • Location not set in top bar\n"
+                "  • No internet connection\n"
+                "  • RepeaterBook.com temporarily unavailable\n\n"
+                "Try:\n"
+                "  • Set location in top bar (click grid field)\n"
+                "  • Increase search radius\n"
+                "  • Visit repeaterbook.com in a browser to check")
             self._no_results.show()
+            self._populate([])   # clear table, show empty state
             return
 
         self._no_results.hide()
@@ -523,7 +588,7 @@ class LocalRFTab(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Memory Channels",
             f"repeaters_{rep.city or 'local'}.csv",
-            "CHIRP CSV (*.csv);;All Files (*)")
+            "CHIRP CSV (*.csv);All Files (*)")
 
         if not path:
             return
@@ -541,6 +606,101 @@ class LocalRFTab(QWidget):
                 self, "Export Failed",
                 f"Could not export channels:\n{e}")
 
+    def _add_manual_repeater(self):
+        """Let user add a repeater manually."""
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QLineEdit,
+            QDoubleSpinBox, QDialogButtonBox,
+            QComboBox, QHBoxLayout)
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Add Repeater Manually")
+        dlg.setMinimumWidth(340)
+        f = QFormLayout(dlg)
+        f.setSpacing(8)
+        f.setContentsMargins(12, 12, 12, 12)
+
+        callsign = QLineEdit()
+        callsign.setPlaceholderText("e.g. W4XYZ")
+        callsign.setMaxLength(10)
+        f.addRow("Callsign:", callsign)
+
+        freq_mhz = QDoubleSpinBox()
+        freq_mhz.setRange(50.0, 1300.0)
+        freq_mhz.setValue(146.520)
+        freq_mhz.setDecimals(4)
+        freq_mhz.setSuffix(" MHz")
+        f.addRow("Output Freq:", freq_mhz)
+
+        offset = QComboBox()
+        offset.addItems([
+            "Simplex (+0.000)",
+            "+0.600 (2m standard)",
+            "-0.600 (2m standard)",
+            "+5.000 (70cm standard)",
+            "-5.000 (70cm standard)",
+            "+1.600 (1.25m standard)",
+            "Custom…"])
+        f.addRow("Offset:", offset)
+
+        tone = QLineEdit()
+        tone.setPlaceholderText("e.g. 100.0 (leave blank for none)")
+        f.addRow("CTCSS Tone:", tone)
+
+        mode = QComboBox()
+        mode.addItems(["FM", "DMR", "P25", "YSF", "D-STAR", "NXDN"])
+        f.addRow("Mode:", mode)
+
+        city = QLineEdit()
+        city.setPlaceholderText("e.g. Denver CO")
+        f.addRow("Location:", city)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        f.addRow(btns)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Build Repeater-like object
+        cs  = callsign.text().strip().upper() or "MANUAL"
+        off_text = offset.currentText()
+        off_map  = {
+            "+0.600 (2m standard)":  +0.600,
+            "-0.600 (2m standard)":  -0.600,
+            "+5.000 (70cm standard)":+5.000,
+            "-5.000 (70cm standard)":-5.000,
+            "+1.600 (1.25m standard)":+1.600,
+        }
+        off_mhz = off_map.get(off_text, 0.0)
+        tone_val = tone.text().strip()
+
+        from types import SimpleNamespace
+        rep = SimpleNamespace(
+            callsign   = cs,
+            output_mhz = freq_mhz.value(),
+            output_str = f"{freq_mhz.value():.4f}",
+            offset_mhz = off_mhz,
+            tone       = tone_val,
+            tone_str   = f"CTCSS {tone_val}" if tone_val else "None",
+            mode       = mode.currentText(),
+            city       = city.text().strip(),
+            state      = "",
+            lat        = 0.0,
+            lon        = 0.0,
+        )
+
+        if not hasattr(self, "_repeaters"):
+            self._repeaters = []
+        self._repeaters.append(rep)
+        self._populate(self._repeaters)
+        self._status_lbl.setText(
+            f"{len(self._repeaters)} repeaters "
+            f"(includes manual entries)")
+
     def _export_all_to_chirp(self):
         """Export all search results to CHIRP CSV."""
         if not self._repeaters:
@@ -557,7 +717,7 @@ class LocalRFTab(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self, "Export All to CHIRP",
             "squelch_repeaters.csv",
-            "CHIRP CSV (*.csv);;All Files (*)")
+            "CHIRP CSV (*.csv);All Files (*)")
         if not path:
             return
         try:
@@ -642,7 +802,7 @@ class LocalRFTab(QWidget):
         self._aprs_status.setText(
             f"● {status.capitalize()}")
         self._aprs_status.setStyleSheet(
-            f"color:{color};font-size:12px;"
+            f"color:{color};"
             "font-family:'Courier New';")
         if status == "connected":
             self._aprs_conn_btn.setText("Disconnect")

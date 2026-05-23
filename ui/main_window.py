@@ -35,9 +35,9 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox, QMenu, QSizePolicy,
     QCheckBox, QScrollArea, QComboBox, QTextEdit,
     QInputDialog, QSpinBox, QGroupBox, QSplitter,
-    QApplication, QAbstractItemView
+    QDockWidget, QApplication, QAbstractItemView
 )
-from PyQt6.QtCore import Qt, QTimer, QSettings, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSettings, pyqtSlot
 from PyQt6.QtGui import QAction, QActionGroup, QFont, QCursor
 
 import re
@@ -95,6 +95,8 @@ class ClickableLabel(QLabel):
         self.setToolTip(
             f"Click to edit  ({placeholder})")
 
+        self._apply_saved_guest_mode()
+
     def mousePressEvent(self, event):
         if not self._editing:
             self._start_edit()
@@ -112,7 +114,7 @@ class ClickableLabel(QLabel):
         self._edit.setMaxLength(self._max_length)
         self._edit.setStyleSheet(
             "background:#1a2a1a;border:1px solid #3fbe6f;"
-            "border-radius:3px;color:#3fbe6f;font-size:12px;"
+            "border-radius:3px;color:#3fbe6f;"
             "padding:1px 6px;font-family:'Courier New';")
         geo = self.geometry()
         # Make edit field a bit wider than label
@@ -188,16 +190,39 @@ class ClickableLabel(QLabel):
                 log.warning(f"Location commit: {e}")
 
 class MainWindow(QMainWindow):
+    # Thread-safe signals — emit() from any thread, slot runs on GUI thread
+    _location_found  = pyqtSignal(str, str, float, float)  # grid, display, lat, lon
+    _location_failed = pyqtSignal(str)                      # error message
+
     def __init__(self, config: Config,
                  rig: RigController,
                  location: LocationManager):
         super().__init__()
+        # ── DO NOT REMOVE: thread-safe location signals must be wired here ──
+        # If these .connect() lines disappear, the grid label gets stuck on
+        # "Searching..." forever because emit() from the background thread
+        # has nothing connected to it. See _on_location_found below.
+        self._location_found.connect(self._on_location_found)
+        self._location_failed.connect(self._on_location_failed)
+        # ────────────────────────────────────────────────────────────────
+        self.setDockOptions(
+            QMainWindow.DockOption.AllowTabbedDocks |
+            QMainWindow.DockOption.AllowNestedDocks |
+            QMainWindow.DockOption.AnimatedDocks)
         self.cfg      = config
         self.rig      = rig
         self.location = location
 
         self.setWindowTitle(
             f"{APP_NAME}  v{VERSION}  —  {APP_FULL}")
+        try:
+            from PyQt6.QtGui import QIcon
+            from pathlib import Path as _P
+            _ic = _P(__file__).resolve().parent.parent / "assets" / "squelch.png"
+            if _ic.exists():
+                self.setWindowIcon(QIcon(str(_ic)))
+        except Exception:
+            pass
         self.setMinimumSize(900, 600)
 
         # Restore window geometry
@@ -225,6 +250,7 @@ class MainWindow(QMainWindow):
         self._apply_station_settings()
         self._init_aprs()
         self._init_pskreporter()
+        self._init_satellites()
         QTimer.singleShot(100, self._wire_sdr_to_digital)
         self._auto_detect_software()
         # Populate operator profiles
@@ -239,6 +265,7 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         vbox = QVBoxLayout(central)
+        self._central_layout = vbox
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(0)
 
@@ -251,6 +278,8 @@ class MainWindow(QMainWindow):
             Qt.ContextMenuPolicy.CustomContextMenu)
         self.tabs.customContextMenuRequested.connect(
             self._tab_context_menu)
+        self.tabs.tabBarDoubleClicked.connect(self._undock_tab)
+        self.tabs.currentChanged.connect(self._update_spectrum_action)
         vbox.addWidget(self.tabs)
 
         self._tab_map: dict[str, QWidget] = {}
@@ -265,6 +294,59 @@ class MainWindow(QMainWindow):
             self._tab_visibility[key] = visible
             self.tabs.setTabVisible(
                 self.tabs.indexOf(w), visible)
+
+    def _undock_tab(self, index: int):
+        """Pop a tab out into a floating window. Double-click tab bar to trigger."""
+        if index < 0:
+            return
+        widget = self.tabs.widget(index)
+        label  = self.tabs.tabText(index)
+        if widget is None:
+            return
+
+        # Find the key for this widget
+        key = next((k for k, w in self._tab_map.items()
+                    if w is widget), None)
+
+        # Create a floating window
+        win = QDockWidget(label, self)
+        win.setWidget(widget)
+        win.setFloating(True)
+        win.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable)
+        win.resize(900, 650)
+        win.show()
+
+        # When re-docked or closed, put tab back
+        def _on_close():
+            if key and key in self._tab_map:
+                idx = self.tabs.indexOf(widget)
+                if idx < 0:
+                    # Re-add it
+                    original_idx = next(
+                        (i for i, (k, _, _) in enumerate(TABS)
+                         if k == key), self.tabs.count())
+                    self.tabs.insertTab(
+                        min(original_idx, self.tabs.count()),
+                        widget, label)
+
+        win.dockLocationChanged.connect(lambda _: _on_close())
+        win.topLevelChanged.connect(
+            lambda floating: (not floating) and _on_close())
+
+        # Track floating windows
+        if not hasattr(self, '_floating_windows'):
+            self._floating_windows = []
+        self._floating_windows.append(win)
+
+        # Remove from tab bar while floating
+        self.tabs.removeTab(index)
+        if key:
+            self.statusBar().showMessage(
+                f"{label} undocked — double-click its title bar "
+                "to re-dock", 4000)
 
     def _make_tab(self, key: str, label: str) -> QWidget:
         """
@@ -324,7 +406,7 @@ class MainWindow(QMainWindow):
             err_l.setContentsMargins(30, 30, 30, 30)
             t = QLabel(f"Tab failed to load: {key}")
             t.setStyleSheet(
-                "color:#cc4444;font-size:13px;"
+                "color:#cc4444;"
                 "font-weight:bold;")
             err_l.addWidget(t)
             d = QLabel(
@@ -332,7 +414,7 @@ class MainWindow(QMainWindow):
                 "Check logs/squelch.log for details.")
             d.setWordWrap(True)
             d.setStyleSheet(
-                "color:#888;font-size:13px;")
+                "")
             err_l.addWidget(d)
             err_l.addStretch()
             return err_w
@@ -349,7 +431,7 @@ class MainWindow(QMainWindow):
 
         title = QLabel(APP_NAME)
         title.setStyleSheet(
-            "color:#3fbe6f;font-size:15px;font-weight:bold;"
+            "color:#3fbe6f;font-weight:bold;"
             "font-family:'Courier New';")
         lay.addWidget(title)
         lay.addWidget(_vsep())
@@ -361,7 +443,7 @@ class MainWindow(QMainWindow):
             self._on_callsign_edit,
             max_length=12)
         self._cs_lbl.setStyleSheet(
-            "color:#aaa;font-size:12px;"
+            ""
             "font-family:'Courier New';")
         self._cs_lbl.setToolTip(
             "Your FCC callsign\n"
@@ -375,12 +457,12 @@ class MainWindow(QMainWindow):
         self._profile_combo.setFixedHeight(24)
         self._profile_combo.setStyleSheet(
             "QComboBox{"
-            "background:#141414;color:#888;"
+            "background:#141414;"
             "border:1px solid #222;border-radius:3px;"
-            "font-size:12px;padding:2px 6px;}"
+            "padding:2px 6px;}"
             "QComboBox::drop-down{border:none;width:16px;}"
             "QComboBox QAbstractItemView{"
-            "background:#141414;color:#aaa;"
+            "background:#141414;"
             "selection-background-color:#1a3a1a;}")
         self._profile_combo.setToolTip(
             "Operator profile switcher\n"
@@ -402,14 +484,14 @@ class MainWindow(QMainWindow):
             self._on_grid_edit,
             max_length=30)
         self._grid_lbl.setStyleSheet(
-            "color:#777;font-size:12px;"
+            ""
             "font-family:'Courier New';")
         lay.addWidget(self._grid_lbl)
         lay.addWidget(_vsep())
 
         self._loc_lbl = QLabel("—")
         self._loc_lbl.setStyleSheet(
-            "color:#4a4a4a;font-size:13px;")
+            "color:#4a4a4a;")
         lay.addWidget(self._loc_lbl)
         lay.addStretch()
 
@@ -417,7 +499,7 @@ class MainWindow(QMainWindow):
         self._utc_lbl = QLabel("00:00:00 UTC")
         self._utc_lbl.setStyleSheet(
             "color:#3fbe6f;font-family:'Courier New';"
-            "font-size:13px;")
+            "")
         self._utc_lbl.setToolTip(
             "Click to toggle UTC / Local time")
         self._utc_lbl.mousePressEvent = self._toggle_clock
@@ -427,7 +509,7 @@ class MainWindow(QMainWindow):
 
         self._rig_pill = QLabel("● RIG")
         self._rig_pill.setStyleSheet(
-            "color:#444;font-size:13px;"
+            ""
             "font-family:'Courier New';")
         lay.addWidget(self._rig_pill)
 
@@ -509,6 +591,7 @@ class MainWindow(QMainWindow):
             self.tr("Toggle Spectrum / Waterfall"), self)
         spec_a.setShortcut("Ctrl+W")
         spec_a.triggered.connect(self._toggle_spectrum)
+        self._spectrum_action = spec_a
         vm.addAction(spec_a)
 
         vm.addSeparator()
@@ -635,7 +718,7 @@ class MainWindow(QMainWindow):
             col, txt = "#444444", "● RIG"
         self._rig_pill.setText(txt)
         self._rig_pill.setStyleSheet(
-            f"color:{col};font-size:13px;"
+            f"color:{col};"
             "font-family:'Courier New';")
         connected = self.rig.is_connected
         freq_str = (
@@ -664,7 +747,7 @@ class MainWindow(QMainWindow):
         if loc.grid:
             self._grid_lbl.setText(loc.grid)
             self._grid_lbl.setStyleSheet(
-                "color:#3fbe6f;font-size:12px;"
+                "color:#3fbe6f;"
                 "font-family:'Courier New';")
         elif loc.is_valid:
             # Have lat/lon, compute grid
@@ -673,7 +756,7 @@ class MainWindow(QMainWindow):
                 grid = _latlon_to_grid(loc.lat, loc.lon)
                 self._grid_lbl.setText(grid)
                 self._grid_lbl.setStyleSheet(
-                    "color:#3fbe6f;font-size:12px;"
+                    "color:#3fbe6f;"
                     "font-family:'Courier New';")
             except Exception:
                 pass
@@ -684,6 +767,37 @@ class MainWindow(QMainWindow):
         self.cfg.callsign = val
         self.cfg.save()
         log.info(f"Callsign: {val}")
+
+    def _on_location_found(self, grid: str, display: str,
+                            lat: float, lon: float):
+        """Slot — always called on main thread via signal."""
+        if not grid:
+            return
+        grid = grid.upper()
+        self._grid_lbl.setText(grid)
+        self._grid_lbl.setStyleSheet(
+            "color:#3fbe6f;"
+            "font-family:'Courier New';")
+        if display and hasattr(self, "_loc_lbl"):
+            self._loc_lbl.setText(display)
+        self.cfg.grid = grid
+        if lat:
+            self.cfg.set("location.lat", lat)
+            self.cfg.set("location.lon", lon)
+        self.cfg.save()
+        for tab in self._tab_map.values():
+            if hasattr(tab, "on_location_change"):
+                try:
+                    tab.on_location_change(self.location)
+                except Exception:
+                    pass
+
+    def _on_location_failed(self, msg: str):
+        """Slot — location search failed, update label."""
+        self._grid_lbl.setText(msg)
+        self._grid_lbl.setStyleSheet(
+            "color:#cc6644;"
+            "font-family:'Courier New';")
 
     def _on_grid_edit(self, val: str):
         """
@@ -699,21 +813,35 @@ class MainWindow(QMainWindow):
         if not val:
             return
 
-        def _set_grid(grid: str, display: str = ""):
+        def _set_grid(grid: str, display: str = "",
+                       lat: float = 0.0, lon: float = 0.0):
             """Final step — always show Maidenhead grid."""
             if not grid:
                 return
             grid = grid.upper()
             self._grid_lbl.setText(grid)
             self._grid_lbl.setStyleSheet(
-                "color:#3fbe6f;font-size:12px;"
+                "color:#3fbe6f;"
                 "font-family:'Courier New';")
             if display:
-                self._loc_lbl.setText(display)
-                self._sb_loc.setText(
-                    f"Location: {display}")
+                if hasattr(self, "_loc_lbl"):
+                    self._loc_lbl.setText(display)
+                if hasattr(self, "_sb_loc"):
+                    self._sb_loc.setText(
+                        f"Location: {display}")
             self.cfg.grid = grid
+            if lat:
+                self.cfg.set("location.lat", lat)
+                self.cfg.set("location.lon", lon)
             self.cfg.save()
+            # Notify all tabs of location change
+            for key, tab in self._tab_map.items():
+                if hasattr(tab, "on_location_change"):
+                    try:
+                        tab.on_location_change(
+                            self.location)
+                    except Exception:
+                        pass
 
         if _valid_grid(val):
             # Already a valid grid square
@@ -724,14 +852,13 @@ class MainWindow(QMainWindow):
             # ZIP, city, address — search via Nominatim
             self._grid_lbl.setText("Searching…")
             self._grid_lbl.setStyleSheet(
-                "color:#888;font-size:12px;"
+                ""
                 "font-family:'Courier New';")
 
             def _search(q=val):
                 try:
                     loc = self.location.search(q)
                     if loc and loc.is_valid:
-                        # Ensure we have a grid
                         grid = loc.grid or ""
                         if not grid and loc.lat:
                             try:
@@ -741,44 +868,28 @@ class MainWindow(QMainWindow):
                                 pass
                         if grid:
                             self.location.apply(loc)
-                            city  = loc.city or ""
-                            state = loc.state or ""
+                            city  = getattr(loc, "city",  "") or ""
+                            state = getattr(loc, "state", "") or ""
                             disp  = ", ".join(
-                                filter(None,
-                                       [city, state]))
-                            QTimer.singleShot(0,
-                                lambda g=grid, d=disp:
-                                _set_grid(g, d))
+                                filter(None, [city, state]))
+                            lat_v = float(
+                                getattr(loc, "lat", 0.0) or 0.0)
+                            lon_v = float(
+                                getattr(loc, "lon", 0.0) or 0.0)
+                            # Thread-safe: emit signal, not QTimer
+                            self._location_found.emit(
+                                grid, disp, lat_v, lon_v)
                         else:
-                            QTimer.singleShot(0,
-                                lambda: (
-                                    self._grid_lbl.setText(
-                                        "Not found"),
-                                    QTimer.singleShot(
-                                        2500, lambda:
-                                        self._grid_lbl.setText(
-                                            self.cfg.grid or
-                                            "No grid set"))))
+                            self._location_failed.emit(
+                                "Not found — try grid square")
                     else:
-                        QTimer.singleShot(0,
-                            lambda: (
-                                self._grid_lbl.setText(
-                                    "Not found — try a grid or city"),
-                                QTimer.singleShot(
-                                    2500, lambda:
-                                    self._grid_lbl.setText(
-                                        self.cfg.grid or
-                                        "No grid set"))))
+                        self._location_failed.emit("Not found")
                 except Exception as e:
-                    log.warning(f"Location search: {e}")
-                    QTimer.singleShot(0,
-                        lambda: self._grid_lbl.setText(
-                            self.cfg.grid or "No grid set"))
-
+                    log.debug(f"Location search: {e}")
+                    self._location_failed.emit("Search failed")
+            import threading
             threading.Thread(
                 target=_search, daemon=True).start()
-
-    # ── Safety alerts ─────────────────────────────────────────────────────
 
     def _on_safety_alert(self, title: str,
                           message: str, severity: str):
@@ -850,6 +961,24 @@ class MainWindow(QMainWindow):
         self.cfg.set("ui.font_size", size)
         self.cfg.save()
 
+
+    def _update_spectrum_action(self, index: int = -1):
+        """Enable the Spectrum/Waterfall toggle only on tabs that have one."""
+        act = getattr(self, '_spectrum_action', None)
+        if act is None:
+            return
+        # Only Rig and SDR tabs have a spectrum/waterfall display
+        widget = self.tabs.currentWidget()
+        has_spectrum = False
+        if widget is not None:
+            has_spectrum = (
+                hasattr(widget, '_spectrum') or
+                hasattr(widget, '_waterfall') or
+                hasattr(widget, 'toggle_spectrum') or
+                hasattr(widget, '_toggle_spectrum'))
+        act.setEnabled(has_spectrum)
+        act.setVisible(has_spectrum)
+
     def _toggle_spectrum(self):
         rig_tab = self._tab_map.get("rig")
         if rig_tab and hasattr(rig_tab, '_spectrum_widget'):
@@ -867,7 +996,6 @@ class MainWindow(QMainWindow):
         Persisted to config.
         """
         from PyQt6.QtWidgets import QApplication
-        from PyQt6.QtGui import QFont
         app = QApplication.instance()
         if app:
             f = app.font()
@@ -878,7 +1006,7 @@ class MainWindow(QMainWindow):
                 app.styleSheet() +
                 f"QToolTip{{font-size:{size}pt;"
                 f"padding:6px;border:1px solid #333;"
-                f"background:#1a1a1a;color:#ccc;}}")
+                f"background:#1a1a1a;}}")
         self.cfg.set("ui.font_size", size)
         self.cfg.save()
         log.info(f"Font size set to {size}pt")
@@ -929,14 +1057,89 @@ class MainWindow(QMainWindow):
                     "Lock your layout via View → "
                     "Lock UI Layout when done."))
 
+
+    def _apply_saved_guest_mode(self):
+        """On startup, restore Guest mode from config and reflect it (C-06)."""
+        enabled = self.cfg.get("classroom.lab_mode", False)
+        try:
+            from core.safety import get_safety
+            get_safety().set_guest_mode(enabled)
+        except Exception:
+            pass
+        self._update_guest_banner(enabled)
+
+
+    def _show_network_log(self):
+        """C-12 (Priya): show the network activity log so the user can audit
+        exactly what Squelch connected to, when, and whether they started it."""
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTextEdit,
+                                     QLabel, QPushButton, QHBoxLayout)
+        from core.netlog import recent_events, auto_connection_count
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Network Activity")
+        dlg.resize(640, 420)
+        lay = QVBoxLayout(dlg)
+        auto_n = auto_connection_count()
+        summary = QLabel(
+            f"Outbound connections this session — {auto_n} automatic.\n"
+            "AUTO = app-initiated (band conditions, satellites, optional "
+            "geolocation). USER = you clicked something.")
+        summary.setWordWrap(True)
+        lay.addWidget(summary)
+        view = QTextEdit()
+        view.setReadOnly(True)
+        lines = []
+        for e in recent_events():
+            tag = "USER" if e["user_initiated"] else "AUTO"
+            lines.append(f'{e["ts_utc"]}  [{tag}]  {e["host"]}'
+                         f'  — {e["purpose"]}')
+        view.setPlainText("\n".join(lines) or "No connections recorded yet.")
+        lay.addWidget(view)
+        row = QHBoxLayout()
+        row.addStretch()
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.accept)
+        row.addWidget(close)
+        lay.addLayout(row)
+        dlg.exec()
+
     def _toggle_lab(self):
         current = self.cfg.get("classroom.lab_mode", False)
-        self.cfg.set("classroom.lab_mode", not current)
+        new_state = not current
+        self.cfg.set("classroom.lab_mode", new_state)
         self.cfg.save()
-        state = "ENABLED" if not current else "DISABLED"
+        # Apply immediately — no restart needed (C-06, Elena)
+        try:
+            from core.safety import get_safety
+            get_safety().set_guest_mode(new_state)
+        except Exception:
+            pass
+        self._update_guest_banner(new_state)
+        state = "ENABLED" if new_state else "DISABLED"
         QMessageBox.information(
             self, "Guest Operator Mode",
-            f"Guest Operator mode {state}.\nRestart Squelch to apply.")
+            f"Guest Operator mode {state}.\n"
+            + ("All transmit is now disabled."
+               if new_state else "Transmit is re-enabled."))
+
+    def _update_guest_banner(self, enabled: bool):
+        """Show/hide a persistent banner when Guest mode blocks TX (C-06)."""
+        bar = getattr(self, "_guest_banner", None)
+        if bar is None:
+            from PyQt6.QtWidgets import QLabel
+            bar = QLabel("  GUEST OPERATOR MODE — transmit is disabled  ")
+            bar.setStyleSheet(
+                "background:#5a3a00;color:#ffcc66;font-weight:bold;"
+                "padding:4px;border-bottom:1px solid #8a5a00;")
+            from PyQt6.QtCore import Qt
+            bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._guest_banner = bar
+            # Insert at the very top of the central layout
+            try:
+                self._central_layout.insertWidget(0, bar)
+            except Exception:
+                pass
+        bar.setVisible(enabled)
 
     # ── Rig model selector ────────────────────────────────────────────────
 
@@ -960,7 +1163,7 @@ class MainWindow(QMainWindow):
         info.setReadOnly(True)
         info.setMaximumHeight(200)
         info.setStyleSheet(
-            "background:#111;color:#aaa;font-size:12px;"
+            "background:#111;"
             "font-family:'Courier New';border:1px solid #333;")
         lay.addWidget(info)
 
@@ -1054,7 +1257,7 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(dlg)
 
         intro = QLabel(
-            f"<b style='font-size:14px'>"
+            f"<b style=''>"
             f"Welcome to {APP_NAME} v{VERSION}</b><br><br>"
             "Enter your callsign and location to get started.<br>"
             "Location resolves to a Maidenhead grid square — "
@@ -1087,7 +1290,7 @@ class MainWindow(QMainWindow):
             "ham/grid_square.php' style='color:#3fbe6f'>"
             "levinecentral.com</a>")
         hint.setOpenExternalLinks(True)
-        hint.setStyleSheet("color:#666;font-size:12px;")
+        hint.setStyleSheet("")
         lay.addWidget(hint)
 
         btns = QDialogButtonBox(
@@ -1122,20 +1325,39 @@ class MainWindow(QMainWindow):
                         try:
                             result = self.location.search(q)
                             if result and result.is_valid:
-                                QTimer.singleShot(0,
-                                    lambda r=result: (
-                                        self.location.apply(r),
-                                        self._grid_lbl.setText(
-                                            r.grid or q)))
+                                def _apply(r=result):
+                                    self.location.apply(r)
+                                    grid = r.grid or ""
+                                    if grid:
+                                        self.cfg.grid = grid
+                                    if r.lat:
+                                        self.cfg.set(
+                                            "location.lat", r.lat)
+                                        self.cfg.set(
+                                            "location.lon", r.lon)
+                                    self.cfg.save()
+                                    self._grid_lbl.setText(
+                                        grid or q)
+                                    self._grid_lbl.setStyleSheet(
+                                        "color:#3fbe6f;"
+                                        ""
+                                        "font-family:'Courier New';")
+                                    city  = getattr(r, "city",  "")
+                                    state = getattr(r, "state", "")
+                                    disp  = ", ".join(
+                                        filter(None, [city, state]))
+                                    if disp and hasattr(self, "_loc_lbl"):
+                                        self._loc_lbl.setText(disp)
+                                QTimer.singleShot(0, _apply)
                             else:
                                 QTimer.singleShot(0,
                                     lambda: self._grid_lbl.setText(
-                                        self.tr("Not found — try grid square")))
+                                        "Not found — try grid square"))
                         except Exception as e:
                             log.warning(f"First run location: {e}")
                             QTimer.singleShot(0,
                                 lambda: self._grid_lbl.setText(
-                                    self.tr("Search failed")))
+                                    "Search failed"))
                     threading.Thread(
                         target=_search, daemon=True).start()
 
@@ -1144,9 +1366,44 @@ class MainWindow(QMainWindow):
     # ── Settings ──────────────────────────────────────────────────────────
 
     def _open_settings(self):
-        """Open full settings editor (Ctrl+,)."""
-        from ui.dialogs.settings_dialog import SettingsDialog
-        dlg = SettingsDialog(self.cfg, parent=self)
+        """Open full settings editor (Ctrl+,).
+        Destroys any previous dialog before creating a new one to avoid
+        'wrapped C/C++ object deleted' from stale widget references."""
+        try:
+            from ui.dialogs.settings_dialog import SettingsDialog
+            try:
+                from PyQt6 import sip
+            except ImportError:
+                import sip
+            # Guard: ensure main window is still alive
+            if sip.isdeleted(self):
+                return
+            # ─── DO NOT REMOVE: stale-dialog destruction ────────────────
+            # Without this, opening Settings a 2nd time after closing
+            # the first crashes with "wrapped C/C++ object of type
+            # SettingsDialog has been deleted". The previous dialog's
+            # C++ object got GC'd but Python still held a reference.
+            old_dlg = getattr(self, '_settings_dlg', None)
+            if old_dlg is not None:
+                try:
+                    if not sip.isdeleted(old_dlg):
+                        old_dlg.hide()
+                        old_dlg.deleteLater()
+                except Exception:
+                    pass
+                self._settings_dlg = None
+            # ────────────────────────────────────────────────────────────
+            # Store reference — prevents garbage collection while open
+            self._settings_dlg = SettingsDialog(self.cfg, parent=self)
+            dlg = self._settings_dlg
+        except Exception as e:
+            log.error(f"Settings dialog failed to open: {e}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "Settings",
+                f"Could not open settings: {e}\n\n"
+                "Try restarting Squelch.")
+            return
         if dlg.exec():
             # Apply all settings
             self._apply_station_settings()
@@ -1260,8 +1517,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             log.debug(f"Profile populate: {e}")
             self._profile_combo.clear()
-            self._profile_combo.addItem(
-                self.cfg.callsign or "Default")
+            self._profile_combo.addItem("Default")
 
     def _on_profile_change(self, idx: int):
         """Switch to selected operator profile."""
@@ -1352,7 +1608,7 @@ class MainWindow(QMainWindow):
         if grid:
             self._grid_lbl.setText(grid)
             self._grid_lbl.setStyleSheet(
-                "color:#3fbe6f;font-size:12px;"
+                "color:#3fbe6f;"
                 "font-family:'Courier New';")
             # Restore full location display
             city  = self.cfg.get("location.city", "")
@@ -1368,7 +1624,7 @@ class MainWindow(QMainWindow):
         elif self.cfg.get("callsign"):
             # Have callsign but no location — prompt
             self._loc_lbl.setText("No location set — click grid to set")
-            self._loc_lbl.setStyleSheet("color:#555;font-size:12px;")
+            self._loc_lbl.setStyleSheet("")
 
     def _init_aprs(self):
         """
@@ -1392,6 +1648,39 @@ class MainWindow(QMainWindow):
             log.debug(f"APRS init: {e}")
             self._aprs_client = None
             self._aprs_beacon = None
+
+    def _init_satellites(self):
+        """Initialize satellite tracker (background thread)."""
+        try:
+            from network.satellites import SatTracker
+            self._sat_tracker = SatTracker(self.cfg)
+            self._sat_tracker.on_update(
+                self._on_sat_update)
+            self._sat_tracker.start()
+            log.info("Satellite tracker started")
+        except Exception as e:
+            log.debug(f"Satellite tracker: {e}")
+            self._sat_tracker = None
+
+    def _on_sat_update(self, positions: list):
+        """Push satellite positions to map."""
+        try:
+            map_tab = self._tab_map.get("map")
+            if map_tab and hasattr(
+                    map_tab, "set_satellite_positions"):
+                from PyQt6.QtCore import QTimer
+                sats = [{"name":   p.name,
+                         "lat":    p.lat,
+                         "lon":    p.lon,
+                         "alt_km": p.alt_km,
+                         "el_deg": p.el_deg,
+                         "visible": p.is_visible}
+                        for p in positions]
+                QTimer.singleShot(0,
+                    lambda s=sats:
+                        map_tab.set_satellite_positions(s))
+        except Exception:
+            pass
 
     def _init_pskreporter(self):
         """

@@ -76,6 +76,7 @@ DUTY_CYCLE: dict[str, float] = {
 class SafetyManager:
     def __init__(self):
         self._state        = AppState.IDLE
+        self._guest_mode   = False
         self._rig          = None
         self._tx_start:    float | None = None
         self._tx_mode:     str = "SSB"
@@ -119,7 +120,18 @@ class SafetyManager:
         return control in STATE_LOCKS.get(self._state, set())
 
     def can_transmit(self) -> bool:
+        """Whether the app may key the rig right now.
+        Returns False in Guest/Demo mode (C-06, Elena) so a classroom
+        demo can never accidentally transmit, and only True in safe
+        states (C-08, Hank — never key unexpectedly)."""
+        if getattr(self, "_guest_mode", False):
+            return False
         return self._state in (AppState.IDLE, AppState.RX)
+
+    def set_guest_mode(self, enabled: bool):
+        """Enable/disable Guest (classroom/demo) mode. When on, all
+        transmit paths are blocked regardless of app state."""
+        self._guest_mode = bool(enabled)
 
     def is_transmitting(self) -> bool:
         return self._state in (
@@ -249,9 +261,22 @@ class SafetyManager:
         self._emergency_ptt_release()
         log.critical("Unhandled exception",
                      exc_info=(exc_type, exc_value, exc_tb))
+
+        # RuntimeError from PyQt6 ("wrapped C/C++ object deleted")
+        # is recoverable — log it but keep running.
+        # Only exit for truly fatal errors.
+        is_qt_runtime = (
+            exc_type is RuntimeError and
+            "wrapped C/C++" in str(exc_value))
+
         try:
             from PyQt6.QtWidgets import QApplication, QMessageBox
             if QApplication.instance():
+                if is_qt_runtime:
+                    # Non-fatal Qt cleanup error — show brief warning
+                    log.warning(
+                        f"Qt widget error (non-fatal): {exc_value}")
+                    return   # do NOT exit — just log and continue
                 msg = QMessageBox()
                 msg.setWindowTitle("Squelch — Unexpected Error")
                 msg.setIcon(QMessageBox.Icon.Critical)
@@ -262,9 +287,10 @@ class SafetyManager:
                     "Report at: github.com/dawardy/squelch/issues")
                 msg.exec()
         except Exception:
-            print(f"\nFATAL: {exc_type.__name__}: {exc_value}",  # intentional: stderr before logger
+            print(f"\nFATAL: {exc_type.__name__}: {exc_value}",
                   file=sys.stderr)
-        sys.exit(1)
+        if not is_qt_runtime:
+            sys.exit(1)
 
     # ── Callbacks ─────────────────────────────────────────────────────────
 

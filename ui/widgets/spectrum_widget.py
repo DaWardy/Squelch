@@ -183,12 +183,12 @@ class SpectrumWidget(QWidget):
         bar.setContentsMargins(4, 0, 4, 0)
 
         lbl = QLabel("Spectrum / Waterfall")
-        lbl.setStyleSheet("color:#777; font-size:12px;")
+        lbl.setStyleSheet(" ")
         bar.addWidget(lbl)
         bar.addStretch()
 
         span_lbl = QLabel("Span:")
-        span_lbl.setStyleSheet("color:#666; font-size:12px;")
+        span_lbl.setStyleSheet(" ")
         bar.addWidget(span_lbl)
         self._span_combo = QComboBox()
         self._span_combo.addItems(["5 kHz", "10 kHz", "25 kHz",
@@ -196,12 +196,12 @@ class SpectrumWidget(QWidget):
         self._span_combo.setCurrentIndex(3)
         self._span_combo.setFixedWidth(75)
         self._span_combo.setStyleSheet(
-            "font-size:12px; background:#1a1a1a; color:#aaa; border:1px solid #333;")
+            " background:#1a1a1a;  border:1px solid #333;")
         self._span_combo.currentIndexChanged.connect(self._on_span)
         bar.addWidget(self._span_combo)
 
         gain_lbl = QLabel("Gain:")
-        gain_lbl.setStyleSheet("color:#666; font-size:12px;")
+        gain_lbl.setStyleSheet(" ")
         bar.addWidget(gain_lbl)
         self._gain_slider = QSlider(Qt.Orientation.Horizontal)
         self._gain_slider.setRange(1, 20)
@@ -215,13 +215,13 @@ class SpectrumWidget(QWidget):
         self._axis_toggle.setToolTip(
             "Toggle between absolute MHz and kHz offset display")
         self._axis_toggle.setStyleSheet(
-            "font-size:13px;border:1px solid #333;border-radius:3px;"
-            "background:#1a1a1a;color:#888;")
+            "border:1px solid #333;border-radius:3px;"
+            "background:#1a1a1a;")
         self._axis_toggle.clicked.connect(self._toggle_axis_mode)
         bar.addWidget(self._axis_toggle)
 
         self._src_lbl = QLabel("● Audio")
-        self._src_lbl.setStyleSheet("color:#555; font-size:12px;")
+        self._src_lbl.setStyleSheet(" ")
         bar.addWidget(self._src_lbl)
 
         root.addLayout(bar)
@@ -232,7 +232,7 @@ class SpectrumWidget(QWidget):
                 "pyqtgraph not installed\n"
                 "Run: pip install pyqtgraph --no-cache-dir")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder.setStyleSheet("color:#555; font-size:13px;")
+            placeholder.setStyleSheet(" ")
             root.addWidget(placeholder)
             return
 
@@ -351,12 +351,12 @@ class SpectrumWidget(QWidget):
             self._stream.start()
             dev_name = sd.query_devices(dev)["name"] if dev is not None else "default"
             self._src_lbl.setText(f"● {dev_name[:20]}")
-            self._src_lbl.setStyleSheet("color:#3fbe6f; font-size:12px;")
+            self._src_lbl.setStyleSheet("color:#3fbe6f; ")
             log.info(f"Spectrum audio: {dev_name}")
         except Exception as e:
             log.warning(f"Spectrum audio start failed: {e}")
             self._src_lbl.setText("● No audio")
-            self._src_lbl.setStyleSheet("color:#cc4444; font-size:12px;")
+            self._src_lbl.setStyleSheet("color:#cc4444; ")
 
     def _stop_audio(self):
         if self._stream:

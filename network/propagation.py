@@ -39,7 +39,8 @@ from core.validator import api_float, api_int, api_string
 log = logging.getLogger(__name__)
 
 from core.constants import (
-    NOAA_SOLAR_URL, NOAA_KP_URL,
+    NOAA_SOLAR_URL, NOAA_SOLAR_RT_URL,
+    NOAA_KP_URL, NOAA_KP_RT_URL,
     NOAA_ALERTS_URL)
 
 # NOAA SWPC endpoints
@@ -218,6 +219,75 @@ class PropagationFeed:
                 pass
 
     def _fetch_solar(self):
+        """Fetch real-time solar data from NOAA SWPC."""
+        if not HAS_REQUESTS:
+            return
+
+        # ── Real-time 10.7cm flux (updates every 3h) ──────────────
+        try:
+            from core.netlog import record_connection
+            record_connection("services.swpc.noaa.gov", purpose="solar/band conditions", user_initiated=False)
+            resp = requests.get(
+                NOAA_SOLAR_RT_URL, timeout=REQUEST_TIMEOUT)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Response: {"Flux": "156.8", "TimeStamp": "..."}
+                if isinstance(data, dict):
+                    raw = (data.get("Flux") or
+                           data.get("flux") or
+                           data.get("solarflux") or
+                           data.get("value"))
+                    sfi = api_float(raw, 0.0)
+                    if sfi > 50:  # sanity check
+                        self._solar.sfi = sfi
+                        self._solar.fetched_at = time.time()
+                        log.debug(f"Solar RT SFI={sfi}")
+        except Exception as e:
+            log.debug(f"Solar RT: {e}")
+
+        # ── 45-day solar cycle file for sunspot + trend ───────────
+        try:
+            resp = requests.get(
+                NOAA_SOLAR_URL, timeout=REQUEST_TIMEOUT)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list) and len(data) >= 2:
+                    latest = data[-1]
+                    prev   = data[-2]
+                    # Update SFI only if RT failed
+                    if self._solar.sfi <= 0:
+                        sfi = api_float(
+                            latest.get("flux") or
+                            latest.get("f10.7") or
+                            latest.get("smoothed_ssn"), 0.0)
+                        if sfi > 50:
+                            self._solar.sfi = sfi
+                    # Sunspot number
+                    ssn = api_int(
+                        latest.get("ssn") or
+                        latest.get("smoothed_ssn"), 0)
+                    if ssn >= 0:
+                        self._solar.sunspot_num = ssn
+                    # Trend
+                    prev_sfi = api_float(
+                        prev.get("flux") or
+                        prev.get("f10.7"), 0.0)
+                    if self._solar.sfi > prev_sfi + 2:
+                        self._solar.sfi_trend = "rising"
+                    elif self._solar.sfi < prev_sfi - 2:
+                        self._solar.sfi_trend = "falling"
+                    else:
+                        self._solar.sfi_trend = "stable"
+                    log.debug(
+                        f"Solar cycle: SFI={self._solar.sfi} "
+                        f"SSN={self._solar.sunspot_num} "
+                        f"trend={self._solar.sfi_trend}")
+        except Exception as e:
+            log.debug(f"Solar cycle: {e}")
+
+
+    def _fetch_solar_UNUSED(self):
+        """Old implementation — kept for reference."""
         if not HAS_REQUESTS:
             return None
         resp = requests.get(
@@ -257,14 +327,17 @@ class PropagationFeed:
     def _fetch_kp(self):
         if not HAS_REQUESTS:
             return None
-        resp = requests.get(
-            NOAA_KP_URL, timeout=REQUEST_TIMEOUT)
-        if resp.status_code != 200:
-            return
-        if len(resp.content) > 50_000:
-            return
-
-        data = resp.json()
+        try:
+            resp = requests.get(
+                NOAA_KP_URL, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                return
+            if len(resp.content) > 50_000:
+                return
+            data = resp.json()
+        except Exception as e:
+            log.debug(f"K-index fetch failed: {e}")
+            return None
         if not isinstance(data, list) or len(data) < 2:
             return
 

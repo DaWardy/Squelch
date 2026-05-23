@@ -334,6 +334,24 @@ class RigController:
         model  = self.cfg.get("rig.hamlib_model", IC7100_MODEL)
         baud   = self.cfg.get("rig.baud", 19200)
         binary = self.cfg.get("paths.hamlib_rigctld", "rigctld")
+        # Validate args before passing to subprocess (defense-in-depth)
+        import re as _re
+        # Port: COM port or /dev/ttyUSBx - no shell metacharacters
+        if not _re.match(r'^(COM[0-9]{1,3}|/dev/[a-zA-Z0-9_/]+|localhost)$',
+                          str(port), _re.I):
+            # Allow common patterns, reject anything with shell chars
+            _safe = _re.sub(r'[^A-Za-z0-9_/:\.\-]', '', str(port))
+            log.warning(f"Port sanitized: {port!r} -> {_safe!r}")
+            port = _safe or "COM3"
+        # Model: integer only
+        try:
+            model = int(model)
+        except (ValueError, TypeError):
+            model = 370  # IC-7100 default
+        # Baud: allowlist
+        if int(baud) not in (1200,2400,4800,9600,19200,38400,57600,115200):
+            baud = 19200
+
         cmd = [binary, "-m", str(model), "-r", port, "-s", str(baud),
                "-T", RIGCTLD_HOST, "-t", str(RIGCTLD_PORT),
                "--no-restore-ai"]

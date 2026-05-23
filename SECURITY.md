@@ -12,8 +12,8 @@ and how to report vulnerabilities.
 
 | Version       | Security Updates |
 |---------------|-----------------|
-| 0.6.x (alpha) | Yes             |
-| < 0.6         | No              |
+| 0.11.x (alpha) | Yes             |
+| < 0.11        | No              |
 
 ---
 
@@ -203,4 +203,50 @@ v1.0:
 ---
 
 *Last updated: 2026-05-14*
-*Squelch v0.6.0-alpha*
+*Squelch 0.11.3-alpha*
+
+
+---
+
+## Security Model (current — 0.11.3-alpha)
+
+Squelch is reviewed against nine standing security rules, defined in
+`docs/DESIGN_REVIEW.md` and audited each release. Summary:
+
+- **S1 — Network:** every outbound call uses HTTPS with a timeout and caps
+  the response size before parsing (no unbounded reads). Sources: NOAA SWPC,
+  RepeaterBook, QRZ/HamQTH, PSKReporter, DX cluster / HamAlert, APRS-IS,
+  Celestrak, ARRL LoTW, ClubLog.
+- **S2 — XML:** all parsing uses `defusedxml` (XXE / billion-laughs safe).
+- **S3 — File imports:** ADIF / SIGMF / profile / plugin loads validate the
+  resolved path and cap size (no traversal, no zip-slip).
+- **S4 — Credentials:** stored only in the OS keyring; never written to
+  `config.json`, never logged, never shown. ARRL LoTW requires login and
+  password in the request URL (their API has no token option) — that URL is
+  passed through `core.sanitize.redact_url()` before any logging.
+- **S5 — No dangerous eval:** zero `shell=True`, `eval`, `exec(str)`, or
+  `pickle.load` on file / network / plugin data.
+- **S6 — Spreadsheet export:** CSV/XLSX cells are run through
+  `core.sanitize.csv_safe()` to neutralize formula injection (a leading
+  `= + - @` is prefixed so Excel/LibreOffice treats it as text).
+- **S7 — Local services:** rigctld / rtl_tcp / VARA clients default to
+  `127.0.0.1`; no listener is opened unless the user explicitly enables it.
+- **S8 — Plugins:** opt-in only, listed before load, with a clear notice that
+  a plugin runs arbitrary Python. No silent autoload of dropped files.
+- **S9 — Work-network friendly:** no telemetry or analytics; Squelch makes no
+  outbound connection the user did not initiate. Every periodic beacon (APRS,
+  PSKReporter, Winlink) is off by default and labeled when enabled.
+
+### Network transparency (C-12)
+- `core/netlog.py` records every outbound connection to `logs/network.log`
+  and an in-app viewer (Help -> Network Activity), tagged AUTO (app-initiated:
+  band conditions, satellites, optional IP geolocation) vs USER (you clicked).
+  Credentials are redacted. This lets an operator on a sensitive or client
+  network audit exactly what Squelch contacted and confirm there are no
+  unsolicited beacons (rule S9).
+
+### Recent hardening
+- Added `core/sanitize.py` (pure-Python, unit-tested) for `csv_safe` and
+  `redact_url`; covered by `tests/test_csv_injection.py`.
+- Replaced `os.system("color")` with a `ctypes` console call (no shell spawn).
+- Pinned PyQt6 component versions to a matched set to avoid DLL-mismatch.

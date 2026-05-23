@@ -1,4 +1,4 @@
-# APEX — Amateur Platform for EXperimentation
+# Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
@@ -18,7 +18,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-"""APEX -- network/dx_spots.py
+"""Squelch -- network/dx_spots.py
 Spot feeds: PSKReporter, RBN, DX Watch, HamAlert.
 All responses validated before use — no injection possible.
 """

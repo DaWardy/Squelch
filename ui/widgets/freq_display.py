@@ -83,11 +83,11 @@ class FreqDisplay(QWidget):
         info.setContentsMargins(4, 0, 4, 0)
         self._band_lbl = QLabel(self._band)
         self._band_lbl.setStyleSheet(
-            f"color:{BAND_COLORS[self._band]}; font-size:12px;"
+            f"color:{BAND_COLORS[self._band]}; "
             "font-family:'Courier New'; font-weight:bold;")
         self._mhz_lbl = QLabel("MHz")
         self._mhz_lbl.setStyleSheet(
-            "color:#334433; font-size:13px; font-family:'Courier New';")
+            "color:#334433;  font-family:'Courier New';")
         self._mhz_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         info.addWidget(self._band_lbl)
         info.addStretch()
@@ -107,7 +107,7 @@ class FreqDisplay(QWidget):
         c = BAND_COLORS.get(band, "#666666")
         self._band_lbl.setText(band)
         self._band_lbl.setStyleSheet(
-            f"color:{c}; font-size:12px;"
+            f"color:{c}; "
             "font-family:'Courier New'; font-weight:bold;")
 
     def set_tx(self, tx: bool):

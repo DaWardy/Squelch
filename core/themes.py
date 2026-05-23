@@ -143,6 +143,7 @@ NIGHT = Theme(
 )
 
 THEMES: dict[str, Theme] = {
+    "System":        DARK,  # resolved at runtime by _detect_system_theme()
     "Dark":          DARK,
     "Light":         LIGHT,
     "High Contrast": HIGH_CONTRAST,
@@ -151,11 +152,11 @@ THEMES: dict[str, Theme] = {
 
 
 def build_stylesheet(t: Theme, font_size: int = 11) -> str:
-    """Generate a complete PyQt6 stylesheet from a Theme."""
+    """Generate a complete PyQt6 stylesheet from a Theme.
+    Font size is propagated to every widget rule explicitly."""
     fs   = max(8, min(20, font_size))
-    fs_s = fs - 1   # small
-    fs_l = fs + 2   # large
-
+    fs_s = fs - 1
+    fs_l = fs + 2
     return f"""
 QMainWindow, QWidget, QDialog {{
     background-color: {t.bg_primary};
@@ -170,70 +171,34 @@ QTabWidget::pane {{
 QTabBar::tab {{
     background: {t.tab_bg};
     color: {t.fg_secondary};
-    padding: 7px 12px;
-    border: 1px solid {t.border};
-    border-bottom: none;
-    margin-right: 2px;
-    font-size: {fs_s}px;
+    padding: 7px 14px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: {fs}px;
 }}
 QTabBar::tab:selected {{
-    background: {t.tab_selected_bg};
     color: {t.accent};
     border-bottom: 2px solid {t.accent};
+    font-size: {fs}px;
 }}
 QTabBar::tab:hover {{
-    background: {t.bg_secondary};
     color: {t.fg_primary};
+    background: {t.bg_tertiary};
 }}
 QGroupBox {{
     border: 1px solid {t.border};
-    border-radius: 5px;
+    border-radius: 4px;
     margin-top: 8px;
-    padding-top: 6px;
-    font-size: {fs_s}px;
+    padding-top: 4px;
+    font-size: {fs}px;
     color: {t.fg_secondary};
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
     left: 8px;
     padding: 0 4px;
-}}
-QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {{
-    background: {t.bg_tertiary};
-    border: 1px solid {t.border};
-    border-radius: 4px;
-    padding: 3px 7px;
-    color: {t.fg_primary};
-    min-width: 60px;
-}}
-QComboBox {{
-    padding-right: 20px;
-}}
-QComboBox::drop-down {{
-    border: none;
-    width: 20px;
-}}
-QComboBox QAbstractItemView {{
-    background: {t.bg_secondary};
-    color: {t.fg_primary};
-    border: 1px solid {t.border};
-    selection-background-color: {t.accent};
-    selection-color: {t.bg_primary};
-    min-width: 150px;
-}}
-QComboBox:focus, QSpinBox:focus,
-QDoubleSpinBox:focus, QLineEdit:focus {{
-    border-color: {t.border_focus};
-}}
-QSpinBox::up-button, QSpinBox::down-button,
-QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
-    width: 16px;
-    border: none;
-    background: {t.bg_secondary};
-}}
-QSpinBox::up-button:hover, QSpinBox::down-button:hover,
-QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
-    background: {t.border};
+    color: {t.fg_secondary};
+    font-size: {fs_s}px;
 }}
 QPushButton {{
     background: {t.bg_secondary};
@@ -241,154 +206,233 @@ QPushButton {{
     border-radius: 4px;
     padding: 4px 10px;
     color: {t.fg_primary};
+    font-size: {fs}px;
     min-width: 40px;
 }}
 QPushButton:hover {{
     background: {t.bg_tertiary};
-    border-color: {t.fg_muted};
+    border-color: {t.border_focus};
 }}
 QPushButton:pressed {{
-    background: {t.bg_primary};
+    background: {t.bg_alt};
 }}
 QPushButton:disabled {{
     color: {t.fg_muted};
     border-color: {t.border};
 }}
+QLabel {{
+    color: {t.fg_primary};
+    background: transparent;
+    font-size: {fs}px;
+}}
+QLineEdit {{
+    background: {t.bg_secondary};
+    border: 1px solid {t.border};
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
+QLineEdit:focus {{
+    border-color: {t.border_focus};
+}}
+QComboBox {{
+    background: {t.bg_secondary};
+    border: 1px solid {t.border};
+    border-radius: 4px;
+    padding: 3px 8px;
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
+QComboBox::drop-down {{
+    border: none;
+    width: 20px;
+}}
+QAbstractItemView {{
+    background: {t.bg_secondary};
+    color: {t.fg_primary};
+    selection-background-color: {t.accent};
+    selection-color: {t.bg_primary};
+    font-size: {fs}px;
+}}
+QCheckBox {{
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
+QCheckBox::indicator {{
+    width: 14px;
+    height: 14px;
+    border: 1px solid {t.border};
+    border-radius: 2px;
+    background: {t.bg_secondary};
+}}
+QCheckBox::indicator:checked {{
+    background: {t.accent};
+    border-color: {t.accent};
+}}
+QRadioButton {{
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
+QTextEdit, QPlainTextEdit {{
+    background: {t.bg_secondary};
+    border: 1px solid {t.border};
+    border-radius: 4px;
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
+QSpinBox, QDoubleSpinBox {{
+    background: {t.bg_secondary};
+    border: 1px solid {t.border};
+    border-radius: 4px;
+    padding: 3px 6px;
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
 QProgressBar {{
-    background: {t.meter_bg};
+    background: {t.bg_alt};
     border: 1px solid {t.border};
     border-radius: 3px;
     text-align: center;
+    color: {t.fg_primary};
+    font-size: {fs_s}px;
 }}
 QProgressBar::chunk {{
     background: {t.accent};
     border-radius: 2px;
 }}
 QScrollBar:vertical {{
-    background: {t.bg_primary};
-    width: 8px;
-    border: none;
+    background: {t.bg_alt};
+    width: 10px;
+    border-radius: 5px;
 }}
 QScrollBar::handle:vertical {{
     background: {t.border};
-    border-radius: 4px;
+    border-radius: 5px;
     min-height: 20px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: {t.fg_muted};
+    background: {t.border_focus};
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0;
 }}
 QScrollBar:horizontal {{
-    background: {t.bg_primary};
-    height: 8px;
-    border: none;
+    background: {t.bg_alt};
+    height: 10px;
+    border-radius: 5px;
 }}
 QScrollBar::handle:horizontal {{
     background: {t.border};
-    border-radius: 4px;
+    border-radius: 5px;
     min-width: 20px;
 }}
+QHeaderView::section {{
+    background: {t.bg_secondary};
+    color: {t.fg_secondary};
+    border: none;
+    border-right: 1px solid {t.border};
+    padding: 4px 6px;
+    font-size: {fs_s}px;
+}}
+QTableWidget {{
+    background: {t.bg_alt};
+    gridline-color: {t.border};
+    alternate-background-color: {t.bg_secondary};
+    font-size: {fs}px;
+}}
+QTableWidget::item:selected {{
+    background: {t.accent};
+    color: {t.bg_primary};
+}}
+QListWidget {{
+    background: {t.bg_secondary};
+    border: 1px solid {t.border};
+    border-radius: 4px;
+    font-size: {fs}px;
+}}
+QTreeWidget {{
+    background: {t.bg_secondary};
+    border: 1px solid {t.border};
+    font-size: {fs}px;
+}}
 QStatusBar {{
-    background: {t.bg_primary};
+    background: {t.bg_alt};
+    color: {t.fg_secondary};
     border-top: 1px solid {t.border};
-    color: {t.fg_muted};
     font-size: {fs_s}px;
 }}
 QMenuBar {{
-    background: {t.bg_primary};
-    color: {t.fg_secondary};
-    border-bottom: 1px solid {t.border};
+    background: {t.bg_secondary};
+    color: {t.fg_primary};
+    font-size: {fs}px;
 }}
 QMenuBar::item:selected {{
-    background: {t.bg_secondary};
-    color: {t.accent};
+    background: {t.accent};
+    color: {t.bg_primary};
 }}
 QMenu {{
     background: {t.bg_secondary};
     border: 1px solid {t.border};
     color: {t.fg_primary};
-    min-width: 160px;
+    font-size: {fs}px;
 }}
 QMenu::item:selected {{
     background: {t.accent};
     color: {t.bg_primary};
 }}
-QMenu::separator {{
-    height: 1px;
-    background: {t.border};
-    margin: 2px 8px;
-}}
-QTableWidget {{
-    background: {t.bg_primary};
-    alternate-background-color: {t.bg_alt};
-    color: {t.fg_primary};
-    gridline-color: {t.border};
-    selection-background-color: {t.accent};
-    selection-color: {t.bg_primary};
-    font-size: {fs_s}px;
-    font-family: 'Courier New', monospace;
-    border: 1px solid {t.border};
-}}
-QHeaderView::section {{
-    background: {t.header_bg};
-    color: {t.fg_secondary};
-    border: none;
-    border-right: 1px solid {t.border};
-    font-size: {fs_s}px;
-    padding: 3px 6px;
-}}
-QTableWidget::item:hover {{
+QToolTip {{
     background: {t.bg_secondary};
-}}
-QLabel {{
-    color: {t.fg_primary};
-}}
-QCheckBox {{
-    color: {t.fg_secondary};
-    spacing: 6px;
-}}
-QCheckBox::indicator {{
-    width: 14px;
-    height: 14px;
     border: 1px solid {t.border};
-    border-radius: 3px;
-    background: {t.bg_tertiary};
-}}
-QCheckBox::indicator:checked {{
-    background: {t.accent};
-    border-color: {t.accent};
+    color: {t.fg_primary};
+    padding: 4px;
+    font-size: {fs_s}px;
 }}
 QSplitter::handle {{
     background: {t.border};
 }}
-QSplitter::handle:horizontal {{
-    width: 3px;
-}}
-QSplitter::handle:vertical {{
-    height: 3px;
-}}
-QToolTip {{
-    background: {t.tooltip_bg};
+QDockWidget {{
+    titlebar-close-icon: url(none);
+    font-size: {fs}px;
     color: {t.fg_primary};
-    border: 1px solid {t.border_focus};
-    padding: 4px 8px;
-    font-size: {fs_s}px;
 }}
-QTextEdit, QPlainTextEdit {{
-    background: {t.bg_primary};
+QDockWidget::title {{
+    background: {t.bg_secondary};
+    padding: 6px;
+    border-bottom: 1px solid {t.border};
+    font-size: {fs}px;
     color: {t.fg_primary};
-    border: 1px solid {t.border};
-    border-radius: 3px;
-    font-family: 'Courier New', monospace;
-    font-size: {fs_s}px;
-}}
-QScrollArea {{
-    border: none;
-    background: transparent;
 }}
 """
 
+def _detect_system_theme() -> Theme:
+    """Detect the OS light/dark preference (Qt 6.5+), fall back to Dark."""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import Qt
+        app = QApplication.instance()
+        if app is not None:
+            hints = app.styleHints()
+            scheme = getattr(hints, "colorScheme", None)
+            if scheme is not None:
+                if scheme() == Qt.ColorScheme.Light:
+                    return LIGHT
+                return DARK
+        # Fallback: inspect the window background palette
+        from PyQt6.QtGui import QPalette
+        if app is not None:
+            win = app.palette().color(QPalette.ColorRole.Window)
+            # Luminance > 128 means a light background
+            lum = 0.299 * win.red() + 0.587 * win.green() + 0.114 * win.blue()
+            return LIGHT if lum > 128 else DARK
+    except Exception:
+        pass
+    return DARK
+
 
 def get_theme(name: str) -> Theme:
+    if name in ("System", "System Default", "Auto"):
+        return _detect_system_theme()
     return THEMES.get(name, DARK)
 
 

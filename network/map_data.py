@@ -39,7 +39,6 @@ import logging
 from core.constants import PORT_DUMP1090_HTTP
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from network.grayline import (
     day_night_geojson, gray_line_info,

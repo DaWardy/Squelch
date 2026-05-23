@@ -37,7 +37,7 @@ def _user_config_dir() -> Path:
     """
     Return platform-appropriate user config directory.
     Survives app reinstalls — user data is never in the app folder.
-    
+
     Windows: %APPDATA%/Squelch/
     Linux:   ~/.config/squelch/
     macOS:   ~/Library/Application Support/Squelch/
@@ -99,6 +99,27 @@ class Config:
                 log.warning(f"Config migration: {e}")
 
     def load(self):
+        if not self._path.exists():
+            # Config missing — try to restore from example
+            example = EXAMPLE_PATH
+            if example.exists():
+                try:
+                    import shutil
+                    shutil.copy(example, self._path)
+                    log.info(
+                        "config.json missing — "
+                        "restored from config.example.json")
+                except Exception:
+                    pass
+            # If still missing, start with empty defaults
+            # (first-run dialog will collect callsign/grid)
+            if not self._path.exists():
+                log.info(
+                    "No config.json found — "
+                    "using built-in defaults")
+                self._data = {}
+                return
+
         if self._path.exists():
             try:
                 with open(self._path, "r",

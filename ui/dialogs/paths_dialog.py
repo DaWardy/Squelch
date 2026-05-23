@@ -122,7 +122,7 @@ class AppRow(QWidget):
 
     def _browse(self):
         if IS_WINDOWS := sys.platform == "win32":
-            exts = "Executables (*.exe);;All files (*)"
+            exts = "Executables (*.exe);All files (*)"
         else:
             exts = "All files (*)"
         path, _ = QFileDialog.getOpenFileName(
@@ -235,14 +235,14 @@ class PathsDialog(QDialog):
             "Green ✅ = found, ⚠ = not configured."))
         intro.setWordWrap(True)
         intro.setStyleSheet(
-            "color:#888;font-size:12px;")
+            "")
         lay.addWidget(intro)
 
         # Tabs by category
         tabs = QTabWidget()
         tabs.setStyleSheet(
             "QTabBar::tab{padding:5px 10px;"
-            "font-size:12px;}")
+            "}")
 
         # Group apps by category
         cats: dict[str, list[AppDef]] = {}
@@ -268,7 +268,7 @@ class PathsDialog(QDialog):
                 if hdr:
                     lbl = QLabel(hdr)
                     lbl.setStyleSheet(
-                        "color:#555;font-size:12px;"
+                        ""
                         "font-weight:bold;")
                     grid.addWidget(lbl, 0, col)
 
@@ -285,15 +285,15 @@ class PathsDialog(QDialog):
                 lbl_lay.setSpacing(0)
                 name = QLabel(app.name)
                 name.setStyleSheet(
-                    "color:#ccc;font-size:13px;"
+                    ""
                     "font-weight:bold;")
                 desc = QLabel(app.description)
                 desc.setStyleSheet(
-                    "color:#555;font-size:13px;")
+                    "")
                 if app.download_note:
                     note = QLabel(app.download_note)
                     note.setStyleSheet(
-                        "color:#446644;font-size:13px;")
+                        "color:#446644;")
                     note.setWordWrap(True)
                     lbl_lay.addWidget(note)
                 lbl_lay.addWidget(name)

@@ -30,6 +30,7 @@ import logging
 import threading
 from ui.widgets.launch_bar import LaunchBar
 from core.launcher import get_launcher
+from core.safety import get_safety
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QGroupBox,
@@ -136,12 +137,12 @@ class ModesTab(QWidget):
         self._mode_tabs.setFixedHeight(42)
         self._mode_tabs.tabBar().setDocumentMode(True)
         self._mode_tabs.setStyleSheet("""
-            QTabBar::tab{padding:6px 16px;font-size:13px;
-              background:#141414;color:#666;border:none;
+            QTabBar::tab{padding:6px 16px;
+              background:#141414;border:none;
               border-bottom:2px solid transparent;}
             QTabBar::tab:selected{color:#3fbe6f;
               border-bottom:2px solid #3fbe6f;}
-            QTabBar::tab:hover{color:#aaa;}
+            QTabBar::tab:hover{}
             QTabWidget::pane{border:none;}
         """)
         for m in ["FT8","FT4","WSPR","JS8","PSK31","RTTY","CW","SSTV"]:
@@ -159,13 +160,29 @@ class ModesTab(QWidget):
         splitter.setStyleSheet(
             "QSplitter::handle{background:#1a1a1a;width:2px;}")
 
-        # Left panel — controls
+        # Left panel — wrap in scroll area so it never clips
+        left_outer = QWidget()
+        left_outer.setMinimumWidth(260)
+        left_outer.setMaximumWidth(400)
+        left_outer_layout = QVBoxLayout(left_outer)
+        left_outer_layout.setContentsMargins(0, 0, 0, 0)
+        left_outer_layout.setSpacing(0)
+
+        from PyQt6.QtWidgets import QScrollArea
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         left = QWidget()
-        left.setMinimumWidth(280)
-        left.setMaximumWidth(360)
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setContentsMargins(6, 6, 6, 6)
         left_layout.setSpacing(6)
+        left_scroll.setWidget(left)
+        left_outer_layout.addWidget(left_scroll)
 
         # ── Band + frequency selector (WSJT-X style) ──────────────────
         band_grp = QGroupBox("Band / Frequency")
@@ -182,15 +199,16 @@ class ModesTab(QWidget):
         band_gl.addWidget(QLabel("Frequency:"), 1, 0)
         self._freq_label = QLabel("14.074.000 MHz")
         self._freq_label.setStyleSheet(
-            "color:#3fbe6f; font-family:'Courier New'; font-size:13px;")
+            "color:#3fbe6f; font-family:'Courier New'; ")
         band_gl.addWidget(self._freq_label, 1, 1)
 
         self._tune_btn = QPushButton("Tune Rig")
-        self._tune_btn.setFixedHeight(26)
         self._tune_btn.setToolTip(
-            "Set IC-7100 to this band's FT8/WSPR frequency")
+            "Set the rig to the calling frequency for this band/mode and key a steady carrier so you can tune your ATU. Transmits — make sure your antenna is connected.")
+        self._tune_btn.setFixedHeight(26)
         self._tune_btn.clicked.connect(self._tune_rig)
         band_gl.addWidget(self._tune_btn, 2, 0, 1, 2)
+        band_grp.setMinimumHeight(80)
         left_layout.addWidget(band_grp)
 
         # ── Cycle timer ───────────────────────────────────────────────
@@ -206,10 +224,11 @@ class ModesTab(QWidget):
             "QProgressBar::chunk{background:#3fbe6f;}")
         self._cycle_label = QLabel("RX  00:00")
         self._cycle_label.setStyleSheet(
-            "color:#3fbe6f; font-family:'Courier New'; font-size:12px;")
+            "color:#3fbe6f; font-family:'Courier New'; ")
         self._cycle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cycle_l.addWidget(self._cycle_bar)
         cycle_l.addWidget(self._cycle_label)
+        cycle_grp.setMinimumHeight(80)
         left_layout.addWidget(cycle_grp)
 
         # ── Auto-sequence state ───────────────────────────────────────
@@ -217,43 +236,52 @@ class ModesTab(QWidget):
         state_l   = QVBoxLayout(state_grp)
 
         self._state_label = QLabel("● Idle — monitoring")
+
+        # C-11 (Tyler): big, unmistakable ON-AIR indicator. FT8 auto-transmits,
+        # so the operator must always be able to tell at a glance whether the
+        # rig is actually keyed.
+        self._onair_label = QLabel("RECEIVING")
+        self._onair_label.setObjectName("onair")
+        from PyQt6.QtCore import Qt as _Qt
+        self._onair_label.setAlignment(_Qt.AlignmentFlag.AlignCenter)
+        self._onair_label.setStyleSheet(
+            "background:#0d2a14;color:#3fbe6f;font-weight:bold;"
+            "border:1px solid #1f5a33;border-radius:4px;padding:5px;")
         self._state_label.setStyleSheet(
-            "color:#555; font-size:13px; font-weight:bold;")
+            "  font-weight:bold;")
+        state_l.addWidget(self._onair_label)
         state_l.addWidget(self._state_label)
 
         self._qso_label = QLabel("No QSO in progress")
         self._qso_label.setStyleSheet(
-            "color:#444; font-size:12px;")
+            " ")
         state_l.addWidget(self._qso_label)
 
         self._tx_msg_label = QLabel("")
         self._tx_msg_label.setStyleSheet(
-            "color:#3fbe6f; font-family:'Courier New'; font-size:12px;")
+            "color:#3fbe6f; font-family:'Courier New'; ")
         self._tx_msg_label.setWordWrap(True)
         state_l.addWidget(self._tx_msg_label)
 
         # Control buttons
         btn_row1 = QHBoxLayout()
         self._cq_btn = QPushButton("CQ")
+        self._cq_btn.setToolTip(
+            "Start calling CQ — broadcasts your callsign and grid to invite contacts. Transmits on the next TX period.")
         self._cq_btn.setFixedHeight(30)
         self._cq_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
-            "border-radius:4px;font-weight:bold;font-size:12px;")
-        self._cq_btn.setToolTip(
-            "Transmit CQ call\n"
-            "Requires WSJT-X connected via UDP\n"
-            "Auto-returns to IDLE after 2 cycles without response")
-        cq_btn.clicked.connect(self._send_cq)
+            "border-radius:4px;font-weight:bold;")
+        self._cq_btn.clicked.connect(self._send_cq)
 
         self._halt_btn = QPushButton("Halt TX")
+        self._halt_btn.setToolTip(
+            "Immediately stop transmitting. Use this to abort a TX cycle at any time.")
         self._halt_btn.setFixedHeight(30)
         self._halt_btn.setStyleSheet(
             "background:#3a1a1a;color:#cc4444;border:1px solid #cc4444;"
-            "border-radius:4px;font-size:13px;")
-        self._halt_btn.setToolTip(
-            "Stop transmitting immediately\n"
-            "Cancels auto-sequence and returns to IDLE")
-        halt_btn.clicked.connect(self._halt_tx)
+            "border-radius:4px;")
+        self._halt_btn.clicked.connect(self._halt_tx)
         btn_row1.addWidget(self._cq_btn)
         btn_row1.addWidget(self._halt_btn)
         state_l.addLayout(btn_row1)
@@ -283,33 +311,44 @@ class ModesTab(QWidget):
         tx_gl.addWidget(self._tx_freq_spin, 1, 1)
 
         self._even_cb = QCheckBox("TX even periods")
+        self._even_cb.setToolTip(
+            "Transmit on even 15-second periods (00, 30s). Leave unchecked to use odd periods. Pick the opposite of the station you're working.")
         self._even_cb.setChecked(True)
         tx_gl.addWidget(self._even_cb, 2, 0, 1, 2)
 
         self._auto_seq_cb = QCheckBox("Auto-sequence")
+        self._auto_seq_cb.setToolTip(
+            "Let the software automatically step through the QSO exchange (signal report, R+report, 73). Recommended for beginners.")
         self._auto_seq_cb.setChecked(True)
         self._auto_seq_cb.toggled.connect(
             self.ft8_engine.set_auto_sequence)
         tx_gl.addWidget(self._auto_seq_cb, 3, 0, 1, 2)
 
         self._auto_cq_cb = QCheckBox("Auto CQ")
+        self._auto_cq_cb.setToolTip(
+            "Automatically repeat CQ calls until someone answers. Watch the band — don't leave it unattended while transmitting.")
         self._auto_cq_cb.setChecked(False)
         self._auto_cq_cb.toggled.connect(
             self.ft8_engine.set_auto_cq)
         tx_gl.addWidget(self._auto_cq_cb, 4, 0, 1, 2)
 
         self._hold_tx_cb = QCheckBox("Hold TX frequency")
+        _hold_tx_cb.setToolTip(
+            "Keep your transmit frequency fixed instead of following the station you're answering. Helps avoid being covered by callers.")
         self._hold_tx_cb.setChecked(False)
         self._hold_tx_cb.toggled.connect(
             self.ft8_engine.set_hold_tx_freq)
         tx_gl.addWidget(self._hold_tx_cb, 5, 0, 1, 2)
 
         self._dx_only_cb = QCheckBox("DX only (skip domestic)")
+        self._dx_only_cb.setToolTip(
+            "Only respond to stations outside your own country — useful for chasing DX.")
         self._dx_only_cb.setChecked(False)
         self._dx_only_cb.toggled.connect(
             self.ft8_engine.set_dx_only)
         tx_gl.addWidget(self._dx_only_cb, 6, 0, 1, 2)
 
+        tx_grp.setMinimumHeight(80)
         left_layout.addWidget(tx_grp)
 
         # ── Session stats ─────────────────────────────────────────────
@@ -319,10 +358,10 @@ class ModesTab(QWidget):
 
         def _stat(label, attr):
             lbl = QLabel(label)
-            lbl.setStyleSheet("color:#555; font-size:12px;")
+            lbl.setStyleSheet(" ")
             val = QLabel("0")
             val.setStyleSheet(
-                "color:#3fbe6f; font-size:13px; "
+                "color:#3fbe6f;  "
                 "font-family:'Courier New';")
             setattr(self, attr, val)
             return lbl, val
@@ -345,7 +384,7 @@ class ModesTab(QWidget):
         left_layout.addWidget(self._fldigi_panel)
         self._fldigi_panel.hide()
 
-        splitter.addWidget(left)
+        splitter.addWidget(left_outer)
 
         # Right panel — decode list + activity
         right = QWidget()
@@ -385,13 +424,13 @@ class ModesTab(QWidget):
         self._decode_table.setSortingEnabled(True)
         self._decode_table.verticalHeader().setVisible(False)
         self._decode_table.setStyleSheet("""
-            QTableWidget{background:#0d0d0d;color:#aaa;
-              gridline-color:#1a1a1a;font-size:13px;
+            QTableWidget{background:#0d0d0d;
+              gridline-color:#1a1a1a;
               font-family:'Courier New';
               alternate-background-color:#111111;
               selection-background-color:#1a3a1a;}
-            QHeaderView::section{background:#141414;color:#666;
-              border:none;font-size:12px;padding:3px;}
+            QHeaderView::section{background:#141414;
+              border:none;padding:3px;}
         """)
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
         right_layout.addWidget(self._decode_table, 3)
@@ -411,7 +450,7 @@ class ModesTab(QWidget):
         self._activity_log.setMaximumHeight(120)
         self._activity_log.setStyleSheet(
             "background:#080808; color:#3fbe6f; "
-            "font-family:'Courier New'; font-size:12px; "
+            "font-family:'Courier New';  "
             "border:1px solid #1a1a1a;")
         right_layout.addWidget(self._activity_log)
 
@@ -430,7 +469,7 @@ class ModesTab(QWidget):
         status_row = QHBoxLayout()
         self._fldigi_status = QLabel("● Not connected")
         self._fldigi_status.setStyleSheet(
-            "color:#888; font-size:13px; font-weight:bold;")
+            "  font-weight:bold;")
         self._fldigi_connect_btn = QPushButton("Launch Fldigi")
         self._fldigi_connect_btn.setFixedHeight(26)
         self._fldigi_connect_btn.clicked.connect(self._connect_fldigi)
@@ -499,7 +538,7 @@ class ModesTab(QWidget):
         ctrl.addStretch()
 
         self._dx_status = QLabel("DX Cluster: not connected")
-        self._dx_status.setStyleSheet("color:#555;font-size:12px;")
+        self._dx_status.setStyleSheet("")
         ctrl.addWidget(self._dx_status)
 
         conn_btn = QPushButton("Connect")
@@ -523,11 +562,11 @@ class ModesTab(QWidget):
             QTableWidget.EditTrigger.NoEditTriggers)
         self._dx_table.setFixedHeight(90)
         self._dx_table.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;color:#aaa;"
-            "font-size:13px;font-family:'Courier New';"
+            "QTableWidget{background:#0a0a0a;"
+            "font-family:'Courier New';"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{background:#141414;"
-            "color:#555;border:none;font-size:13px;}")
+            "border:none;}")
         self._dx_table.doubleClicked.connect(
             self._tune_to_dx_spot)
         dl.addWidget(self._dx_table)
@@ -564,7 +603,7 @@ class ModesTab(QWidget):
 
         self._sp_status = QLabel("Not started")
         self._sp_status.setStyleSheet(
-            "color:#555;font-size:12px;")
+            "")
         ctrl.addStretch()
         ctrl.addWidget(self._sp_status)
 
@@ -592,10 +631,10 @@ class ModesTab(QWidget):
             QTableWidget.EditTrigger.NoEditTriggers)
         self._sp_table.setFixedHeight(88)
         self._sp_table.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;color:#aaa;"
-            "font-size:12px;border:1px solid #1a1a1a;}"
+            "QTableWidget{background:#0a0a0a;"
+            "border:1px solid #1a1a1a;}"
             "QHeaderView::section{background:#141414;"
-            "color:#555;border:none;font-size:12px;}")
+            "border:none;}")
         self._sp_table.doubleClicked.connect(
             self._tune_to_sota_pota)
         sl.addWidget(self._sp_table)
@@ -630,7 +669,7 @@ class ModesTab(QWidget):
         self._sp_status.setText(
             "Fetching…")
         self._sp_status.setStyleSheet(
-            "color:#888;font-size:12px;")
+            "")
 
     def _on_sota_spots(self, spots):
         self._sota_spots = spots
@@ -638,7 +677,7 @@ class ModesTab(QWidget):
         self._sp_status.setText(
             f"SOTA: {len(spots)}")
         self._sp_status.setStyleSheet(
-            "color:#3fbe6f;font-size:12px;")
+            "color:#3fbe6f;")
 
     def _on_pota_spots(self, spots):
         self._pota_spots = spots
@@ -730,14 +769,14 @@ class ModesTab(QWidget):
             self._dx_status.setText(
                 f"DX Cluster: {node}")
             self._dx_status.setStyleSheet(
-                "color:#3fbe6f;font-size:12px;")
+                "color:#3fbe6f;")
             self._dx_conn_btn.setText("Disconnect")
             self.cfg.set("dx_cluster.auto_connect", True)
         else:
             self._dx_status.setText(
                 "DX Cluster: disconnected")
             self._dx_status.setStyleSheet(
-                "color:#555;font-size:12px;")
+                "")
             self._dx_conn_btn.setText("Connect")
 
     def _on_dx_spot(self, spot):
@@ -900,6 +939,13 @@ class ModesTab(QWidget):
     # ── Auto-sequence controls ────────────────────────────────────────────
 
     def _send_cq(self):
+        # C-08 (Hank) / C-06 (Elena): never key the rig in Guest mode or an
+        # unsafe state, even though this is already behind an explicit click.
+        if not get_safety().can_transmit():
+            self._log_activity(
+                "CQ blocked — Guest Operator mode is ON "
+                "(transmit disabled). Turn it off in the View menu.")
+            return
         self.ft8_engine.send_cq()
         self._log_activity(
             f"CQ {self.cfg.callsign} {self.cfg.grid[:4]}")
@@ -925,16 +971,22 @@ class ModesTab(QWidget):
         if ok:
             self._fldigi_status.setText("● Connected")
             self._fldigi_status.setStyleSheet(
-                "color:#3fbe6f; font-size:13px; font-weight:bold;")
+                "color:#3fbe6f;  font-weight:bold;")
             self.fldigi.set_mode(self._current_mode)
         else:
             self._fldigi_status.setText("● Failed — check Fldigi install")
             self._fldigi_status.setStyleSheet(
-                "color:#cc4444; font-size:13px; font-weight:bold;")
+                "color:#cc4444;  font-weight:bold;")
 
     def _fldigi_tx(self):
         text = self._fldigi_tx_edit.text()
         if text and self.fldigi.is_connected:
+            # C-08 (Hank) / C-06 (Elena): block TX in Guest mode / unsafe state.
+            if not get_safety().can_transmit():
+                self._log_activity(
+                    "TX blocked — Guest Operator mode is ON "
+                    "(transmit disabled). Turn it off in the View menu.")
+                return
             self.fldigi.transmit(text)
             self._log_activity(f"TX ({self._current_mode}): {text}")
             self._fldigi_tx_edit.clear()
@@ -1028,11 +1080,28 @@ class ModesTab(QWidget):
             return "▶ YOU"
         return ""
 
+
+    def _update_onair(self, state):
+        """Reflect real TX state in the ON-AIR indicator (C-11, Tyler)."""
+        name = getattr(state, "name", str(state)).upper()
+        transmitting = "TX" in name or "SEND" in name or "CALLING" in name
+        if transmitting:
+            self._onair_label.setText("ON THE AIR — TRANSMITTING")
+            self._onair_label.setStyleSheet(
+                "background:#3a0d0d;color:#ff5555;font-weight:bold;"
+                "border:1px solid #aa2222;border-radius:4px;padding:5px;")
+        else:
+            self._onair_label.setText("RECEIVING")
+            self._onair_label.setStyleSheet(
+                "background:#0d2a14;color:#3fbe6f;font-weight:bold;"
+                "border:1px solid #1f5a33;border-radius:4px;padding:5px;")
+
     def _apply_state(self, state: AutoSeqState):
         color = STATE_COLORS.get(state, "#555")
         self._state_label.setText(f"● {state.value}")
         self._state_label.setStyleSheet(
-            f"color:{color}; font-size:13px; font-weight:bold;")
+            f"color:{color};  font-weight:bold;")
+        self._update_onair(state)
         qso = self.ft8_engine.current_qso
         if qso.their_call:
             self._qso_label.setText(
@@ -1098,6 +1167,16 @@ class ModesTab(QWidget):
         self._decode_table.setRowCount(0)
         self._stat_decodes.setText("0")
         self.ft8_engine._decodes.clear()
+
+    def _set_freq(self, freq_mhz: float):
+        """Tune the rig to freq_mhz when a DX spot or decoded call is clicked."""
+        try:
+            from core.launcher import get_rig_controller
+            rig = get_rig_controller()
+            if rig and rig.is_connected():
+                rig.set_frequency(int(freq_mhz * 1e6))
+        except Exception:
+            pass  # Rig not connected — silently ignore
 
     def _log_activity(self, msg: str):
         from datetime import datetime, timezone

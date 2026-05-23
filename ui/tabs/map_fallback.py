@@ -10,7 +10,6 @@ Renders gray line, station marker, and QSO paths
 using pure Qt drawing (no WebEngine required).
 """
 
-import math
 import logging
 from datetime import datetime, timezone
 from PyQt6.QtWidgets import (
@@ -48,6 +47,7 @@ class WorldMapWidget(QWidget):
         self._station_call = ""
         self._qso_paths    = []
         self._terminator   = []
+        self._satellites   = []
         self._show_gl      = True
         self._show_qsos    = True
         self._gl_info      = None
@@ -69,6 +69,48 @@ class WorldMapWidget(QWidget):
 
     def set_qso_paths(self, paths: list):
         self._qso_paths = paths
+        self.update()
+
+    def _draw_aprs(self, p, w: int, h: int):
+        """Draw APRS station positions as orange diamonds."""
+        from PyQt6.QtCore import QPoint
+        from PyQt6.QtGui import QPolygon
+        for sta in getattr(self, '_aprs_stations', [])[:100]:
+            lat = sta.get('lat', 0.0); lon = sta.get('lon', 0.0)
+            if not lat and not lon: continue
+            x, y = self._latlon_to_xy(lat, lon, w, h)
+            p.setPen(QPen(QColor('#ffaa00'), 1))
+            p.setBrush(QBrush(QColor('#ffaa00').darker(180)))
+            pts = QPolygon([QPoint(int(x), int(y)-7),
+                            QPoint(int(x)+5, int(y)),
+                            QPoint(int(x), int(y)+7),
+                            QPoint(int(x)-5, int(y))])
+            p.drawPolygon(pts)
+            p.setPen(QPen(QColor('#ffcc44'), 1))
+            p.setFont(QFont('Courier New', 8))
+            p.drawText(int(x)+7, int(y)+4, sta.get('callsign','')[:8])
+
+    def _draw_dx_spots(self, p, w: int, h: int):
+        """Draw DX cluster spots as pink dots."""
+        for spot in getattr(self, '_dx_spots', [])[:50]:
+            lat = spot.get('lat', 0.0); lon = spot.get('lon', 0.0)
+            if not lat and not lon: continue
+            x, y = self._latlon_to_xy(lat, lon, w, h)
+            p.setPen(QPen(QColor('#ff4488'), 2))
+            p.setBrush(QBrush(QColor('#ff4488').darker(200)))
+            p.drawEllipse(int(x)-4, int(y)-4, 8, 8)
+
+    def set_aprs_stations(self, stations: list):
+        self._aprs_stations = stations
+        self.update()
+
+    def set_dx_spots(self, spots: list):
+        self._dx_spots = spots
+        self.update()
+
+    def set_satellite_positions(self, sats: list):
+        """Update satellite positions for display."""
+        self._satellites = sats
         self.update()
 
     def set_gl_info(self, info):
@@ -108,6 +150,12 @@ class WorldMapWidget(QWidget):
         # Station marker
         if self._station_lat or self._station_lon:
             self._draw_station(p, w, h)
+
+        # Satellites
+        if self._satellites:
+            self._draw_satellites(p, w, h)
+        self._draw_aprs(p, w, h)
+        self._draw_dx_spots(p, w, h)
 
         # Legend / status
         self._draw_status(p, w, h)
@@ -201,6 +249,38 @@ class WorldMapWidget(QWidget):
             p.drawText(int(x)+8, int(y)-4,
                        self._station_call)
 
+    def _draw_satellites(self, p: QPainter,
+                          w: int, h: int):
+        """Draw satellite positions with orbit indicator."""
+        for sat in self._satellites[:30]:
+            lat = sat.get("lat", 0.0)
+            lon = sat.get("lon", 0.0)
+            name = sat.get("name", "")
+            alt  = sat.get("alt_km", 0.0)
+            visible = sat.get("visible", False)
+
+            x, y = self._latlon_to_xy(lat, lon, w, h)
+
+            # Color: visible = yellow, below horizon = dim
+            color = QColor("#ffcc00") if visible else QColor("#554400")
+            p.setBrush(QBrush(color))
+            p.setPen(QPen(QColor("#332200"), 1))
+            p.drawEllipse(QRectF(x-4, y-4, 8, 8))
+
+            # ISS gets a bigger marker
+            if "ISS" in name.upper():
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.setPen(QPen(QColor("#ff8800"), 1))
+                p.drawEllipse(QRectF(x-7, y-7, 14, 14))
+
+            # Label
+            p.setPen(QPen(color))
+            p.setFont(QFont("Courier New", 8))
+            short = name.split("(")[0].strip()[:12]
+            if alt > 0:
+                short += f" {alt:.0f}km"
+            p.drawText(int(x)+6, int(y)-2, short)
+
     def _draw_status(self, p: QPainter,
                      w: int, h: int):
         """Draw gray line status text."""
@@ -233,35 +313,85 @@ class WorldMapWidget(QWidget):
         p.setBrush(QBrush(QColor("#1a2d1a")))
         p.setPen(QPen(QColor("#2a4a2a"), 1))
 
-        # Each "continent" is a list of (lat, lon) points
+        # Simplified Natural Earth outlines — ~30-50 pts per continent
         continents = [
-            # North America (very rough)
-            [(70,-140),(70,-70),(50,-55),(25,-80),
-             (10,-85),(10,-77),(20,-87),(30,-97),
-             (32,-117),(50,-125),(60,-140),(70,-140)],
-            # South America
-            [(10,-73),(0,-50),(-10,-37),(-33,-71),
-             (-55,-67),(-55,-65),(-33,-70),(-10,-40),
-             (0,-50),(10,-73)],
-            # Europe
-            [(70,30),(70,10),(60,5),(45,0),(36,5),
-             (36,28),(45,35),(60,30),(70,30)],
-            # Africa
-            [(36,5),(36,28),(10,42),(0,42),(-35,18),
-             (-35,17),(0,9),(10,15),(36,5)],
-            # Asia
-            [(70,30),(70,140),(60,140),(45,135),
-             (22,120),(10,105),(0,105),(10,80),
-             (25,70),(45,60),(60,40),(70,30)],
-            # Australia
-            [(-15,130),(-15,145),(-37,148),
-             (-38,140),(-32,116),(-22,114),
-             (-15,130)],
-        ]
+            # North America
+            [(72,-140),(70,-130),(71,-115),(70,-90),(75,-80),(78,-75),
+             (77,-65),(70,-65),(60,-65),(55,-58),(50,-55),(47,-53),
+             (45,-60),(44,-66),(42,-70),(41,-72),(35,-76),(30,-81),
+             (25,-80),(20,-87),(16,-86),(10,-83),(8,-77),(8,-77),
+             (10,-75),(12,-71),(16,-62),(18,-67),(20,-73),(22,-80),
+             (24,-81),(28,-82),(30,-88),(29,-95),(26,-97),(22,-105),
+             (22,-108),(25,-110),(29,-114),(32,-117),(35,-121),
+             (38,-122),(42,-124),(47,-124),(50,-125),(54,-130),
+             (58,-137),(60,-146),(63,-162),(65,-168),(68,-166),
+             (70,-160),(70,-140),(72,-140)],
 
-        for continent in continents:
-            poly = QPolygonF()
-            for lat, lon in continent:
-                x, y = self._latlon_to_xy(lat, lon, w, h)
-                poly.append(QPointF(x, y))
-            p.drawPolygon(poly)
+            # South America
+            [(12,-72),(11,-63),(10,-62),(8,-60),(6,-60),(5,-52),
+             (4,-51),(2,-50),(0,-50),(-3,-42),(-5,-35),(-8,-35),
+             (-10,-37),(-14,-39),(-18,-39),(-20,-40),(- 23,-43),
+             (-23,-45),(-25,-48),(-28,-49),(-30,-50),(-33,-53),
+             (-35,-58),(-38,-57),(-40,-62),(-42,-65),(-45,-66),
+             (-48,-66),(-52,-69),(-54,-68),(-55,-64),(-53,-61),
+             (-52,-58),(-48,-65),(-45,-65),(-42,-64),(-38,-62),
+             (-33,-71),(-25,-70),(-18,-70),(-14,-76),(-10,-76),
+             (-4,-82),(0,-80),(4,-77),(8,-77),(10,-75),(12,-72)],
+
+            # Europe
+            [(71,28),(70,20),(70,10),(69,18),(68,14),(67,14),
+             (65,14),(63,5),(58,5),(56,8),(55,9),(54,10),
+             (52,4),(51,2),(50,2),(48,0),(46,-2),(44,0),
+             (43,3),(42,3),(40,0),(39,-9),(37,-9),(36,-6),
+             (36,0),(37,3),(39,3),(40,0),(41,2),(42,3),
+             (44,8),(44,10),(45,13),(45,15),(44,17),(45,19),
+             (46,20),(47,17),(48,17),(50,18),(52,22),(54,22),
+             (57,21),(58,22),(60,25),(63,25),(65,25),(68,28),
+             (70,28),(71,28)],
+
+            # Africa
+            [(37,9),(36,10),(37,11),(36,12),(32,12),(29,13),
+             (24,16),(18,16),(16,17),(12,14),(8,4),(5,2),
+             (4,6),(2,9),(0,9),(-4,12),(-5,13),(-5,12),
+             (-11,14),(-14,12),(-15,12),(-14,16),(-12,17),
+             (-10,16),(-8,13),(-6,12),(-4,15),(-2,17),
+             (0,20),(2,22),(4,24),(6,25),(8,28),(10,30),
+             (11,34),(12,36),(12,40),(12,43),(11,44),(11,42),
+             (11,40),(14,41),(17,40),(18,37),(22,37),(25,34),
+             (28,34),(30,32),(31,32),(32,35),(33,36),(34,36),
+             (36,14),(37,9)],
+
+            # Asia (simplified)
+            [(70,30),(72,50),(73,70),(72,100),(70,130),(68,140),
+             (65,143),(60,151),(55,160),(50,156),(45,152),(42,142),
+             (38,140),(35,137),(33,130),(30,122),(25,119),(22,114),
+             (20,110),(18,110),(15,108),(12,109),(10,104),(8,98),
+             (6,100),(4,103),(1,104),(1,104),(3,101),(5,103),
+             (8,99),(10,98),(13,100),(16,97),(18,94),(22,92),
+             (22,88),(20,85),(18,82),(15,80),(12,80),(8,77),
+             (8,76),(10,76),(12,80),(16,80),(20,73),(22,68),
+             (22,62),(24,58),(22,56),(20,57),(16,52),(12,44),
+             (12,40),(20,37),(26,37),(28,34),(30,34),(32,36),
+             (34,36),(38,36),(38,40),(40,44),(42,48),(44,50),
+             (44,53),(46,60),(48,68),(50,75),(52,80),(55,83),
+             (58,80),(58,73),(60,70),(62,68),(62,62),(60,58),
+             (60,50),(62,44),(62,38),(64,34),(64,30),(67,30),
+             (70,30)],
+
+            # Australia
+            [(-12,136),(-10,130),(-12,124),(-14,122),(-18,122),
+             (-22,114),(-26,113),(-30,115),(-32,116),(-34,118),
+             (-35,117),(-35,118),(-33,122),(-32,127),(-32,134),
+             (-34,136),(-36,140),(-38,145),(-37,148),(-33,152),
+             (-28,153),(-24,151),(-20,148),(-18,146),(-16,145),
+             (-14,144),(-12,142),(-12,136)],
+
+            # Greenland
+            [(84,-40),(84,-30),(78,-18),(72,-22),(68,-24),(64,-40),
+             (66,-55),(68,-54),(72,-54),(76,-66),(80,-50),(84,-40)],
+
+            # Antarctica (simplified band)
+            [(-75,0),(-75,30),(-75,60),(-75,90),(-75,120),
+             (-75,150),(-75,180),(-75,-150),(-75,-120),(-75,-90),
+             (-75,-60),(-75,-30),(-75,0)],
+        ]

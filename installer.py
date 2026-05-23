@@ -40,15 +40,35 @@ import json
 from pathlib import Path
 
 # ── Version check before anything else ───────────────────────────────────
-if sys.version_info < (3, 11):
-    print("\nERROR: Python 3.11 or newer required.")
+if sys.version_info < (3, 9):
+    print("\nERROR: Python 3.9 or newer required.")
     print(f"       You have Python {sys.version}")
-    print("       Download: https://www.python.org/downloads/")
-    print("       Check 'Add Python to PATH' during install.\n")
+    print("")
+    print("       This usually means installer.py was run with the")
+    print("       wrong Python. Use run_installer.bat instead.")
+    print("       Download Python 3.9+: https://www.python.org/downloads/")
+    print("")
     input("Press Enter to exit...")
     sys.exit(1)
 
 # ── Helpers ───────────────────────────────────────────────────────────────
+
+# Suppress pip's "new version available" notice and speed up pip
+os.environ["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+os.environ["PIP_NO_INPUT"] = "1"
+
+# Set by --verbose flag in main(); when True, pip output is shown live
+VERBOSE = False
+
+
+def _pip_quiet_flag():
+    """Return ['--quiet'] normally, [] when verbose so output shows."""
+    return [] if VERBOSE else ["--quiet"]
+
+
+def _pip_capture():
+    """Return False when verbose (stream live), True otherwise (hide)."""
+    return not VERBOSE
 
 RESET  = "\033[0m"
 GREEN  = "\033[92m"
@@ -56,6 +76,7 @@ YELLOW = "\033[93m"
 RED    = "\033[91m"
 BOLD   = "\033[1m"
 CYAN   = "\033[96m"
+WHITE  = "\033[97m"
 
 def ok(msg):    print(f"  {GREEN}[OK]{RESET}   {msg}")
 def warn(msg):  print(f"  {YELLOW}[WARN]{RESET} {msg}")
@@ -85,22 +106,29 @@ VENV_PIP    = (VENV_DIR / "Scripts" / "pip.exe"
 # ── AV exclusion reminder ─────────────────────────────────────────────────
 
 def print_av_reminder():
+    # Simple separator format — never misaligns regardless of path length
+    # or terminal width (the old fixed-width box drew ragged right borders).
+    bar = "=" * 64
     print(f"""
-{YELLOW}{BOLD}╔══════════════════════════════════════════════════════════╗
-║  IMPORTANT — READ BEFORE CONTINUING                       ║
-║                                                          ║
-║  Add this folder to your antivirus exclusions FIRST:    ║
-║                                                          ║
-║  {str(BASE_DIR)[:50]}  ║
-║                                                          ║
-║  NETGEAR Armor: Armor app → Settings → Exceptions       ║
-║  Windows Defender: Security → Exclusions → Add folder   ║
-║  Bitdefender: Protection → Exceptions → Add folder      ║
-║                                                          ║
-║  This prevents false positives during Python package    ║
-║  installation. The folder contains only ham radio       ║
-║  software — no threats.                                 ║
-╚══════════════════════════════════════════════════════════╝{RESET}
+{YELLOW}{BOLD}{bar}
+  IMPORTANT — READ BEFORE CONTINUING
+{bar}{RESET}
+
+  Add this folder to your antivirus exclusions FIRST:
+
+    {BASE_DIR}
+
+  How to add an exclusion:
+    NETGEAR Armor    : Armor app  -> Settings -> Exceptions
+    Windows Defender : Security   -> Virus protection ->
+                       Manage settings -> Exclusions -> Add folder
+    Bitdefender      : Protection -> Antivirus -> Settings ->
+                       Manage exceptions -> Add folder
+
+  This prevents antivirus false positives during Python package
+  installation. The folder contains only ham radio software.
+
+{YELLOW}{BOLD}{bar}{RESET}
 """)
     response = input("  Have you added the folder exclusion? [Y/N]: ").strip().upper()
     if response != 'Y':
@@ -114,18 +142,25 @@ def print_av_reminder():
 def check_python():
     hdr("[1/6] Python")
     ver = sys.version_info
-    ok(f"Python {ver.major}.{ver.minor}.{ver.micro}")
-    if ver >= (3, 14):
-        warn("Python 3.14 is pre-release and has known")
-        warn("annotation evaluation changes that affect Squelch.")
-        warn("Strongly recommended: install Python 3.12 from")
-        warn("https://www.python.org/downloads/")
-        warn("and re-run installer.py with Python 3.12.")
-    elif ver >= (3, 11):
+    py_major = ver.major
+    py_minor = ver.minor
+    ok(f"Python {py_major}.{py_minor}.{ver.micro}")
+
+    if py_minor >= 14:
+        warn(f"Python {py_major}.{py_minor} is very new.")
+        warn("PyQt6, SoapySDR, and other packages may not have wheels yet.")
+        warn("Recommended: Python 3.11, 3.12, or 3.13 for best compatibility.")
+        warn("Download: https://www.python.org/downloads/")
+        print()
+    elif (py_major, py_minor) < (3, 11):
+        warn(f"Python {py_major}.{py_minor} is older than 3.11.")
+        warn("Some packages may not install. Python 3.11+ recommended.")
+    else:
         ok("Python version supported.")
 
 
 # ── Step 2: Virtual environment ───────────────────────────────────────────
+
 
 def setup_venv():
     hdr("[2/6] Virtual Environment")
@@ -199,7 +234,7 @@ def install_packages(offline: bool = False, cache_only: bool = False):
     os.close(_fd)
     tmp_req = Path(_tmp)  # nosec B306 - mkstemp is safe
     tmp_req.write_text("\n".join(req_lines))
-    cmd = [pip, "install", "-r", str(tmp_req), "--quiet"]
+    cmd = [pip, "install", "-r", str(tmp_req), *_pip_quiet_flag()]
 
     if offline and OFFLINE_DIR.exists():
         cmd += ["--no-index",
@@ -213,7 +248,7 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         info("Installing packages from internet...")
         info("This may take a few minutes on first run.")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=_pip_capture(), text=True)
     try:
         tmp_req.unlink()
     except Exception:
@@ -221,16 +256,15 @@ def install_packages(offline: bool = False, cache_only: bool = False):
 
     if result.returncode != 0 and offline:
         warn("Offline install incomplete. Trying internet...")
-        cmd_online = [pip, "install", "-r", str(REQ_FILE),
-                      "--quiet"]
+        cmd_online = [pip, "install", "-r", str(REQ_FILE), *_pip_quiet_flag()]
         result = subprocess.run(
-            cmd_online, capture_output=True, text=True)
+            cmd_online, capture_output=_pip_capture(), text=True)
 
     if result.returncode == 0:
         ok("Packages installed.")
     else:
         warn("Some packages failed — installing individually...")
-        # Show the actual error
+        # Show the actual error (stderr is None in verbose mode — already shown)
         if result.stderr:
             for line in result.stderr.splitlines()[:5]:
                 if line.strip():
@@ -311,16 +345,33 @@ def install_packages(offline: bool = False, cache_only: bool = False):
                 info("App will run without these.")
 
     # Verify key packages - force reinstall PyQt6 if missing
+    # First check: can we import at all?
+    # On Windows, "No Qt platform plugin could be initialized" is common
+    # even when PyQt6 installs — it means pyqt6-qt6 data package is missing.
     pyqt_result = subprocess.run(
         [str(VENV_PYTHON), "-c",
          "from PyQt6.QtCore import QT_VERSION_STR"],
         capture_output=True, text=True)
     if pyqt_result.returncode != 0:
-        warn("PyQt6 not working — attempting reinstall...")
+        warn("PyQt6 not working — attempting matched-version reinstall...")
+        # The most common Windows failure is mismatched PyQt6 component
+        # versions: "DLL load failed ... specified procedure not found"
+        # means PyQt6 (bindings) and PyQt6-Qt6 (Qt libs) disagree.
+        # Fix: uninstall all three, reinstall as a matched 6.6.1 set.
         subprocess.run(
-            [pip, "install", "PyQt6", "--force-reinstall",
-             "--no-cache-dir", "--quiet"],
-            capture_output=True)
+            [pip, "uninstall", "-y",
+             "PyQt6", "PyQt6-Qt6", "PyQt6-sip"],
+            capture_output=True, text=True)
+        reinstall = subprocess.run(
+            [pip, "install", "--no-cache-dir",
+             "PyQt6==6.6.1", "PyQt6-Qt6==6.6.1", "PyQt6-sip==13.6.0"],
+            capture_output=_pip_capture(), text=True)
+        # Show actual pip error so user knows what went wrong
+        if reinstall.returncode != 0:
+            pip_err = (reinstall.stderr or reinstall.stdout or "").strip() if not VERBOSE else ""
+            if pip_err:
+                for line in pip_err.splitlines()[-6:]:
+                    info(f"  pip: {line}")
         # Verify again
         pyqt_result2 = subprocess.run(
             [str(VENV_PYTHON), "-c",
@@ -330,8 +381,36 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         if pyqt_result2.returncode == 0:
             ok(f"PyQt6 {pyqt_result2.stdout.strip()}")
         else:
-            err("PyQt6 install failed — Squelch cannot run")
-            err("Try manually: pip install PyQt6 --no-cache-dir")
+            # Show the actual import error too
+            import_err = pyqt_result2.stderr.strip()
+            if import_err:
+                for line in import_err.splitlines()[-4:]:
+                    info(f"  import: {line}")
+            # Try installing the Qt6 data package separately
+            # (common fix when PyQt6 wheel installs but Qt DLLs are missing)
+            info("Trying separate pyqt6-qt6 install...")
+            subprocess.run(
+                [pip, "install", "pyqt6-qt6", "--no-cache-dir", "--quiet"],
+                capture_output=True)
+            pyqt_result3 = subprocess.run(
+                [str(VENV_PYTHON), "-c",
+                 "from PyQt6.QtCore import QT_VERSION_STR;"
+                 "print('PyQt6 Qt/' + QT_VERSION_STR)"],
+                capture_output=True, text=True)
+            if pyqt_result3.returncode == 0:
+                ok(f"PyQt6 fixed: {pyqt_result3.stdout.strip()}")
+            else:
+                err("PyQt6 install failed — Squelch cannot run without it")
+                info("")
+                info("Manual fix (matched-version set, copy-paste this):")
+                info("  venv\\Scripts\\pip uninstall -y PyQt6 PyQt6-Qt6 PyQt6-sip")
+                info("  venv\\Scripts\\pip install --no-cache-dir \\")
+                info("    PyQt6==6.6.1 PyQt6-Qt6==6.6.1 PyQt6-sip==13.6.0")
+                info("")
+                info("If that still fails, try Python 3.11.3:")
+                info("  https://www.python.org/downloads/release/python-3113/")
+                info("")
+                info("Continuing installer — fix PyQt6 before launching Squelch.")
     else:
         subprocess.run(
             [str(VENV_PYTHON), "-c",
@@ -433,6 +512,9 @@ def check_external_tools():
         },
     ]
 
+    # SoapySDR — try to auto-link from conda/PothosSDR if pip fails
+    _auto_fix_soapysdr()
+
     # SoapySDR — check via Python import
     result = subprocess.run(
         [str(VENV_PYTHON), "-c",
@@ -444,16 +526,55 @@ def check_external_tools():
     if result.returncode == 0:
         ok(result.stdout.strip())
     else:
-        warn("SoapySDR not installed — SDR tab unavailable.")
-        info("Not required if using IC-7100 USB audio for spectrum.")
-        info("Install guide: github.com/dawardy/squelch/wiki/sdr-setup")
-        info("Quick reference:")
-        info("  RTL-SDR:  zadig.akeo.ie (driver) then pip install soapysdr")
-        info("  SDRplay:  sdrplay.com/softwarehome")
-        info("  HackRF:   github.com/pothosware/SoapyHackRF")
-        info("  USRP:     ettus.com/all-ettus-software")
-        info("  Windows:  Install PothosSDR bundle first:")
-        info("  downloads.myriadrf.org/builds/PothosSDR/")
+        # More helpful: distinguish "not installed" from
+        # "installed but SoapySDR DLLs not in PATH"
+        err_out = (result.stderr or result.stdout or "").lower()
+        if "no module named" in err_out:
+            warn("SoapySDR Python package not installed.")
+            info("")
+            info("  To install (run in the Squelch folder):")
+            info(f"    {VENV_PYTHON} -m pip install soapysdr")
+            info("  Or use the venv pip directly:")
+            info(f"    {VENV_PYTHON.parent / 'pip'} install soapysdr")
+            info("")
+            info("  Make sure PothosSDR is installed FIRST.")
+        elif "dll" in err_out or "libsoapysdr" in err_out:
+            warn("SoapySDR package found but DLLs missing.")
+            info("  PothosSDR not installed or not in PATH.")
+            info("  Install: downloads.myriadrf.org/builds/PothosSDR/")
+            info("  After install: reboot, then try again.")
+        else:
+            warn("SoapySDR not installed — SDR waterfall unavailable.")
+            warn(f"  Error: {(result.stderr or result.stdout or '').strip()[:80]}")
+        info("")
+        info("EASY PATH (no CMake required):")
+        info("")
+        info("  Option A — RTL-TCP  (RTL-SDR only, simplest):")
+        info("    1. github.com/airspy/airspyone_host/releases")
+        info("       → download rtlsdr-release.zip, extract")
+        info("    2. zadig.akeo.ie → install WinUSB driver for dongle")
+        info("    3. Run rtl_tcp.exe → Squelch auto-detects it")
+        info("       No pip install needed for this path.")
+        info("")
+        info("  Option B — PothosSDR bundle (all SDR hardware):")
+        info("    1. downloads.myriadrf.org/builds/PothosSDR/")
+        info("       → one installer, includes SoapySDR + drivers")
+        info("    2. Reboot")
+        info("    3. pip install soapysdr")
+        info("    4. RTL-SDR users: also run Zadig (zadig.akeo.ie)")
+        info("")
+        info("  Option C — conda / radioconda (GNU Radio users):")
+        info("    github.com/ryanvolz/radioconda/releases")
+        info("    conda install -c conda-forge soapysdr soapyrtlsdr")
+        info("")
+        info("  Linux:  sudo apt install soapysdr-tools soapyrtlsdr")
+        info("")
+        info("  SDRplay RSP users:")
+        info("    Install SDRplay API FIRST: sdrplay.com/softwarehome")
+        info("    Then PothosSDR bundle (includes SoapySDRplay)")
+        info("    Order matters — PothosSDR must see the API to install driver")
+        info("")
+        info("Not required for IC-7100 USB audio or Rig tab spectrum.")
     sep()
 
     # VB-Cable
@@ -541,7 +662,18 @@ def setup_config():
         ok("config.json created from template.")
         info("Launch Squelch to enter callsign and grid square.")
     else:
-        warn("config.example.json not found.")
+        # config.example.json missing (user cleared root folder)
+        # Regenerate it from built-in defaults
+        warn("config.example.json missing — regenerating.")
+        try:
+            _write_default_config(CONFIG_TMPL)
+            import shutil
+            shutil.copy(CONFIG_TMPL, CONFIG_FILE)
+            ok("config.json created from built-in defaults.")
+        except Exception as e:
+            warn(f"Could not create config.json: {e}")
+            info("Launch Squelch anyway — "
+                 "it will prompt for callsign on first run.")
 
 
 # ── Step 6: Launch scripts ────────────────────────────────────────────────
@@ -627,6 +759,414 @@ def print_summary(errors: int, warnings: int):
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
+def _print_final_status():
+    """Big visible final status banner — cannot be missed."""
+    import sys
+    print()
+    print()
+    print(BOLD + "=" * 60 + RESET)
+    print(f"{BOLD}{WHITE}  INSTALLATION COMPLETE{RESET}")
+    print(BOLD + "=" * 60 + RESET)
+    print()
+    # Verify the venv has what it needs
+    if VENV_DIR.exists() and VENV_PYTHON.exists():
+        ok(f"Virtual environment: {VENV_DIR}")
+    else:
+        warn("Virtual environment was not created")
+        return
+
+    # Quick package check — use the REAL import statement for each
+    # (Python imports are case-sensitive: it's PyQt6, not pyqt6)
+    import subprocess as sp
+    critical = {
+        "PyQt6":     "from PyQt6.QtWidgets import QApplication",
+        "numpy":     "import numpy",
+        "requests":  "import requests",
+        "pyqtgraph": "import pyqtgraph",
+    }
+    missing = []
+    pyqt6_dll_error = False
+    for pkg, import_stmt in critical.items():
+        r = sp.run([str(VENV_PYTHON), "-c", import_stmt],
+                   capture_output=True, text=True)
+        if r.returncode != 0:
+            missing.append(pkg)
+            if pkg == "PyQt6" and "DLL load failed" in (r.stderr or ""):
+                pyqt6_dll_error = True
+    if missing:
+        warn(f"Missing or broken: {', '.join(missing)}")
+        if pyqt6_dll_error:
+            info("")
+            info("PyQt6 has a DLL mismatch. Fix with matched versions:")
+            info("  venv\\Scripts\\pip uninstall -y PyQt6 PyQt6-Qt6 PyQt6-sip")
+            info("  venv\\Scripts\\pip install --no-cache-dir \\")
+            info("    PyQt6==6.6.1 PyQt6-Qt6==6.6.1 PyQt6-sip==13.6.0")
+        else:
+            info("Try: venv\\Scripts\\python -m pip install -r requirements.txt")
+    else:
+        ok("All critical packages installed and importable")
+
+    print()
+    print(f"{BOLD}{CYAN}Next steps:{RESET}")
+    print(f"  1. Launch Squelch:")
+    print(f"     {CYAN}run_squelch.bat{RESET}  (Windows)")
+    print(f"     {CYAN}python main.py{RESET}   (any platform)")
+    print(f"  2. On first run, you will be prompted for:")
+    print(f"     - Your callsign")
+    print(f"     - Your grid square (or city/ZIP)")
+    print(f"  3. Configure rigs in Settings (Ctrl+,)")
+    print()
+    print(BOLD + "=" * 60 + RESET)
+    print()
+
+
+
+def _find_soapy_anywhere() -> str:
+    """Search conda, miniforge, PothosSDR for SoapySDR Python package.
+    Returns path to the SoapySDR directory or SoapySDR.py parent, or ''."""
+    import os
+    home = Path.home()
+
+    candidates = [
+        home / "miniforge3" / "Lib" / "site-packages",
+        home / "miniconda3" / "Lib" / "site-packages",
+        home / "anaconda3"  / "Lib" / "site-packages",
+        home / "mambaforge" / "Lib" / "site-packages",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "miniforge3" / "Lib" / "site-packages",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "miniconda3"  / "Lib" / "site-packages",
+        Path(r"C:/miniforge3/Lib/site-packages"),
+        Path(r"C:/miniconda3/Lib/site-packages"),
+        Path(r"C:/anaconda3/Lib/site-packages"),
+        Path(r"C:/Program Files/PothosSDR/lib/python3.9/site-packages"),
+    ]
+    # Also check conda envs/ subdirectories
+    for base in [home / "miniforge3", home / "miniconda3",
+                 Path(r"C:/miniforge3"), Path(r"C:/miniconda3")]:
+        envs = base / "envs"
+        if envs.exists():
+            for env in envs.iterdir():
+                candidates.append(env / "Lib" / "site-packages")
+
+    for sp in candidates:
+        if not sp or not sp.exists():
+            continue
+        if (sp / "SoapySDR.py").exists():
+            return str(sp)
+        if (sp / "SoapySDR" / "__init__.py").exists():
+            return str(sp / "SoapySDR")
+    return ""
+
+
+def _get_venv_site_packages() -> Path:
+    """Return the venv's site-packages directory reliably."""
+    import subprocess
+    r = subprocess.run(
+        [str(VENV_PYTHON), "-c",
+         "import sysconfig; print(sysconfig.get_path('purelib'))"],
+        capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        p = Path(r.stdout.strip())
+        if p.exists():
+            return p
+    # Fallback: construct manually
+    return VENV_DIR / "Lib" / "site-packages"
+
+
+def _install_soapy_plugins(site_pkgs: Path):
+    """Copy SoapySDR device plugins from conda into venv site-packages."""
+    import shutil
+    PLUGIN_STEMS = {
+        "SoapyRTLSDR":   "RTL-SDR dongles",
+        "SoapyHackRF":   "HackRF One",
+        "SoapySDRPlay":  "SDRplay RSP family",
+        "SoapyUHD":      "USRP B200/B210",
+        "SoapyAirspy":   "Airspy R2/Mini",
+        "SoapyLMS7":     "LimeSDR",
+        "SoapyBladeRF":  "BladeRF",
+    }
+    soapy_src = _find_soapy_anywhere()
+    if not soapy_src:
+        return
+    src_dir = Path(soapy_src)
+    if src_dir.name == "SoapySDR":
+        src_dir = src_dir.parent
+    found = False
+    for stem, hw in PLUGIN_STEMS.items():
+        for pyd in src_dir.glob(f"{stem}*.pyd"):
+            try:
+                shutil.copy2(pyd, site_pkgs / pyd.name)
+                ok(f"  Plugin: {pyd.name}  ({hw})")
+                found = True
+            except Exception as e:
+                info(f"  Could not copy {pyd.name}: {e}")
+    if not found:
+        info("No device plugins found in conda.")
+        info("Install: conda install -c conda-forge "
+             "soapyrtlsdr soapyhackrf soapysdrplay3 soapyuhd soapyairspy")
+        info("Then re-run: python installer.py")
+
+
+def _recreate_venv(python_exe: Path):
+    """Delete and recreate venv with the given Python, reinstall packages,
+    then copy SoapySDR and device plugins."""
+    import shutil, subprocess as sp
+    info(f"Recreating venv with {python_exe} ...")
+
+    if VENV_DIR.exists():
+        try:
+            shutil.rmtree(VENV_DIR)
+            ok("Old venv removed.")
+        except Exception as e:
+            warn(f"Could not remove old venv: {e}")
+            return
+
+    result = sp.run(
+        [str(python_exe), "-m", "venv", str(VENV_DIR)],
+        capture_output=True, text=True)
+    if result.returncode != 0:
+        warn(f"venv creation failed: {result.stderr[:200]}")
+        return
+    ok(f"New venv created.")
+
+    pkgs = ["PyQt6", "requests", "pyqtgraph", "numpy",
+            "sounddevice", "sgp4", "defusedxml"]
+    sp.run([str(VENV_PYTHON), "-m", "pip", "install",
+            "--quiet", "--upgrade", "pip"],
+           capture_output=True)
+    r = sp.run([str(VENV_PYTHON), "-m", "pip", "install",
+                "--quiet"] + pkgs, capture_output=True, text=True)
+    if r.returncode == 0:
+        ok(f"Packages installed: {', '.join(pkgs)}")
+    else:
+        warn(f"Some packages failed: {r.stderr[:100]}")
+
+    # Copy SoapySDR core + plugins
+    soapy_src = _find_soapy_anywhere()
+    if not soapy_src:
+        warn("SoapySDR not found — run fix_soapysdr.bat after install.")
+        return
+
+    import shutil
+    site = _get_venv_site_packages()
+    src_dir = Path(soapy_src)
+    if src_dir.name == "SoapySDR":
+        src_dir = src_dir.parent
+
+    spy = src_dir / "SoapySDR.py"
+    if spy.exists():
+        shutil.copy2(spy, site / "SoapySDR.py")
+        ok("Copied SoapySDR.py")
+
+    soapy_folder = src_dir / "SoapySDR"
+    if soapy_folder.exists():
+        dst = site / "SoapySDR"
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(soapy_folder, dst)
+        ok("Copied SoapySDR/")
+
+    for pyd in src_dir.glob("_SoapySDR*.pyd"):
+        shutil.copy2(pyd, site / pyd.name)
+        ok(f"Copied {pyd.name}")
+
+    _install_soapy_plugins(site)
+
+
+def _auto_fix_soapysdr():
+    """Full SoapySDR auto-fix pipeline integrated into installer."""
+    import re as _re, subprocess as sp, shutil
+
+    # Step 1: already works?
+    r = sp.run([str(VENV_PYTHON), "-c",
+                "import SoapySDR; d=SoapySDR.Device.enumerate();"
+                "print(f'SoapySDR {SoapySDR.getAPIVersion()} "
+                "-- {len(d)} device(s)')"],
+               capture_output=True, text=True)
+    if r.returncode == 0:
+        ok(r.stdout.strip())
+        _install_soapy_plugins(_get_venv_site_packages())
+        return
+
+    # Step 2: find SoapySDR in conda/PothosSDR
+    soapy_src = _find_soapy_anywhere()
+    if not soapy_src:
+        warn("SoapySDR not installed.")
+        info("  conda install -c conda-forge soapysdr")
+        info("  Then re-run: python installer.py")
+        return
+
+    src_dir = Path(soapy_src)
+    if src_dir.name == "SoapySDR":
+        src_dir = src_dir.parent
+
+    # Step 3: check Python version vs .pyd version
+    rv = sp.run([str(VENV_PYTHON), "--version"],
+                capture_output=True, text=True)
+    m = _re.search(r"Python (\d+)\.(\d+)", rv.stdout + rv.stderr)
+    venv_maj, venv_min = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    pyd_files = list(src_dir.glob("_SoapySDR*.pyd"))
+    pyd_maj, pyd_min = 0, 0
+    if pyd_files:
+        m2 = _re.search(r"cp(\d)(\d+)", pyd_files[0].name)
+        if m2:
+            pyd_maj, pyd_min = int(m2.group(1)), int(m2.group(2))
+
+    if pyd_maj and (venv_maj != pyd_maj or venv_min != pyd_min):
+        warn(f"Python version mismatch!")
+        warn(f"  Venv:    Python {venv_maj}.{venv_min}")
+        warn(f"  SoapySDR .pyd: cp{pyd_maj}{pyd_min} "
+             f"= Python {pyd_maj}.{pyd_min}")
+        info("")
+        # Find matching conda Python
+        for root in [Path.home() / "miniforge3", Path.home() / "miniconda3",
+                     Path(r"C:/miniforge3"), Path(r"C:/miniconda3")]:
+            py = root / "python.exe"
+            if not py.exists():
+                py = root / "bin" / "python3"
+            if py.exists():
+                rv2 = sp.run([str(py), "--version"],
+                             capture_output=True, text=True)
+                m3 = _re.search(r"Python (\d+)\.(\d+)",
+                                rv2.stdout + rv2.stderr)
+                if m3 and (int(m3.group(1)), int(m3.group(2))) == (pyd_maj, pyd_min):
+                    ok(f"Found matching Python {pyd_maj}.{pyd_min}: {py}")
+                    _recreate_venv(py)
+                    return
+        info(f"Install Python {pyd_maj}.{pyd_min} from python.org")
+        info("Or: conda install -c conda-forge soapysdr  "
+             "(to get a version matching your venv Python)")
+        return
+
+    # Step 4: copy into venv
+    site = _get_venv_site_packages()
+    info(f"Copying SoapySDR from {src_dir} to {site} ...")
+
+    spy = src_dir / "SoapySDR.py"
+    if spy.exists():
+        shutil.copy2(spy, site / "SoapySDR.py")
+        ok("  Copied SoapySDR.py")
+
+    sf = src_dir / "SoapySDR"
+    if sf.exists():
+        dst = site / "SoapySDR"
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(sf, dst)
+        ok("  Copied SoapySDR/")
+
+    for pyd in src_dir.glob("_SoapySDR*.pyd"):
+        shutil.copy2(pyd, site / pyd.name)
+        ok(f"  Copied {pyd.name}")
+
+    # Step 5: verify and install plugins
+    r2 = sp.run([str(VENV_PYTHON), "-c",
+                 "import SoapySDR; d=SoapySDR.Device.enumerate();"
+                 "print(f'SoapySDR {SoapySDR.getAPIVersion()} "
+                 "-- {len(d)} device(s)')"],
+                capture_output=True, text=True)
+    if r2.returncode == 0:
+        ok(f"SoapySDR working: {r2.stdout.strip()}")
+        _install_soapy_plugins(site)
+    else:
+        err_msg = (r2.stderr or r2.stdout or "").strip()[:120]
+        warn(f"SoapySDR still failing: {err_msg}")
+
+
+def _select_sdr_drivers():
+    """Interactive SDR driver selection step during install."""
+    import shutil, subprocess as sp
+    conda_exe = None
+    for name in ["conda", "mamba", "micromamba"]:
+        f = shutil.which(name)
+        if f:
+            conda_exe = f
+            break
+    if not conda_exe:
+        for p in [
+            Path.home() / "miniforge3" / "Scripts" / "conda.exe",
+            Path.home() / "miniconda3"  / "Scripts" / "conda.exe",
+            Path(r"C:/miniforge3/Scripts/conda.exe"),
+            Path(r"C:/miniconda3/Scripts/conda.exe"),
+        ]:
+            if p.exists():
+                conda_exe = str(p)
+                break
+
+    if not conda_exe:
+        info("conda not found — skipping driver selection.")
+        info("Install drivers later: conda install -c conda-forge soapyrtlsdr ...")
+        return
+
+    sep()
+    hdr("[5b/6] SDR Hardware Drivers")
+    DRIVERS = [
+        ("1", "RTL-SDR  (any RTL2832U dongle)",
+         "soapyrtlsdr",
+         "RTL-SDR Blog V3/V4, Nooelec, generic. Also needs Zadig WinUSB."),
+        ("2", "HackRF One",
+         "soapyhackrf",
+         "1 MHz - 6 GHz transceiver by Great Plains SDR."),
+        ("3", "SDRplay RSP2Pro / RSP1A / RSPdx / RSPduo",
+         "soapysdrplay3",
+         "Requires SDRplay API installed first: sdrplay.com/softwarehome"),
+        ("4", "USRP B200 mini / B210  (Ettus Research)",
+         "soapyuhd",
+         "Professional full-duplex, 70 MHz - 6 GHz."),
+        ("5", "Airspy R2 / Airspy Mini",
+         "soapyairspy",
+         "High performance, 24 MHz - 1.8 GHz."),
+        ("6", "LimeSDR / LimeSDR Mini",
+         "limesuite",
+         "Open source transceiver, 100 kHz - 3.8 GHz."),
+        ("7", "ALL of the above",
+         "soapyrtlsdr soapyhackrf soapysdrplay3 soapyuhd soapyairspy",
+         "Install all drivers (safe, installs what applies to your hardware)."),
+        ("0", "Skip — install later via Settings > SDR Hardware",
+         None, ""),
+    ]
+    print()
+    print("  What SDR hardware do you have?")
+    print("  You can select multiple: type  1 3  for RTL-SDR and RSP2Pro")
+    print()
+    for num, name, pkg, note in DRIVERS:
+        print(f"    [{num}]  {name}")
+        if note:
+            print(f"         {note}")
+        print()
+    try:
+        choice = input("  Your choice(s): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        info("Skipped.")
+        return
+    if not choice or choice.strip() == "0":
+        info("Skipped. Install drivers later via Settings > SDR Hardware.")
+        return
+
+    selected_pkgs = []
+    for token in choice.split():
+        for num, name, pkg, note in DRIVERS:
+            if token == num and pkg:
+                for p in pkg.split():
+                    if p not in selected_pkgs:
+                        selected_pkgs.append(p)
+
+    if not selected_pkgs:
+        info("No valid selection — skipped.")
+        return
+
+    info(f"Installing: {' '.join(selected_pkgs)}")
+    result = sp.run(
+        [conda_exe, "install", "-c", "conda-forge", "-y"] + selected_pkgs)
+    if result.returncode == 0:
+        ok("SDR drivers installed.")
+        site = _get_venv_site_packages()
+        _install_soapy_plugins(site)
+    else:
+        warn("conda install failed. Check internet connection.")
+        info("Retry: conda install -c conda-forge " + " ".join(selected_pkgs))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Squelch installer and dependency checker")
@@ -642,7 +1182,14 @@ def main():
     parser.add_argument(
         "--no-av-prompt", action="store_true",
         help="Skip antivirus reminder (for automation)")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Show full pip output (for debugging install failures)")
     args = parser.parse_args()
+
+    # Make verbosity available to install_packages via module global
+    global VERBOSE
+    VERBOSE = args.verbose
 
     print()
     print(f"{BOLD}{'='*54}")
@@ -665,8 +1212,13 @@ def main():
             install_packages(offline=args.offline)
         setup_config()
         create_launch_scripts()
+        # Interactive SDR driver selection (skip if --no-av-prompt = automation mode)
+        if not args.no_av_prompt:
+            _select_sdr_drivers()
 
     check_external_tools()
+    # Final banner — always visible regardless of what happened above
+    _print_final_status()
     print_summary(0, 0)
 
     # Show where user data is stored
@@ -707,4 +1259,32 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        warn("Installation cancelled by user.")
+    except Exception as exc:
+        print()
+        print(BOLD + "=" * 60 + RESET)
+        print(f"{BOLD}{RED}  INSTALLER ERROR{RESET}")
+        print(BOLD + "=" * 60 + RESET)
+        err(f"{type(exc).__name__}: {exc}")
+        import traceback
+        traceback.print_exc()
+        print()
+        info("Common fixes:")
+        info("  1. Use Python 3.13 (3.14+ has wheel issues)")
+        info("  2. Run as Administrator (Windows AppData write access)")
+        info("  3. Check internet connection (pip needs network)")
+        info("  4. Check antivirus isn't blocking pip")
+    # Keep window open so user can read output
+    try:
+        input("\n  Press Enter to close...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SoapySDR auto-detection and installation helpers
+# ═══════════════════════════════════════════════════════════════════════

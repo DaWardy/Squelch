@@ -36,8 +36,16 @@ import argparse
 from pathlib import Path
 
 # ── Console colors (Windows-safe) ────────────────────────────────────────
+# Enable ANSI color on Windows
 if sys.platform == "win32":
-    os.system("color")
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleMode(
+            ctypes.windll.kernel32.GetStdHandle(-11), 7)
+    except Exception:
+        pass  # ANSI not available, colors will be ignored
+
+os.environ["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
 
 GREEN  = "\033[92m"
 YELLOW = "\033[93m"
@@ -222,23 +230,62 @@ def check_sdr():
     head("SDR Hardware  (SoapySDR)")
     try:
         import SoapySDR
+        ok(f"SoapySDR {SoapySDR.getAPIVersion()} -- installed")
         devs = SoapySDR.Device.enumerate()
         if devs:
             for i, d in enumerate(devs):
                 label = d.get("label", d.get("driver", f"Device {i}"))
-                ok(f"SDR {i}: {label}")
+                ok(f"  SDR device: {label}")
         else:
-            info("No SDR hardware detected -- connect device and re-run")
-            info("Supported: RTL-SDR, USRP B200/B210, RSP2duo, HackRF,")
-            info("           LimeSDR, Airspy, BladeRF, PlutoSDR")
+            info("SoapySDR installed but no devices detected.")
+            info("This is normal if no SDR is plugged in,")
+            info("OR if device plugins are missing.")
+            info("")
+            info("Device plugins needed (install via conda):")
+            info("  RSP2Pro / RSP1A:  conda install -c conda-forge soapysdrplay3")
+            info("  RTL-SDR:          conda install -c conda-forge soapyrtlsdr")
+            info("  HackRF:           conda install -c conda-forge soapyhackrf")
+            info("  USRP B200/B210:   conda install -c conda-forge soapyuhd")
+            info("  Airspy:           conda install -c conda-forge soapyairspy")
+            info("")
+            info("Then copy new .pyd files from conda to venv and re-run.")
         return True
     except ImportError:
         warn("SoapySDR not installed -- SDR tab unavailable")
-        info("https://github.com/pothosware/SoapySDR")
+        info("")
+        info("Install core library:")
+        info("  conda install -c conda-forge soapysdr")
+        info("Then copy to venv with fix_soapysdr.bat")
         return True
     except Exception as e:
         warn(f"SoapySDR error: {e}")
         return True
+
+
+def _saved_paths() -> dict:
+    """Read tool paths the user configured in Squelch Settings.
+    These live in config.json under keys like 'paths.wsjtx'."""
+    import json, os
+    try:
+        appdata = os.environ.get("APPDATA", str(Path.home()))
+        cfg_path = Path(appdata) / "Squelch" / "config.json"
+        if not cfg_path.exists():
+            cfg_path = Path("config.json")
+        if cfg_path.exists():
+            data = json.loads(cfg_path.read_text())
+            # Flatten nested {"paths": {"wsjtx": "..."}} or flat "paths.wsjtx"
+            result = {}
+            paths = data.get("paths", {})
+            if isinstance(paths, dict):
+                for k, v in paths.items():
+                    result[k] = v
+            for k, v in data.items():
+                if k.startswith("paths."):
+                    result[k.split(".", 1)[1]] = v
+            return result
+    except Exception:
+        pass
+    return {}
 
 
 def check_external():
@@ -247,41 +294,102 @@ def check_external():
     pf86 = Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
 
     checks = [
-        ("WSJT-X",    [pf/"WSJT-X/bin/wsjtx.exe",
-                        pf86/"WSJT-X/bin/wsjtx.exe"],
-                       "FT8/FT4/WSPR/JT modes",
-                       "https://wsjt.sourceforge.io/wsjtx.html",
-                       True),
-        ("JS8Call",   [pf/"JS8Call/js8call.exe",
-                        pf86/"JS8Call/js8call.exe"],
-                       "JS8 keyboard messaging",
-                       "https://js8call.com/",
-                       False),
-        ("Fldigi",    [pf/"fldigi/fldigi.exe",
-                        pf86/"fldigi/fldigi.exe"],
-                       "PSK31/RTTY/CW/SSTV",
-                       "https://sourceforge.net/projects/fldigi/",
-                       False),
-        ("VARA HF",   [Path("C:/VARA HF/VARAHF.exe"),
-                        Path("C:/VARA/VARAHF.exe")],
-                       "Winlink HF",
-                       "https://rosmodem.wordpress.com/",
-                       False),
-        ("VARA FM",   [Path("C:/VARA FM/VARAFM.exe"),
-                        Path("C:/VARA FM/VARAFM.exe")],
-                       "Winlink VHF/UHF",
-                       "https://rosmodem.wordpress.com/",
-                       False),
-        ("DSD+",      [Path("C:/dsdplus/DSDPlus.exe"),
-                        Path("C:/DSDPlus/DSDPlus.exe")],
-                       "DMR/NXDN/YSF decode",
-                       "https://www.dsdplus.com/",
-                       False),
+        ("WSJT-X", [
+            pf/"WSJT-X/bin/wsjtx.exe",
+            pf86/"WSJT-X/bin/wsjtx.exe",
+            Path(r"C:\WSJT\wsjtx\bin\wsjtx.exe"),
+            Path(r"C:\WSJT\WSJTX\bin\wsjtx.exe"),
+            Path(r"C:\wsjtx\bin\wsjtx.exe"),
+            Path(r"D:\WSJT\wsjtx\bin\wsjtx.exe"),
+        ], "FT8/FT4/WSPR digital modes",
+           "https://wsjt.sourceforge.io/wsjtx.html", True),
+
+        ("JS8Call", [
+            pf/"JS8Call/js8call.exe",
+            pf/"JS8Call/bin/js8call.exe",
+            pf86/"JS8Call/js8call.exe",
+            Path(r"C:\Program Files\JS8Call\js8call.exe"),
+            Path(r"C:\JS8Call\js8call.exe"),
+        ], "JS8 keyboard messaging",
+           "https://js8call.com/", False),
+
+        ("Fldigi", [
+            pf/"Fldigi/fldigi.exe",
+            pf/"Fldigi-4.2.11/fldigi.exe",
+            pf/"Fldigi-4.2.10/fldigi.exe",
+            pf/"Fldigi-4.2.05/fldigi.exe",
+            pf/"Fldigi-4.1.20/fldigi.exe",
+            pf86/"Fldigi/fldigi.exe",
+            pf86/"Fldigi-4.2.11/fldigi.exe",
+        ], "PSK31/RTTY/CW/SSTV digital modes",
+           "https://sourceforge.net/projects/fldigi/", False),
+
+        ("VARA HF", [
+            Path(r"C:\VARA\VARA.exe"),
+            Path(r"C:\VARA\VARAHF.exe"),
+            Path(r"C:\VARA HF\VARA.exe"),
+            Path(r"C:\VARA HF\VARAHF.exe"),
+            pf/"VARA/VARA.exe",
+            pf/"VARA HF/VARAHF.exe",
+        ], "Winlink HF modem (required for HF Winlink)",
+           "https://rosmodem.com/vara-hf/", False),
+
+        ("VARA FM", [
+            Path(r"C:\VARA FM\VARAFM.exe"),
+            Path(r"C:\VARA FM\VARA FM.exe"),
+            Path(r"C:\VARAFM\VARAFM.exe"),
+            pf/"VARA FM/VARAFM.exe",
+        ], "Winlink VHF/UHF modem (required for VHF Winlink)",
+           "https://rosmodem.com/vara-fm/", False),
+
+        ("DSD+", [
+            Path(r"C:\DSDPlusFull\DSDPlus.exe"),
+            Path(r"C:\DSDPlus\DSDPlus.exe"),
+            Path(r"C:\dsdplus\DSDPlus.exe"),
+            pf/"DSDPlus/DSDPlus.exe",
+        ], "P25/DMR/NXDN/YSF digital voice decode",
+           "https://www.dsdplus.com/", False),
+
+        ("Hamlib (rigctld)", [
+            Path(r"C:\hamlib\bin\rigctld.exe"),
+            Path(r"C:\Hamlib\bin\rigctld.exe"),
+            pf/"Hamlib/bin/rigctld.exe",
+            pf86/"Hamlib/bin/rigctld.exe",
+        ], "CAT control for 300+ rigs (IC-7100, FT-991A, etc.)",
+           "https://hamlib.org/", False),
+
+        ("CHIRP", [
+            pf/"CHIRP/chirp.exe",
+            pf/"CHIRP/chirpw.exe",
+            pf86/"CHIRP/chirp.exe",
+        ], "Radio programming — Baofeng, IC-7100, FT-991A and 200+ radios",
+           "https://chirpmyradio.com/", False),
+
+        ("Winlink Express", [
+            Path(r"C:\RMS Express\RMS Express.exe"),
+            pf/"RMS Express/RMS Express.exe",
+            pf86/"RMS Express/RMS Express.exe",
+        ], "Winlink email client (optional — Squelch has built-in Winlink)",
+           "https://downloads.winlink.org/User%20Programs/", False),
     ]
 
     results = {}
+    saved = _saved_paths()
+    # Map display names to config keys so we honor user-configured paths
+    name_to_key = {
+        "WSJT-X": "wsjtx", "JS8Call": "js8call", "Fldigi": "fldigi",
+        "VARA HF": "vara_hf", "VARA FM": "vara_fm", "DSD+": "dsdplus",
+        "Hamlib (rigctld)": "rigctld", "RMS Express": "rms_express",
+    }
+
     for name, paths, desc, url, required in checks:
-        found = any(p.exists() for p in paths)
+        # First honor the path the user set in Settings, if it exists
+        key = name_to_key.get(name)
+        configured = saved.get(key, "") if key else ""
+        found = bool(configured and Path(configured).exists())
+        # Fall back to scanning the standard install locations
+        if not found:
+            found = any(p.exists() for p in paths)
         if found:
             ok(f"{name:<16} found  ({desc})")
         elif required:
@@ -297,16 +405,46 @@ def check_external():
 
 def check_config():
     head("Squelch Configuration")
-    if not Path("config.json").exists():
-        if Path("config.example.json").exists():
-            warn("config.json not found -- will be created from template on launch")
-            info("Run python main.py to complete first-run setup")
-        else:
-            fail("config.json and config.example.json both missing")
-        return False
     try:
-        import json
-        with open("config.json") as f:
+        return _check_config_inner()
+    except Exception as e:
+        fail(f"Config check error (non-fatal): {e}")
+        return False
+
+
+def _check_config_inner():
+    import os, json
+
+    # Squelch stores config in APPDATA, not the app folder
+    appdata = Path(os.environ.get("APPDATA", Path.home()))
+    appdata_cfg = appdata / "Squelch" / "config.json"
+    local_cfg   = Path("config.json")
+    example_cfg = Path("config.example.json")
+
+    # Find whichever config exists
+    cfg_path = None
+    if appdata_cfg.exists():
+        cfg_path = appdata_cfg
+        ok(f"config.json: {appdata_cfg}")
+    elif local_cfg.exists():
+        cfg_path = local_cfg
+        ok(f"config.json: {local_cfg}")
+    else:
+        # Neither exists - create from template
+        if example_cfg.exists():
+            import shutil
+            appdata_cfg.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(example_cfg, appdata_cfg)
+            ok("config.json created from template in AppData")
+            cfg_path = appdata_cfg
+        else:
+            warn("config.json not found -- will be created on first launch")
+            info("This is normal on first install.")
+            info("Launch Squelch to complete setup.")
+            return True   # Not a failure - first run is fine
+
+    try:
+        with open(cfg_path) as f:
             cfg = json.load(f)
         cs = cfg.get("callsign", "")
         gr = cfg.get("grid_square", "")
@@ -333,7 +471,7 @@ def print_summary(results: dict):
     if failed == 0:
         print(f"  {GREEN}{BOLD}All {total} checks passed.{RESET}")
         print(f"  {CYAN}Launch:  python main.py{RESET}")
-        print(f"  {CYAN}         run_apex.bat{RESET}")
+        print(f"  {CYAN}         run_squelch.bat{RESET}")
     else:
         print(f"  {YELLOW}{BOLD}{passed}/{total} checks passed -- {failed} issue(s) found.{RESET}")
         failing = [k for k, v in results.items() if not v]
@@ -357,6 +495,16 @@ def main():
     print("=" * 54)
     print(f"Platform: {sys.platform}   Python: {sys.version.split()[0]}")
 
+    # Warn about Python 3.14+ — many packages don't have wheels yet
+    py_major, py_minor = sys.version_info[:2]
+    if py_major == 3 and py_minor >= 14:
+        print()
+        print(f"  {YELLOW}{BOLD}WARNING: Python {py_major}.{py_minor} is very new.{RESET}")
+        print(f"  {YELLOW}Many packages (PyQt6, SoapySDR) may not have wheels yet.{RESET}")
+        print(f"  {YELLOW}Recommended: Python 3.11, 3.12, or 3.13 for best compatibility.{RESET}")
+        print(f"  {YELLOW}Download: https://www.python.org/downloads/{RESET}")
+        print()
+
     if args.fix:
         print("\nReinstalling Python packages...")
         subprocess.run([sys.executable, "-m", "pip", "install",
@@ -364,17 +512,40 @@ def main():
                         "--no-cache-dir", "--upgrade"])
 
     results = {}
-    results["Python"]          = check_python()
-    results["Python packages"] = check_python_packages(args.verbose)
-    results["Hamlib"]          = check_hamlib()
-    results["Audio"]           = check_audio()
-    results["Serial ports"]    = check_serial()
-    check_sdr()   # informational only, not in pass/fail
-    ext = check_external()
-    results["WSJT-X"] = ext.get("WSJT-X", False)
-    results["Config"] = check_config()
+    # Each check is isolated — one failing crash can't prevent others
+    # or the final summary from running
+    for name, fn in [
+        ("Python",          check_python),
+        ("Python packages", lambda: check_python_packages(args.verbose)),
+        ("Hamlib",          check_hamlib),
+        ("Audio",           check_audio),
+        ("Serial ports",    check_serial),
+        ("SDR Hardware",    lambda: (check_sdr() or True)),
+        ("External tools",  lambda: check_external().get("WSJT-X", False)),
+        ("Config",          check_config),
+    ]:
+        try:
+            results[name] = fn()
+        except Exception as e:
+            fail(f"{name} check crashed: {e}")
+            results[name] = False
 
     print_summary(results)
+
+    # Offer to launch the installer if packages are missing
+    if not results.get("Python packages", True):
+        print()
+        print(f"  {YELLOW}{BOLD}Python packages are missing.{RESET}")
+        print(f"  {CYAN}Run the installer to fix automatically:{RESET}")
+        print(f"  {CYAN}    python installer.py{RESET}")
+        print()
+        try:
+            ans = input("  Launch installer now? (Y/n): ").strip().lower()
+            if ans in ("", "y", "yes"):
+                import subprocess as _sp
+                _sp.run([sys.executable, "installer.py"])
+        except (EOFError, KeyboardInterrupt):
+            pass
 
 
 if __name__ == "__main__":

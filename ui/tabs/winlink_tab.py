@@ -17,18 +17,6 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- ui/tabs/winlink_tab.py
-Winlink / VARA tab.
-VARA HF + FM modem status and control.
-Pat and RMS Express launch.
-ARES EmComm message templates.
-RMS gateway selection by band/distance.
-"""
-
 import logging
 from datetime import datetime, timezone
 
@@ -46,9 +34,9 @@ from PyQt6.QtGui import QFont
 from ui.widgets.launch_bar import LaunchBar
 from winlink.vara import VARAModem, VARAState
 from winlink.templates import (
-    TEMPLATE_LIST, ics213, ics214,
-    winlink_wednesday, welfare_message, radiogram,
-    WinlinkMessage)
+    TEMPLATE_LIST, TEMPLATE_CATEGORIES,
+    ics213, ics214, winlink_wednesday,
+    welfare, radiogram, WinlinkMessage)
 
 log = logging.getLogger(__name__)
 
@@ -67,8 +55,9 @@ class WinlinkTab(QWidget):
         super().__init__(parent)
         self.cfg    = config
         self.rig    = rig
-        self._vara_hf = VARAModem(is_fm=False)
-        self._vara_fm = VARAModem(is_fm=True)
+        self._vara_hf  = VARAModem(is_fm=False)
+        self._vara_fm  = VARAModem(is_fm=True)
+        self._running  = True
         self._compose_msg: WinlinkMessage = None
 
         # Wire VARA callbacks
@@ -117,7 +106,7 @@ class WinlinkTab(QWidget):
 
         self._hf_lbl = QLabel("VARA HF: ●  Disconnected")
         self._hf_lbl.setStyleSheet(
-            "color:#555;font-size:13px;"
+            ""
             "font-family:'Courier New';")
         lay.addWidget(self._hf_lbl)
 
@@ -125,7 +114,7 @@ class WinlinkTab(QWidget):
 
         self._fm_lbl = QLabel("VARA FM: ●  Disconnected")
         self._fm_lbl.setStyleSheet(
-            "color:#555;font-size:13px;"
+            ""
             "font-family:'Courier New';")
         lay.addWidget(self._fm_lbl)
 
@@ -188,7 +177,7 @@ class WinlinkTab(QWidget):
 
         self._unread_lbl = QLabel("")
         self._unread_lbl.setStyleSheet(
-            "color:#3fbe6f;font-size:12px;")
+            "color:#3fbe6f;")
         tb.addWidget(self._unread_lbl)
         lay.addLayout(tb)
 
@@ -207,11 +196,11 @@ class WinlinkTab(QWidget):
             QTableWidget.SelectionBehavior.SelectRows)
         self._msg_list.setAlternatingRowColors(True)
         self._msg_list.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;color:#aaa;"
-            "font-size:12px;border:1px solid #1a1a1a;"
+            "QTableWidget{background:#0a0a0a;"
+            "border:1px solid #1a1a1a;"
             "alternate-background-color:#0d0d0d;}"
             "QHeaderView::section{background:#141414;"
-            "color:#666;border:none;font-size:12px;}")
+            "border:none;}")
         self._msg_list.clicked.connect(
             self._on_msg_select)
         self._msg_list.doubleClicked.connect(
@@ -223,8 +212,8 @@ class WinlinkTab(QWidget):
         self._msg_preview.setReadOnly(True)
         self._msg_preview.setMaximumHeight(160)
         self._msg_preview.setStyleSheet(
-            "background:#0a0a0a;color:#aaa;"
-            "font-size:12px;font-family:'Courier New';"
+            "background:#0a0a0a;"
+            "font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         self._msg_preview.setPlaceholderText(
             "Click a message to preview it here…")
@@ -331,7 +320,7 @@ class WinlinkTab(QWidget):
             self, "Import Winlink Messages",
             "",
             "Message Files (*.b2f *.txt *.msg *.mbox)"
-            ";;All Files (*)")
+            "All Files (*)")
         if not path:
             return
         count = self._msg_store.import_adif_message(
@@ -401,7 +390,7 @@ class WinlinkTab(QWidget):
         send_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
             "border:1px solid #3fbe6f;border-radius:4px;"
-            "font-size:13px;padding:4px 16px;")
+            "padding:4px 16px;")
         send_btn.setToolTip(
             "Send message via selected modem\n"
             "VARA must be connected and a gateway selected")
@@ -414,7 +403,7 @@ class WinlinkTab(QWidget):
             "Winlink delivers messages even when internet is down. "
             "Messages route through RF gateways to the Winlink network.")
         info.setWordWrap(True)
-        info.setStyleSheet("color:#444;font-size:12px;")
+        info.setStyleSheet("")
         lay.addWidget(info)
 
         return w
@@ -501,327 +490,396 @@ class WinlinkTab(QWidget):
             QTableWidget.EditTrigger.NoEditTriggers)
         self._gw_table.setAlternatingRowColors(True)
         self._gw_table.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;color:#aaa;"
-            "font-size:12px;font-family:'Courier New';"
+            "QTableWidget{background:#0a0a0a;"
+            "font-family:'Courier New';"
             "alternate-background-color:#0d0d0d;"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{background:#141414;"
-            "color:#555;border:none;font-size:12px;}")
+            "border:none;}")
         lay.addWidget(self._gw_table)
 
         note = QLabel(
             "Gateway data from Winlink network (requires internet).\n"
             "Select a gateway and click the compose tab to connect.")
-        note.setStyleSheet("color:#444;font-size:12px;")
+        note.setStyleSheet("")
         lay.addWidget(note)
         return w
 
-    def _build_templates_tab(self) -> QWidget:
+    def _build_p2p_tab(self) -> QWidget:
+        """
+        Peer-to-peer messaging — direct station-to-station
+        without going through an RMS gateway.
+        Both stations must have a common frequency and
+        compatible modem (VARA HF or VARA FM).
+        """
         w   = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(8)
 
-        lay.addWidget(QLabel(
-            "Select a template — it will pre-fill the Compose tab."))
+        # Info
+        info = QLabel(
+            "📡  Peer-to-peer Winlink — direct station-to-station, "
+            "no gateway required."
+            "Both stations tune to the same frequency and initiate "
+            "from their respective Winlink clients.")
+        info.setWordWrap(True)
+        info.setStyleSheet(
+            ""
+            "background:#0d0d0d;padding:8px;"
+            "border:1px solid #1a1a1a;"
+            "border-radius:4px;")
+        lay.addWidget(info)
 
-        for name, desc in TEMPLATE_LIST:
-            btn = QPushButton(f"  {name}")
-            btn.setToolTip(desc)
-            btn.setFixedHeight(34)
-            btn.setStyleSheet(
-                "QPushButton{text-align:left;"
-                "padding:4px 12px;"
-                "background:#0d0d0d;"
-                "border:1px solid #1a1a1a;"
-                "border-radius:3px;color:#aaa;}"
-                "QPushButton:hover{"
-                "background:#141414;color:#3fbe6f;"
-                "border-color:#3fbe6f;}")
-            btn.clicked.connect(
-                lambda checked, n=name:
-                    self._load_template(n))
-            lay.addWidget(btn)
+        # Connection row
+        conn_grp = QGroupBox("P2P Connection")
+        cgl = QFormLayout(conn_grp)
+        cgl.setSpacing(8)
 
-        lay.addStretch()
+        self._p2p_call = QLineEdit()
+        self._p2p_call.setPlaceholderText(
+            "e.g. W4XYZ  (other station callsign)")
+        self._p2p_call.setMaxLength(12)
+        self._p2p_call.setToolTip(
+            "Callsign of the station you want to connect to\n"
+            "They must be on the same frequency and have VARA running")
+        cgl.addRow("Their Callsign:", self._p2p_call)
 
-        # EmComm reference
+        self._p2p_freq = QLineEdit()
+        self._p2p_freq.setPlaceholderText("e.g. 14.109.0")
+        self._p2p_freq.setToolTip(
+            "Agreed frequency in MHz\n"
+            "Common P2P frequencies: 14.109.0 (20m), "
+            "7.171.0 (40m), 3.601.0 (80m)")
+        cgl.addRow("Frequency (MHz):", self._p2p_freq)
+
+        self._p2p_mode = QComboBox()
+        self._p2p_mode.addItems([
+            "VARA HF  (HF radio, 1 kHz - 30 MHz)",
+            "VARA FM  (VHF/UHF, 2m/70cm)"])
+        cgl.addRow("Mode:", self._p2p_mode)
+
+        p2p_conn_btn = QPushButton("🔗 Connect P2P")
+        p2p_conn_btn.setToolTip(
+            "Initiate a peer-to-peer Winlink session\n"
+            "Other station must be listening on same frequency")
+        p2p_conn_btn.clicked.connect(self._connect_p2p)
+        cgl.addRow("", p2p_conn_btn)
+        lay.addWidget(conn_grp)
+
+        # P2P message compose
+        msg_grp = QGroupBox("P2P Message")
+        mgl = QVBoxLayout(msg_grp)
+
+        mf = QFormLayout()
+        self._p2p_subj = QLineEdit()
+        self._p2p_subj.setPlaceholderText(
+            "Message subject")
+        mf.addRow("Subject:", self._p2p_subj)
+        mgl.addLayout(mf)
+
+        self._p2p_body = QTextEdit()
+        self._p2p_body.setPlaceholderText(
+            "Type your message here…\n\n"
+            "P2P messages go directly to the other station\n"
+            "without passing through any Winlink server.")
+        self._p2p_body.setMinimumHeight(120)
+        self._p2p_body.setStyleSheet(
+            "background:#0a0a0a;"
+            "border:1px solid #1a1a1a;")
+        mgl.addWidget(self._p2p_body)
+
+        # P2P from template
+        tmpl_row = QHBoxLayout()
+        tmpl_row.addWidget(
+            QLabel("From template:"))
+        self._p2p_tmpl = QComboBox()
+        self._p2p_tmpl.addItem("— select —")
+        try:
+            from winlink.templates import TEMPLATE_LIST
+            for name, fn, desc in TEMPLATE_LIST:
+                self._p2p_tmpl.addItem(name)
+        except Exception:
+            pass
+        self._p2p_tmpl.currentTextChanged.connect(
+            self._p2p_load_template)
+        tmpl_row.addWidget(self._p2p_tmpl, 1)
+        mgl.addLayout(tmpl_row)
+
+        p2p_send_btn = QPushButton("📤 Queue for P2P Send")
+        p2p_send_btn.setToolTip(
+            "Queue message to send when P2P connection opens")
+        p2p_send_btn.clicked.connect(
+            self._queue_p2p_message)
+        mgl.addWidget(p2p_send_btn)
+
+        lay.addWidget(msg_grp)
+
+        # P2P frequency reference
         ref = QLabel(
-            "EmComm notes:\n"
-            "ICS-213 — Point-to-point messages between stations\n"
-            "ICS-214 — Activity log submitted to EOC each period\n"
-            "Radiogram — NTS traffic (welfare/priority)\n"
-            "Winlink Wednesday — Weekly activity check-in\n"
-            "Welfare — Let family know you're safe")
+            "Common P2P frequencies:\n"
+            "  80m:   3.601.0 MHz   (night/regional)\n"
+            "  40m:   7.171.0 MHz   (regional)\n"
+            "  20m:  14.109.0 MHz   (day/long-distance)\n"
+            "  17m:  18.109.0 MHz\n"
+            "  2m:  144.990 MHz     (local, VARA FM)")
         ref.setStyleSheet(
-            "color:#444;font-size:12px;"
-            "font-family:'Courier New';")
-        ref.setWordWrap(True)
+            ""
+            "font-family:'Courier New';"
+            "background:#080808;padding:8px;"
+            "border:1px solid #111;border-radius:3px;")
         lay.addWidget(ref)
+        lay.addStretch()
         return w
 
-    # ── Actions ───────────────────────────────────────────────
-
-    def _connect_hf(self):
-        self._vara_hf.set_callsign(self.cfg.callsign)
-        ok = self._vara_hf.connect()
-        if ok:
-            bw_text = self._hf_bw_combo.currentText()
-            hz = int(bw_text.replace(" Hz", ""))
-            self._vara_hf.set_bandwidth(hz)
-        else:
+    def _connect_p2p(self):
+        """Initiate P2P connection to another station."""
+        call = self._p2p_call.text().strip().upper()
+        freq = self._p2p_freq.text().strip()
+        if not call:
             QMessageBox.warning(
-                self, "VARA HF",
-                "Could not connect to VARA HF.\n\n"
-                "Make sure VARA HF is running.\n"
-                "Use the launch bar above to start it.")
+                self, "P2P Connect",
+                "Enter the other station's callsign.")
+            return
+        mode_text = self._p2p_mode.currentText()
+        is_fm     = "FM" in mode_text
+        port      = 8400 if is_fm else 8300
+        QMessageBox.information(
+            self, "P2P Connect",
+            f"P2P to {call} on {freq} MHz via "
+            f"{'VARA FM' if is_fm else 'VARA HF'}\n\n"
+            f"In VARA: select 'Connect P2P'\n"
+            f"Enter call: {call}\n"
+            f"Frequency: {freq} MHz\n\n"
+            f"Squelch VARA port: {port}")
 
-    def _connect_fm(self):
-        self._vara_fm.set_callsign(self.cfg.callsign)
-        ok = self._vara_fm.connect()
-        if not ok:
+    def _p2p_load_template(self, name: str):
+        """Load selected template into P2P body."""
+        if name.startswith("—"):
+            return
+        try:
+            from winlink.templates import TEMPLATE_LIST
+            cs = self.cfg.callsign if self.cfg else ""
+            for tname, fn, _ in TEMPLATE_LIST:
+                if tname == name:
+                    msg = fn(my_callsign=cs)
+                    self._p2p_subj.setText(msg.subject)
+                    self._p2p_body.setPlainText(msg.body)
+                    break
+        except Exception as e:
+            log.debug(f"P2P template: {e}")
+
+    def _queue_p2p_message(self):
+        """Add message to P2P outbox."""
+        call = self._p2p_call.text().strip().upper()
+        subj = self._p2p_subj.text().strip()
+        body = self._p2p_body.toPlainText().strip()
+        if not call or not body:
             QMessageBox.warning(
-                self, "VARA FM",
-                "Could not connect to VARA FM.\n\n"
-                "Make sure VARA FM is running.\n"
-                "Use the launch bar above to start it.")
+                self, "P2P Message",
+                "Enter callsign and message body.")
+            return
+        from winlink.message_store import (
+            get_message_store, WinlinkMsg)
+        import time
+        store = get_message_store()
+        msg   = WinlinkMsg(
+            mid      = f"p2p_{int(time.time())}",
+            folder   = "outbox",
+            to       = call,
+            from_    = self.cfg.callsign if self.cfg else "",
+            subject  = subj or f"P2P - {call}",
+            body     = body,
+            date_utc = "",
+            status   = "pending",
+            via      = "P2P")
+        store.add(msg)
+        QMessageBox.information(
+            self, "P2P Queued",
+            f"Message queued for {call}.\n"
+            f"It will be sent when P2P connection opens.")
+        self._p2p_body.clear()
+        self._p2p_subj.clear()
 
-    def _on_vara_state(self, state: VARAState,
-                        modem: str):
-        color = STATE_COLORS.get(state, "#555")
-        text  = f"VARA {modem}: ●  {state.value}"
-        if modem == "HF":
-            self._hf_lbl.setText(text)
-            self._hf_lbl.setStyleSheet(
-                f"color:{color};font-size:13px;"
-                "font-family:'Courier New';")
-            self._hf_state_lbl.setText(state.value)
-            self._hf_state_lbl.setStyleSheet(
-                f"color:{color};")
-        else:
-            self._fm_lbl.setText(text)
-            self._fm_lbl.setStyleSheet(
-                f"color:{color};font-size:13px;"
-                "font-family:'Courier New';")
-            self._fm_state_lbl.setText(state.value)
-            self._fm_state_lbl.setStyleSheet(
-                f"color:{color};")
+    def _build_templates_tab(self) -> QWidget:
+        """
+        Template library — category tree on left,
+        form on right. Populates compose tab on Insert.
+        """
+        w   = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(6)
+
+        # ── Left: category / template tree ────────────────
+        left = QWidget()
+        left.setMaximumWidth(220)
+        ll   = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+
+        ll.addWidget(QLabel("Templates"))
+
+        self._tmpl_tree = QTreeWidget()
+        self._tmpl_tree.setHeaderHidden(True)
+        self._tmpl_tree.setStyleSheet(
+            "QTreeWidget{background:#080808;"
+            ""
+            "border:1px solid #1a1a1a;}"
+            "QTreeWidget::item:selected{"
+            "background:#1a2a1a;color:#3fbe6f;}")
+        self._tmpl_tree.currentItemChanged.connect(
+            self._on_tmpl_select)
+        ll.addWidget(self._tmpl_tree, 1)
+
+        # Populate tree from TEMPLATE_CATEGORIES
+        try:
+            from winlink.templates import TEMPLATE_CATEGORIES
+            for cat in TEMPLATE_CATEGORIES:
+                cat_item = QTreeWidgetItem(
+                    [f"{cat.icon}  {cat.name}"])
+                cat_item.setForeground(
+                    0, QColor("#3fbe6f"))
+                for name, fn, desc in cat.templates:
+                    t_item = QTreeWidgetItem([name])
+                    t_item.setData(
+                        0, Qt.ItemDataRole.UserRole,
+                        (fn, desc))
+                    t_item.setToolTip(0, desc)
+                    cat_item.addChild(t_item)
+                self._tmpl_tree.addTopLevelItem(cat_item)
+                cat_item.setExpanded(True)
+        except Exception as e:
+            log.debug(f"Template tree: {e}")
+
+        lay.addWidget(left)
+
+        # ── Right: template form / preview ────────────────
+        right   = QWidget()
+        rl      = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+
+        self._tmpl_desc = QLabel("Select a template →")
+        self._tmpl_desc.setStyleSheet(
+            "")
+        rl.addWidget(self._tmpl_desc)
+
+        # Preview pane
+        self._tmpl_preview = QTextEdit()
+        self._tmpl_preview.setReadOnly(True)
+        self._tmpl_preview.setStyleSheet(
+            "background:#080808;"
+            "font-family:'Courier New';"
+            "border:1px solid #1a1a1a;")
+        rl.addWidget(self._tmpl_preview, 1)
+
+        # Insert button
+        insert_btn = QPushButton("📋 Insert into Compose")
+        insert_btn.setToolTip(
+            "Copy this template into the Compose tab\n"
+            "Edit the fields there before sending")
+        insert_btn.clicked.connect(self._insert_template)
+        rl.addWidget(insert_btn)
+
+        lay.addWidget(right, 1)
+        self._current_tmpl_fn = None
+        return w
+
+    def _on_tmpl_select(self, item, prev=None):
+        """Preview selected template."""
+        if item is None:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        fn, desc = data
+        self._current_tmpl_fn = fn
+        self._tmpl_desc.setText(desc)
+        try:
+            cs  = self.cfg.callsign if self.cfg else ""
+            msg = fn(my_callsign=cs)
+            preview = (
+                f"To:      {msg.to}\n"
+                f"Subject: {msg.subject}\n"
+                f"{'─'*40}\n"
+                f"{msg.body}")
+            self._tmpl_preview.setPlainText(preview)
+        except Exception as e:
+            self._tmpl_preview.setPlainText(
+                f"[Preview error: {e}]")
+
+
+    def _current_tmpl_fn(self):
+        """Return the currently selected template's compose function."""
+        idx = getattr(self, '_tmpl_combo', None)
+        if idx is None:
+            return None
+        try:
+            return self._tmpl_fns[idx.currentIndex()]
+        except (AttributeError, IndexError):
+            return None
+
+    def _on_vara_state(self, state: str):
+        """Called when VARA modem reports a state change."""
+        self._set_status(state)
+        connected = state.lower() in ('connected', 'linked')
+        for btn in getattr(self, '_tx_buttons', []):
+            try:
+                btn.setEnabled(connected)
+            except RuntimeError:
+                pass
 
     def _check_vara_status(self):
-        if VARAModem.is_running(is_fm=False):
-            self._hf_lbl.setText(
-                "VARA HF: ●  Running (not connected)")
-            self._hf_lbl.setStyleSheet(
-                "color:#888;font-size:13px;"
-                "font-family:'Courier New';")
-        if VARAModem.is_running(is_fm=True):
-            self._fm_lbl.setText(
-                "VARA FM: ●  Running (not connected)")
-            self._fm_lbl.setStyleSheet(
-                "color:#888;font-size:13px;"
-                "font-family:'Courier New';")
+        """Poll VARA modem state every 5s and update the status indicator.
+        DO NOT REMOVE — called from __init__ via QTimer; app crashes without it."""
+        try:
+            hf_ok = getattr(self._vara_hf, "is_connected", False)
+            fm_ok = getattr(self._vara_fm, "is_connected", False)
+            if callable(hf_ok):
+                hf_ok = hf_ok()
+            if callable(fm_ok):
+                fm_ok = fm_ok()
+            if hf_ok:
+                self._set_status("VARA HF connected", "#3fbe6f")
+            elif fm_ok:
+                self._set_status("VARA FM connected", "#3fbe6f")
+            else:
+                self._set_status("Not connected", "#777777")
+        except Exception:
+            pass
+        if getattr(self, "_running", True):
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(5000, self._check_vara_status)
 
-    def _send_message(self):
-        to   = self._to_edit.text().strip()
-        subj = self._subj_edit.text().strip()
-        body = self._body_edit.toPlainText().strip()
-
-        if not to or not body:
-            QMessageBox.warning(
-                self, "Missing Fields",
-                "Please fill in the To and message body.")
+    def _set_status(self, msg: str, color: str = "#888888"):
+        """Update the VARA connection status label."""
+        lbl = getattr(self, '_status_lbl', None)
+        if lbl is None:
             return
+        try:
+            lbl.setText(msg)
+            lbl.setStyleSheet(f"color:{color};")
+        except RuntimeError:
+            pass
 
-        via = self._via_combo.currentText()
-        QMessageBox.information(
-            self, "Message Queued",
-            f"Message to {to} queued via {via}.\n\n"
-            f"Subject: {subj}\n\n"
-            f"Winlink send integration coming in v0.8.0.\n"
-            f"For now, use Pat or RMS Express to send.\n"
-            f"Launch from the bar above.")
-
-    def _clear_compose(self):
-        self._to_edit.clear()
-        self._subj_edit.clear()
-        self._body_edit.clear()
-
-    def _load_template(self, name: str):
-        """Load a template into the compose tab."""
-        cs    = self.cfg.callsign or "N0CALL"
-        grid  = self.cfg.grid or "AA00"
-        city  = self.cfg.get("location.city", "")
-        state = self.cfg.get("location.state", "")
-
-        msg = None
-        if name == "ICS-213 General Message":
-            msg = ics213(
-                incident    = "Exercise / Incident",
-                from_name   = cs,
-                from_pos    = "Radio Operator",
-                to_name     = "EOC",
-                to_pos      = "Emergency Coordinator",
-                message     = "(enter your message here)",
-                my_callsign = cs)
-        elif name == "ICS-214 Activity Log":
-            msg = ics214(
-                incident    = "Exercise / Incident",
-                unit_name   = cs,
-                unit_leader = cs,
-                period      = "0000-2359",
-                activities  = ["(describe activities here)"],
-                personnel   = [cs],
-                my_callsign = cs)
-        elif name == "Winlink Wednesday Check-in":
-            msg = winlink_wednesday(
-                my_callsign = cs,
-                my_grid     = grid,
-                my_name     = cs,
-                my_city     = city,
-                my_state    = state)
-        elif name == "Welfare Message":
-            msg = welfare_message(
-                my_callsign = cs,
-                my_name     = cs,
-                to_name     = "(recipient name)",
-                to_email    = "(email@example.com)",
-                message     = "I am safe and in good health.")
-        elif name == "ARRL Radiogram":
-            msg = radiogram(
-                precedence  = "ROUTINE",
-                to_call     = "(destination callsign)",
-                to_name     = "(recipient name)",
-                to_address  = "(address)",
-                to_phone    = "(phone)",
-                message     = "(your message here)",
-                from_call   = cs,
-                from_name   = cs)
-
-        if msg:
+    def _insert_template(self):
+        """Insert selected template into Compose tab."""
+        if not self._current_tmpl_fn:
+            return
+        try:
+            cs  = self.cfg.callsign if self.cfg else ""
+            msg = self._current_tmpl_fn(my_callsign=cs)
             self._to_edit.setText(msg.to)
             self._subj_edit.setText(msg.subject)
             self._body_edit.setPlainText(msg.body)
-
-    def _refresh_gateways(self):
-        """Fetch nearby RMS gateways from Winlink network."""
-        self._gw_table.setRowCount(0)
-        # Show loading state
-        loading = QTableWidgetItem("Fetching gateways…")
-        self._gw_table.insertRow(0)
-        self._gw_table.setItem(0, 0, loading)
-
-        import threading
-        threading.Thread(
-            target=self._fetch_gateways_bg,
-            daemon=True).start()
-
-    def _fetch_gateways_bg(self):
-        """Background gateway fetch from Winlink API."""
-        from PyQt6.QtCore import QTimer
-        try:
-            import requests
-            lat = self.cfg.get("location.lat", 0.0) or 0.0
-            lon = self.cfg.get("location.lon", 0.0) or 0.0
-
-            # Winlink gateway list - use the public stations endpoint
-            # Falls back to channel list if main API unavailable
-            params = {
-                "latitude":  lat,
-                "longitude": lon,
-                "distance":  200,
-                "maxCount":  25,
-                "mode":      0,     # 0=all modes
-            }
-            # Try primary API first
-            resp = None
-            for url in [
-                "https://api.winlink.org/gateway/list",
-                "https://cms.winlink.org/gateway/list",
-            ]:
-                try:
-                    resp = requests.get(
-                        url, params=params,
-                        timeout=10,
-                        headers={"Accept": "application/json"})
-                    if resp.status_code == 200:
-                        break
-                except Exception:
-                    continue
-            if resp is None:
-                raise Exception("All Winlink API endpoints failed")
-
-            if resp.status_code == 200 and                len(resp.content) < 100_000:
-                gateways = resp.json()
-                QTimer.singleShot(0,
-                    lambda g=gateways:
-                        self._populate_gateways(g))
-                return
-
+            # Switch to Compose tab
+            parent = self._tabs
+            for i in range(parent.count()):
+                if "Compose" in parent.tabText(i):
+                    parent.setCurrentIndex(i)
+                    break
         except Exception as e:
-            log.debug(f"Gateway fetch: {e}")
-
-        # Show fallback message if fetch fails
-        QTimer.singleShot(0, self._gateways_unavailable)
-
-    def _populate_gateways(self, gateways: list):
-        """Populate the gateway table from API response."""
-        import math
-        self._gw_table.setRowCount(0)
-        if not gateways:
-            self._gateways_unavailable()
-            return
-
-        lat = self.cfg.get("location.lat", 0.0) or 0.0
-        lon = self.cfg.get("location.lon", 0.0) or 0.0
-
-        for gw in gateways[:25]:
-            row = self._gw_table.rowCount()
-            self._gw_table.insertRow(row)
-
-            callsign = str(gw.get("Callsign", ""))
-            freq     = gw.get("Frequency", 0)
-            freq_str = (f"{float(freq)/1000:.3f} MHz"
-                        if freq else "—")
-            modes    = ", ".join(
-                str(m) for m in
-                gw.get("ServiceCodes", []))
-            last     = str(gw.get(
-                "LastHeard", ""))[:10]
-
-            # Distance
-            gw_lat = float(gw.get("Latitude",  0))
-            gw_lon = float(gw.get("Longitude", 0))
-            if lat and lon and gw_lat and gw_lon:
-                dlat = math.radians(gw_lat - lat)
-                dlon = math.radians(gw_lon - lon)
-                a    = (math.sin(dlat/2)**2 +
-                        math.cos(math.radians(lat)) *
-                        math.cos(math.radians(gw_lat)) *
-                        math.sin(dlon/2)**2)
-                dist = f"{6371 * 2 * math.asin(math.sqrt(a)):.0f} km"
-            else:
-                dist = "—"
-
-            for col, val in enumerate([
-                    callsign, freq_str, modes or "VARA",
-                    dist, last]):
-                item = QTableWidgetItem(val)
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignCenter)
-                self._gw_table.setItem(row, col, item)
-
-    def _gateways_unavailable(self):
-        self._gw_table.setRowCount(0)
-        self._gw_table.insertRow(0)
-        msg = QTableWidgetItem(
-            "Gateway list unavailable — "
-            "check internet connection")
-        self._gw_table.setItem(0, 0, msg)
+            QMessageBox.warning(
+                self, "Template Error",
+                f"Could not insert template:\n{e}")
 
 
-def _vsep() -> QFrame:
-    f = QFrame()
-    f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("color:#1e1e1e;")
-    f.setFixedWidth(1)
-    return f

@@ -208,12 +208,12 @@ class RigTab(QWidget):
 
         # Band/segment info
         self._band_info = QLabel("20m  |  Digital  |  General+")
-        self._band_info.setStyleSheet("color:#555; font-size:12px;")
+        self._band_info.setStyleSheet(" ")
         vfl.addWidget(self._band_info)
 
         # Step size buttons
         step_lbl = QLabel("Step:")
-        step_lbl.setStyleSheet("color:#555; font-size:12px;")
+        step_lbl.setStyleSheet(" ")
         step_row = QHBoxLayout()
         step_row.setSpacing(2)
         step_row.addWidget(step_lbl)
@@ -226,11 +226,11 @@ class RigTab(QWidget):
             btn.setChecked(i == self._step_idx)
             btn.setFixedHeight(20)
             btn.setStyleSheet("""
-                QPushButton{font-size:13px;border:1px solid #222;
-                  border-radius:3px;background:#111;color:#666;padding:0 4px;}
+                QPushButton{border:1px solid #222;
+                  border-radius:3px;background:#111;padding:0 4px;}
                 QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
                   border-color:#3fbe6f;}
-                QPushButton:hover{background:#1e2e1e;color:#aaa;}
+                QPushButton:hover{background:#1e2e1e;}
             """)
             btn.clicked.connect(
                 lambda _, idx=i, s=hz: self._set_step(idx, s))
@@ -249,8 +249,8 @@ class RigTab(QWidget):
             b.setFixedSize(34, 28)
             b.setToolTip(tip)
             b.setStyleSheet("""
-                QPushButton{font-size:13px;border:1px solid #2a2a2a;
-                  border-radius:4px;background:#141414;color:#888;}
+                QPushButton{border:1px solid #2a2a2a;
+                  border-radius:4px;background:#141414;}
                 QPushButton:hover{background:#1e3a1e;color:#3fbe6f;}
                 QPushButton:pressed{background:#0a1a0a;}
             """)
@@ -276,7 +276,7 @@ class RigTab(QWidget):
         self._band_jump_combo = QComboBox()
         self._band_jump_combo.setFixedWidth(70)
         self._band_jump_combo.setStyleSheet(
-            "font-size:12px;background:#1a1a1a;color:#aaa;border:1px solid #333;")
+            "background:#1a1a1a;border:1px solid #333;")
         self._populate_band_combo()
         arrow_row.addWidget(self._band_jump_combo)
 
@@ -285,7 +285,7 @@ class RigTab(QWidget):
         go_btn.setToolTip(
             "Jump to conventional frequency for this band and active mode")
         go_btn.setStyleSheet("""
-            QPushButton{font-size:12px;border:1px solid #3fbe6f;
+            QPushButton{border:1px solid #3fbe6f;
               border-radius:3px;background:#1a3a1a;color:#3fbe6f;}
             QPushButton:hover{background:#2a4a2a;}
         """)
@@ -301,14 +301,14 @@ class RigTab(QWidget):
         stl.setSpacing(4)
         self.status_lbl = QLabel("● Disconnected")
         self.status_lbl.setStyleSheet(
-            "color:#888; font-size:13px; font-weight:bold;")
+            "  font-weight:bold;")
         self.port_lbl = QLabel("Port: —")
-        self.port_lbl.setStyleSheet("color:#666; font-size:12px;")
+        self.port_lbl.setStyleSheet(" ")
         self.model_lbl = QLabel("")
-        self.model_lbl.setStyleSheet("color:#555; font-size:12px;")
+        self.model_lbl.setStyleSheet(" ")
 
         sm_lbl = QLabel("S-Meter")
-        sm_lbl.setStyleSheet("color:#555; font-size:12px;")
+        sm_lbl.setStyleSheet(" ")
         self.smeter_bar = QProgressBar()
         self.smeter_bar.setRange(0, 13)
         self.smeter_bar.setValue(0)
@@ -319,7 +319,7 @@ class RigTab(QWidget):
             "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
             "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
         self.smeter_val = QLabel("S0")
-        self.smeter_val.setStyleSheet("color:#777; font-size:12px;")
+        self.smeter_val.setStyleSheet(" ")
         sm_row = QHBoxLayout()
         sm_row.addWidget(self.smeter_bar)
         sm_row.addWidget(self.smeter_val)
@@ -346,11 +346,11 @@ class RigTab(QWidget):
             btn.setFixedSize(46, 28)
             btn.setToolTip(tip)
             btn.setStyleSheet("""
-                QPushButton{font-size:13px;border:1px solid #2a2a2a;
-                  border-radius:4px;background:#141414;color:#888;}
+                QPushButton{border:1px solid #2a2a2a;
+                  border-radius:4px;background:#141414;}
                 QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
                   border-color:#3fbe6f;font-weight:bold;}
-                QPushButton:hover{background:#1e2e1e;color:#aaa;}
+                QPushButton:hover{background:#1e2e1e;}
             """)
             btn.clicked.connect(
                 lambda _, m=hamlib_mode: self._on_mode_btn(m))
@@ -365,7 +365,7 @@ class RigTab(QWidget):
             "Auto-switch mode by frequency:\n"
             "LSB below 10 MHz, USB above,\n"
             "FM on VHF/UHF, PKT on digital freqs")
-        self._auto_mode_cb.setStyleSheet("color:#666; font-size:12px;")
+        self._auto_mode_cb.setStyleSheet(" ")
         self._auto_mode_cb.toggled.connect(
             lambda c: setattr(self, '_auto_mode', c))
         ml.addWidget(self._auto_mode_cb)
@@ -381,7 +381,7 @@ class RigTab(QWidget):
         self.ptt_btn.setFixedSize(64, 36)
         self.ptt_btn.setStyleSheet("""
             QPushButton{border:2px solid #883333;border-radius:5px;
-              color:#cc4444;font-size:13px;font-weight:bold;background:#1a0808;}
+              color:#cc4444;font-weight:bold;background:#1a0808;}
             QPushButton:checked{background:#cc2222;color:#fff;
               border-color:#ff4444;}
             QPushButton:hover{background:#2a1010;}
@@ -578,7 +578,7 @@ class RigTab(QWidget):
         self._scan_start.setFixedHeight(28)
         self._scan_start.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
-            "border-radius:4px;font-size:13px;")
+            "border-radius:4px;")
         self._scan_start.clicked.connect(self._start_scan)
 
         self._scan_stop = QPushButton("■  Stop")
@@ -591,7 +591,7 @@ class RigTab(QWidget):
         self._scan_lock.setToolTip("Add current frequency to lockout list")
 
         self._scan_status = QLabel("Idle")
-        self._scan_status.setStyleSheet("color:#555; font-size:12px;")
+        self._scan_status.setStyleSheet(" ")
 
         scan_btn_row.addWidget(self._scan_start)
         scan_btn_row.addWidget(self._scan_stop)
@@ -620,10 +620,10 @@ class RigTab(QWidget):
         self._mem_table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch)
         self._mem_table.setStyleSheet(
-            "QTableWidget{background:#111;color:#aaa;"
-            "gridline-color:#222;font-size:13px;}"
-            "QHeaderView::section{background:#1a1a1a;color:#666;"
-            "border:none;font-size:12px;}")
+            "QTableWidget{background:#111;"
+            "gridline-color:#222;}"
+            "QHeaderView::section{background:#1a1a1a;"
+            "border:none;}")
         self._mem_table.cellDoubleClicked.connect(self._mem_recall)
         mem_layout.addWidget(self._mem_table)
 
@@ -641,8 +641,8 @@ class RigTab(QWidget):
         mem_clear.clicked.connect(self._mem_clear)
         for b in (mem_store, mem_recall_btn, mem_clear):
             b.setStyleSheet(
-                "font-size:12px;background:#1a1a1a;border:1px solid #333;"
-                "border-radius:3px;color:#aaa;")
+                "background:#1a1a1a;border:1px solid #333;"
+                "border-radius:3px;")
         mem_btn_row.addWidget(mem_store)
         mem_btn_row.addWidget(mem_recall_btn)
         mem_btn_row.addWidget(mem_clear)
@@ -695,9 +695,9 @@ class RigTab(QWidget):
         self.connect_btn.setStyleSheet("""
             QPushButton{background:#1a3a1a;color:#3fbe6f;
               border:1px solid #3fbe6f;border-radius:4px;
-              font-weight:bold;font-size:12px;padding:5px;}
+              font-weight:bold;padding:5px;}
             QPushButton:hover{background:#2a4a2a;}
-            QPushButton:disabled{background:#111;color:#444;border-color:#333;}
+            QPushButton:disabled{background:#111;border-}
         """)
         cgl.addWidget(self.connect_btn, 1, 3)
 
@@ -964,7 +964,7 @@ class RigTab(QWidget):
         self._scan_start.setEnabled(False)
         self._scan_stop.setEnabled(True)
         self._scan_status.setText("Scanning…")
-        self._scan_status.setStyleSheet("color:#3fbe6f; font-size:12px;")
+        self._scan_status.setStyleSheet("color:#3fbe6f; ")
 
     def _stop_scan(self):
         self._scan_running = False
@@ -972,7 +972,7 @@ class RigTab(QWidget):
         self._scan_start.setEnabled(True)
         self._scan_stop.setEnabled(False)
         self._scan_status.setText("Idle")
-        self._scan_status.setStyleSheet("color:#555; font-size:12px;")
+        self._scan_status.setStyleSheet(" ")
 
     def _scan_step(self):
         if not self._scan_running:
@@ -1035,7 +1035,7 @@ class RigTab(QWidget):
         txt, col = STATUS.get(state.status, ("● Unknown","#777"))
         self.status_lbl.setText(txt)
         self.status_lbl.setStyleSheet(
-            f"color:{col}; font-size:13px; font-weight:bold;")
+            f"color:{col};  font-weight:bold;")
 
         connected = self.rig.is_connected
         self.connect_btn.setEnabled(not connected)
@@ -1085,9 +1085,9 @@ class RigTab(QWidget):
         else:
             self._band_info.setText("Out of amateur band")
             self._band_info.setStyleSheet(
-                "color:#cc4444; font-size:12px;")
+                "color:#cc4444; ")
             return
-        self._band_info.setStyleSheet("color:#555; font-size:12px;")
+        self._band_info.setStyleSheet(" ")
 
     # ── Port / model population ───────────────────────────────────────────
 
@@ -1278,10 +1278,10 @@ def _collapse_btn(title: str) -> QPushButton:
     btn.setCheckable(True)
     btn.setChecked(False)
     btn.setStyleSheet("""
-        QPushButton{background:#111;border:none;color:#555;
-          font-size:12px;text-align:left;padding:2px 6px;}
+        QPushButton{background:#111;border:none;
+          text-align:left;padding:2px 6px;}
         QPushButton:checked{color:#3fbe6f;}
-        QPushButton:hover{color:#aaa;}
+        QPushButton:hover{}
     """)
     btn.toggled.connect(
         lambda c, b=btn, t=title: b.setText(

@@ -17,20 +17,8 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- ui/tabs/digital_tab.py
-Digital Monitor tab.
-P25 / DMR / NXDN / YSF / D-STAR decode display.
-Driven by DSD+ (Windows) or OP25 (Linux) subprocess.
-Receives routed audio from SDR tab or rig USB audio.
-"""
-
 import sys
 import logging
-import time
 from datetime import datetime, timezone
 
 from PyQt6.QtWidgets import (
@@ -181,7 +169,7 @@ class DigitalTab(QWidget):
 
         self._decoder_lbl = QLabel("● No decoder running")
         self._decoder_lbl.setStyleSheet(
-            "color:#555;font-size:13px;"
+            ""
             "font-family:'Courier New';")
         lay.addWidget(self._decoder_lbl)
 
@@ -189,7 +177,7 @@ class DigitalTab(QWidget):
 
         self._protocol_lbl = QLabel("—")
         self._protocol_lbl.setStyleSheet(
-            "color:#3fbe6f;font-size:12px;"
+            "color:#3fbe6f;"
             "font-weight:bold;font-family:'Courier New';")
         lay.addWidget(self._protocol_lbl)
 
@@ -197,7 +185,7 @@ class DigitalTab(QWidget):
 
         self._tg_lbl = QLabel("TG: —")
         self._tg_lbl.setStyleSheet(
-            "color:#888;font-size:13px;"
+            ""
             "font-family:'Courier New';")
         lay.addWidget(self._tg_lbl)
 
@@ -205,7 +193,7 @@ class DigitalTab(QWidget):
 
         self._enc_lbl = QLabel("")
         self._enc_lbl.setStyleSheet(
-            "color:#cc4444;font-size:13px;"
+            "color:#cc4444;"
             "font-weight:bold;")
         lay.addWidget(self._enc_lbl)
 
@@ -214,7 +202,7 @@ class DigitalTab(QWidget):
         # Audio routing indicator
         self._route_lbl = QLabel("Audio: Not routed")
         self._route_lbl.setStyleSheet(
-            "color:#444;font-size:12px;")
+            "")
         lay.addWidget(self._route_lbl)
 
         # Clear button
@@ -236,7 +224,7 @@ class DigitalTab(QWidget):
         hdr = QHBoxLayout()
         title = QLabel("Digital Decode Log")
         title.setStyleSheet(
-            "color:#aaa;font-size:13px;font-weight:bold;")
+            "font-weight:bold;")
         hdr.addWidget(title)
         hdr.addStretch()
 
@@ -280,14 +268,14 @@ class DigitalTab(QWidget):
             QTableWidget.SelectionBehavior.SelectRows)
         self._table.setStyleSheet(
             "QTableWidget{"
-            "background:#0a0a0a;color:#aaa;"
+            "background:#0a0a0a;"
             "gridline-color:#1a1a1a;"
             "alternate-background-color:#0d0d0d;"
-            "font-size:12px;font-family:'Courier New';"
+            "font-family:'Courier New';"
             "border:1px solid #1a1a1a;}"
             "QHeaderView::section{"
-            "background:#141414;color:#555;"
-            "border:none;font-size:12px;padding:3px;}")
+            "background:#141414;"
+            "border:none;padding:3px;}")
         self._table.setAlternatingRowColors(True)
         self._table.clicked.connect(self._on_row_click)
         lay.addWidget(self._table)
@@ -303,7 +291,7 @@ class DigitalTab(QWidget):
         self._no_decoder_msg.setAlignment(
             Qt.AlignmentFlag.AlignCenter)
         self._no_decoder_msg.setStyleSheet(
-            "color:#444;font-size:13px;")
+            "")
         self._no_decoder_msg.setWordWrap(True)
         lay.addWidget(self._no_decoder_msg)
 
@@ -329,7 +317,7 @@ class DigitalTab(QWidget):
                     self._call_src, self._call_enc,
                     self._call_dur]:
             lbl.setStyleSheet(
-                "color:#888;font-size:12px;"
+                ""
                 "font-family:'Courier New';")
             cl.addWidget(lbl)
         lay.addWidget(call_grp)
@@ -348,8 +336,8 @@ class DigitalTab(QWidget):
         self._proto_info = QTextEdit()
         self._proto_info.setReadOnly(True)
         self._proto_info.setStyleSheet(
-            "background:#0a0a0a;color:#666;"
-            "font-size:12px;font-family:'Courier New';"
+            "background:#0a0a0a;"
+            "font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         self._proto_info.setMaximumHeight(200)
         il.addWidget(self._proto_info)
@@ -368,7 +356,7 @@ class DigitalTab(QWidget):
             "Encrypted:        0\n"
             "Session started:  —")
         self._stats_lbl.setStyleSheet(
-            "color:#555;font-size:12px;"
+            ""
             "font-family:'Courier New';")
         sl.addWidget(self._stats_lbl)
         lay.addWidget(stats_grp)
@@ -428,7 +416,7 @@ class DigitalTab(QWidget):
     def _set_decoder_status(self, text: str, color: str):
         self._decoder_lbl.setText(f"● {text}")
         self._decoder_lbl.setStyleSheet(
-            f"color:{color};font-size:13px;"
+            f"color:{color};"
             "font-family:'Courier New';")
 
     # ── Decode events ─────────────────────────────────────────────────────
@@ -482,7 +470,7 @@ class DigitalTab(QWidget):
         # Update status bar
         self._protocol_lbl.setText(event.protocol)
         self._protocol_lbl.setStyleSheet(
-            f"color:{color};font-size:12px;"
+            f"color:{color};"
             "font-weight:bold;font-family:'Courier New';")
         self._tg_lbl.setText(
             f"TG: {event.talkgroup or '—'}")
@@ -500,8 +488,8 @@ class DigitalTab(QWidget):
             "🔒 Encrypted — audio unavailable"
             if event.encrypted else "")
         self._call_enc.setStyleSheet(
-            "color:#cc4444;font-size:12px;" if event.encrypted
-            else "color:#3fbe6f;font-size:12px;")
+            "color:#cc4444;" if event.encrypted
+            else "color:#3fbe6f;")
 
         self._no_decoder_msg.hide()
 
@@ -555,7 +543,7 @@ class DigitalTab(QWidget):
         self._route_lbl.setText(
             f"Audio: SDR → {center_hz/1e6:.3f}MHz")
         self._route_lbl.setStyleSheet(
-            "color:#3fbe6f;font-size:12px;")
+            "color:#3fbe6f;")
 
 
 def _vsep() -> QFrame:

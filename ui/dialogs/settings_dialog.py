@@ -50,7 +50,7 @@ class SettingsDialog(QDialog):
         # Tab widget
         self._tabs = QTabWidget()
         self._tabs.setStyleSheet(
-            "QTabBar::tab{padding:6px 14px;font-size:13px;}"
+            "QTabBar::tab{padding:6px 14px;}"
             "QTabBar::tab:selected{color:#3fbe6f;}")
 
         self._tabs.addTab(self._tab_station(),   "🎙  Station")
@@ -59,6 +59,7 @@ class SettingsDialog(QDialog):
         self._tabs.addTab(self._tab_apis(),      "🔑  APIs")
         self._tabs.addTab(self._tab_appearance(),"🎨  Appearance")
         self._tabs.addTab(self._tab_advanced(),  "⚙  Advanced")
+        self._tabs.addTab(self._tab_sdr_drivers(),"📻  SDR Hardware")
 
         root.addWidget(self._tabs, 1)
 
@@ -282,7 +283,15 @@ class SettingsDialog(QDialog):
     # ── Tab: APIs ─────────────────────────────────────────────
 
     def _tab_apis(self) -> QWidget:
-        w = _scrolled()
+        # APIs tab needs scrolling - many credential fields
+        from PyQt6.QtWidgets import QScrollArea
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        w = QWidget()
+        scroll.setWidget(w)
         f = QFormLayout(w)
         f.setSpacing(10)
         f.setContentsMargins(16, 16, 16, 16)
@@ -291,7 +300,7 @@ class SettingsDialog(QDialog):
             "API credentials are stored securely in the OS keyring "
             "(Windows Credential Manager) — never in config files.")
         note.setWordWrap(True)
-        note.setStyleSheet("color:#555;font-size:12px;")
+        note.setStyleSheet("")
         f.addRow("", note)
 
         f.addRow(_sep())
@@ -309,7 +318,7 @@ class SettingsDialog(QDialog):
         qrz_note = QLabel(
             "QRZ XML API requires a QRZ subscription. "
             "Used for callsign lookup during FT8 operation.")
-        qrz_note.setStyleSheet("color:#555;font-size:12px;")
+        qrz_note.setStyleSheet("")
         qrz_note.setWordWrap(True)
         f.addRow("", qrz_note)
 
@@ -371,6 +380,21 @@ class SettingsDialog(QDialog):
         self._clublog_pass.setPlaceholderText("ClubLog password")
         f.addRow("Password:", self._clublog_pass)
 
+        f.addRow(_sep())
+        _section(f, "RepeaterBook (Local RF)")
+
+        self._rb_token = QLineEdit()
+        self._rb_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._rb_token.setPlaceholderText("RepeaterBook API token")
+        f.addRow("API token:", self._rb_token)
+        rb_note = QLabel(
+            "As of March 2026 RepeaterBook requires an approved API token. "
+            "Apply (free for non-commercial use) at "
+            "repeaterbook.com/api/token_request.php, then paste the token "
+            "here. Without it, Local RF cannot fetch repeaters.")
+        rb_note.setWordWrap(True)
+        f.addRow("", rb_note)
+
         return w
 
     # ── Tab: Appearance ───────────────────────────────────────
@@ -384,7 +408,7 @@ class SettingsDialog(QDialog):
         _section(f, "Theme")
         self._theme = QComboBox()
         self._theme.addItems([
-            "Dark", "Light",
+            "System", "Dark", "Light",
             "High Contrast", "Night"])
         self._theme.setToolTip(
             "Night mode uses deep red to preserve dark adaptation.")
@@ -436,7 +460,14 @@ class SettingsDialog(QDialog):
     # ── Tab: Advanced ─────────────────────────────────────────
 
     def _tab_advanced(self) -> QWidget:
-        w = _scrolled()
+        from PyQt6.QtWidgets import QScrollArea
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        w = QWidget()
+        scroll.setWidget(w)
         f = QFormLayout(w)
         f.setSpacing(10)
         f.setContentsMargins(16, 16, 16, 16)
@@ -475,7 +506,7 @@ class SettingsDialog(QDialog):
         self._data_dir_lbl = QLabel(
             str(self.cfg._path.parent))
         self._data_dir_lbl.setStyleSheet(
-            "color:#555;font-size:12px;"
+            ""
             "font-family:'Courier New';")
         f.addRow("Data Directory:", self._data_dir_lbl)
 
@@ -494,7 +525,7 @@ class SettingsDialog(QDialog):
         self._anon_telemetry.setChecked(False)
         f.addRow("", self._anon_telemetry)
 
-        return w
+        return scroll
 
     # ── Load / Save ───────────────────────────────────────────
 
@@ -580,8 +611,307 @@ class SettingsDialog(QDialog):
                 cfg.get("apis.lotw_user", ""))
             self._clublog_email.setText(
                 cfg.get("apis.clublog_email", ""))
+            self._rb_token.setText(
+                store.retrieve("repeaterbook_token") or "")
         except Exception:
             pass
+
+    def _tab_sdr_drivers(self) -> "QWidget":
+        """SDR Hardware — install and check device drivers."""
+        from PyQt6.QtWidgets import (
+            QScrollArea, QGroupBox, QVBoxLayout, QHBoxLayout,
+            QCheckBox, QPushButton, QLabel, QTextEdit)
+        from PyQt6.QtCore import QTimer
+
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(10)
+
+        hdr = QLabel("SDR Hardware Drivers")
+        hdr.setStyleSheet(
+            "font-weight:bold;color:#3fbe6f;")
+        lay.addWidget(hdr)
+
+        sub = QLabel(
+            "Install SoapySDR plugins for your SDR hardware. "
+            "Requires conda / miniforge3.")
+        sub.setWordWrap(True)
+        sub.setStyleSheet("")
+        lay.addWidget(sub)
+
+        grp = QGroupBox("Select your hardware:")
+        grp.setStyleSheet(
+            "QGroupBox{"
+            "border:1px solid #2a2a2a;border-radius:4px;"
+            "padding-top:12px;margin-top:6px;}")
+        gl = QVBoxLayout(grp)
+        gl.setSpacing(10)
+
+        self._sdr_checks = {}
+        DRIVERS = [
+            ("soapyrtlsdr",
+             "RTL-SDR  (any RTL2832U dongle)",
+             "RTL-SDR Blog V3/V4, Nooelec, etc.  "
+             "Also needs Zadig WinUSB driver."),
+            ("soapyhackrf",
+             "HackRF One  (1 MHz to 6 GHz TX/RX)",
+             "Great Plains SDR transceiver."),
+            ("soapysdrplay3",
+             "SDRplay RSP2Pro / RSP1A / RSPdx / RSPduo",
+             "Requires SDRplay API installed first: sdrplay.com/softwarehome"),
+            ("soapyuhd",
+             "USRP B200 mini / B210  (Ettus Research)",
+             "Professional full-duplex SDR, 70 MHz to 6 GHz."),
+            ("soapyairspy",
+             "Airspy R2 / Airspy Mini",
+             "High performance, 24 MHz to 1.8 GHz."),
+            ("limesuite",
+             "LimeSDR / LimeSDR Mini",
+             "Open source transceiver, 100 kHz to 3.8 GHz."),
+        ]
+
+        for pkg, label, note in DRIVERS:
+            row = QVBoxLayout()
+            row.setSpacing(2)
+            cb = QCheckBox(label)
+            cb.setStyleSheet("font-weight:bold;")
+            self._sdr_checks[pkg] = cb
+            row.addWidget(cb)
+            nl = QLabel("    " + note)
+            nl.setStyleSheet("")
+            row.addWidget(nl)
+            gl.addLayout(row)
+
+        sel_row = QHBoxLayout()
+        b_all  = QPushButton("Select All")
+        b_none = QPushButton("Clear")
+        b_all.setFixedWidth(90)
+        b_none.setFixedWidth(70)
+        b_all.clicked.connect(
+            lambda: [c.setChecked(True)
+                     for c in self._sdr_checks.values()])
+        b_none.clicked.connect(
+            lambda: [c.setChecked(False)
+                     for c in self._sdr_checks.values()])
+        sel_row.addWidget(b_all)
+        sel_row.addWidget(b_none)
+        sel_row.addStretch()
+        gl.addLayout(sel_row)
+        lay.addWidget(grp)
+
+        btn_row = QHBoxLayout()
+        self._sdr_install_btn = QPushButton("Install Selected Drivers")
+        self._sdr_install_btn.setFixedHeight(32)
+        self._sdr_install_btn.setStyleSheet(
+            "background:#1a3a1a;color:#3fbe6f;"
+            "border:1px solid #3fbe6f;border-radius:4px;"
+            "font-weight:bold;")
+        self._sdr_install_btn.clicked.connect(self._install_sdr_drivers)
+        btn_row.addWidget(self._sdr_install_btn)
+
+        self._sdr_check_btn = QPushButton("Check Status")
+        self._sdr_check_btn.setFixedHeight(32)
+        self._sdr_check_btn.clicked.connect(self._check_sdr_status)
+        btn_row.addWidget(self._sdr_check_btn)
+        lay.addLayout(btn_row)
+
+        self._sdr_log = QTextEdit()
+        self._sdr_log.setReadOnly(True)
+        self._sdr_log.setMaximumHeight(160)
+        self._sdr_log.setStyleSheet(
+            "background:#080808;"
+            "font-family:\'Courier New\';"
+            "border:1px solid #1a1a1a;")
+        self._sdr_log.setPlainText(
+            "Select hardware above and click Install, "
+            "or click Check Status to see what is already installed.")
+        lay.addWidget(self._sdr_log)
+
+        warn = QLabel(
+            "RTL-SDR: after installing soapyrtlsdr, run Zadig "
+            "(zadig.akeo.ie) and replace the USB driver with WinUSB. "
+            "RSP2Pro: the SDRplay API Windows service must be running.")
+        warn.setWordWrap(True)
+        warn.setStyleSheet(
+            "color:#aa8800;"
+            "background:#1a1600;padding:8px;"
+            "border:1px solid #2a2000;border-radius:3px;")
+        lay.addWidget(warn)
+        lay.addStretch()
+
+        QTimer.singleShot(400, self._check_sdr_status)
+        return w
+
+    def _conda_exe(self) -> str:
+        import shutil
+        from pathlib import Path as P
+        for name in ["conda", "mamba", "micromamba"]:
+            f = shutil.which(name)
+            if f:
+                return f
+        for p in [
+            P.home() / "miniforge3" / "Scripts" / "conda.exe",
+            P.home() / "miniconda3"  / "Scripts" / "conda.exe",
+            P("C:/miniforge3/Scripts/conda.exe"),
+            P("C:/miniconda3/Scripts/conda.exe"),
+        ]:
+            if p.exists():
+                return str(p)
+        return ""
+
+    def _sdr_log_append(self, text: str):
+        try:
+            self._sdr_log.append(text)
+        except RuntimeError:
+            pass
+
+    def _check_sdr_status(self):
+        import sys, subprocess, sysconfig
+        from pathlib import Path as P
+
+        lines = []
+        vpy = sys.executable
+        r = subprocess.run(
+            [vpy, "-c",
+             "import SoapySDR; d=SoapySDR.Device.enumerate();"
+             "print(SoapySDR.getAPIVersion(), len(d), 'device(s)')"],
+            capture_output=True, text=True)
+        if r.returncode == 0:
+            lines.append("SoapySDR core: OK  " + r.stdout.strip())
+        else:
+            lines.append("SoapySDR core: NOT INSTALLED")
+            lines.append("  Run fix_soapysdr.bat or python installer.py")
+
+        try:
+            site = P(sysconfig.get_path("purelib"))
+        except Exception:
+            site = P(sys.prefix) / "Lib" / "site-packages"
+
+        lines.append("")
+        lines.append("Device plugins:")
+        plugin_map = {
+            "soapyrtlsdr":   ("SoapyRTLSDR",   "RTL-SDR"),
+            "soapyhackrf":   ("SoapyHackRF",   "HackRF"),
+            "soapysdrplay3": ("SoapySDRPlay",  "SDRplay RSP"),
+            "soapyuhd":      ("SoapyUHD",      "USRP"),
+            "soapyairspy":   ("SoapyAirspy",   "Airspy"),
+            "limesuite":     ("SoapyLMS7",     "LimeSDR"),
+        }
+        for pkg, (stem, hw) in plugin_map.items():
+            found = list(site.glob(stem + "*.pyd"))
+            if found:
+                lines.append("  [installed]  " + hw + " - " + found[0].name)
+                if pkg in self._sdr_checks:
+                    self._sdr_checks[pkg].setChecked(False)
+            else:
+                lines.append("  [ missing ]  " + hw)
+        try:
+            self._sdr_log.setPlainText("\n".join(lines))
+        except RuntimeError:
+            pass
+
+    def _install_sdr_drivers(self):
+        import subprocess, threading, shutil, sysconfig
+        from pathlib import Path as P
+
+        selected = [p for p, cb in self._sdr_checks.items()
+                    if cb.isChecked()]
+        if not selected:
+            self._sdr_log.setPlainText(
+                "No drivers selected. "
+                "Check the boxes for your hardware first.")
+            return
+
+        conda = self._conda_exe()
+        if not conda:
+            self._sdr_log.setPlainText(
+                "conda not found.\n\n"
+                "Install miniforge3 from:\n"
+                "  github.com/conda-forge/miniforge/releases\n\n"
+                "Or run manually:\n"
+                "  conda install -c conda-forge " + " ".join(selected))
+            return
+
+        self._sdr_install_btn.setEnabled(False)
+        self._sdr_install_btn.setText("Installing...")
+        self._sdr_log.setPlainText(
+            "Running: conda install -c conda-forge "
+            + " ".join(selected) + "\n\nPlease wait...")
+
+        def _run():
+            try:
+                result = subprocess.run(
+                    [conda, "install", "-c", "conda-forge",
+                     "-y", "--quiet"] + selected,
+                    capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    # Copy plugin .pyd files into venv
+                    try:
+                        site = P(sysconfig.get_path("purelib"))
+                    except Exception:
+                        import sys
+                        site = P(sys.prefix) / "Lib" / "site-packages"
+
+                    conda_sp = None
+                    for root in [
+                        P.home() / "miniforge3" / "Lib" / "site-packages",
+                        P.home() / "miniconda3"  / "Lib" / "site-packages",
+                        P("C:/miniforge3/Lib/site-packages"),
+                        P("C:/miniconda3/Lib/site-packages"),
+                    ]:
+                        if root.exists():
+                            conda_sp = root
+                            break
+
+                    stem_map = {
+                        "soapyrtlsdr":   "SoapyRTLSDR",
+                        "soapyhackrf":   "SoapyHackRF",
+                        "soapysdrplay3": "SoapySDRPlay",
+                        "soapyuhd":      "SoapyUHD",
+                        "soapyairspy":   "SoapyAirspy",
+                        "limesuite":     "SoapyLMS7",
+                    }
+                    copied = []
+                    if conda_sp:
+                        for pkg in selected:
+                            stem = stem_map.get(pkg, pkg)
+                            for pyd in conda_sp.glob(stem + "*.pyd"):
+                                try:
+                                    shutil.copy2(pyd, site / pyd.name)
+                                    copied.append(pyd.name)
+                                except Exception:
+                                    pass
+
+                    msg = "Installation complete.\n\n"
+                    if copied:
+                        msg += "Copied to venv:\n"
+                        msg += "\n".join("  " + f for f in copied)
+                        msg += "\n\nRestart Squelch to use new drivers."
+                    else:
+                        msg += "conda install succeeded but no .pyd files "
+                        msg += "found to copy.\nRun fix_soapysdr.bat."
+                else:
+                    msg = ("conda install failed.\n\n"
+                           + (result.stderr or result.stdout)[:400])
+            except Exception as exc:
+                msg = "Error: " + str(exc)
+
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, lambda m=msg: _done(m))
+
+        def _done(msg):
+            try:
+                self._sdr_log.setPlainText(msg)
+                self._sdr_install_btn.setEnabled(True)
+                self._sdr_install_btn.setText("Install Selected Drivers")
+                self._check_sdr_status()
+            except RuntimeError:
+                pass
+
+        threading.Thread(target=_run, daemon=True).start()
+
 
     def _apply(self):
         """Save all settings without closing."""
@@ -683,6 +1013,9 @@ class SettingsDialog(QDialog):
             if self._clublog_pass.text():
                 store.store("clublog_password",
                             self._clublog_pass.text())
+            if self._rb_token.text():
+                store.store("repeaterbook_token",
+                            self._rb_token.text())
         except Exception as e:
             log.warning(f"Keyring save: {e}")
 
@@ -692,21 +1025,43 @@ class SettingsDialog(QDialog):
         self._apply_live()
 
     def _apply_live(self):
-        """Apply settings that take effect without restart."""
+        """Apply theme and font immediately — called on Apply/OK."""
         try:
             from core.themes import get_stylesheet
             from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtGui import QFont
+            try:
+                from PyQt6 import sip
+            except ImportError:
+                import sip
             app = QApplication.instance()
-            if app:
+            if not app:
+                return
+            # Guard against C++ object already deleted
+            if sip.isdeleted(self):
+                return
+            try:
+                if sip.isdeleted(self._theme):
+                    return
                 theme = self._theme.currentText()
-                fs    = self._font_size.currentData() or 11
-                app.setStyleSheet(get_stylesheet(theme, fs))
-                from PyQt6.QtGui import QFont
-                f = app.font()
-                f.setPointSize(fs)
-                app.setFont(f)
+                if sip.isdeleted(self._font_size):
+                    return
+                fs = self._font_size.currentData() or 11
+            except (RuntimeError, AttributeError):
+                return
+            app.setStyleSheet(get_stylesheet(theme, fs))
+            f = QFont()
+            f.setPointSize(fs)
+            app.setFont(f)
         except Exception as e:
             log.debug(f"Live apply: {e}")
+
+    def _set_font_recursive(self, widget, font):
+        """
+        No longer used — font size is applied via QSS in _apply_live.
+        Kept as stub to avoid AttributeError from any call sites.
+        """
+        pass
 
     def _save_and_accept(self):
         self._apply()
@@ -810,7 +1165,7 @@ class SettingsDialog(QDialog):
             self._refresh_audio_btn.setText(
                 "↺ Refresh (sounddevice not installed)")
             self._refresh_audio_btn.setStyleSheet(
-                "color:#888;font-size:12px;")
+                "")
         else:
             total = len(in_devices) + len(out_devices)
             self._refresh_audio_btn.setText(
@@ -831,19 +1186,8 @@ class SettingsDialog(QDialog):
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 def _scrolled() -> QWidget:
-    """Return a scrollable widget for tab content."""
-    outer = QScrollArea()
-    outer.setWidgetResizable(True)
-    outer.setFrameShape(QFrame.Shape.NoFrame)
-    inner = QWidget()
-    outer.setWidget(inner)
-    # Trick: return the inner widget but make it look like outer
-    # We do this by setting the layout on outer and returning it
-    # Actually just return the inner — caller adds layout to inner
-    # But outer needs to be the tab widget...
-    # Simplest: just return QWidget, caller handles scroll
-    w = QWidget()
-    return w
+    """Return a plain widget (most tabs don't need scrolling)."""
+    return QWidget()
 
 
 def _sep() -> QFrame:
@@ -857,7 +1201,7 @@ def _sep() -> QFrame:
 def _section(form: QFormLayout, title: str):
     lbl = QLabel(title)
     lbl.setStyleSheet(
-        "color:#3fbe6f;font-size:13px;"
+        "color:#3fbe6f;"
         "font-weight:bold;margin-top:8px;")
     form.addRow(lbl)
 

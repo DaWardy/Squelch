@@ -25,7 +25,6 @@ Used by spectrum widget for visual band overlays.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 from core.constants import BAND_EDGES_R2 as BAND_EDGES
 
 

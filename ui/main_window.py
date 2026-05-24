@@ -95,8 +95,6 @@ class ClickableLabel(QLabel):
         self.setToolTip(
             f"Click to edit  ({placeholder})")
 
-        self._apply_saved_guest_mode()
-
     def mousePressEvent(self, event):
         if not self._editing:
             self._start_edit()
@@ -259,6 +257,9 @@ class MainWindow(QMainWindow):
         # Show location on startup if already configured
         QTimer.singleShot(800, self._restore_location)
 
+        # Apply saved Guest Operator mode (C-06) once the window is built
+        self._apply_saved_guest_mode()
+
     # ── UI ────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -294,6 +295,16 @@ class MainWindow(QMainWindow):
             self._tab_visibility[key] = visible
             self.tabs.setTabVisible(
                 self.tabs.indexOf(w), visible)
+
+        # Restore the last-used tab (C-09, Marcus)
+        try:
+            last = self._settings.value("window/last_tab")
+            if last is not None:
+                idx = int(last)
+                if 0 <= idx < self.tabs.count() and self.tabs.isTabVisible(idx):
+                    self.tabs.setCurrentIndex(idx)
+        except Exception:
+            pass
 
     def _undock_tab(self, index: int):
         """Pop a tab out into a floating window. Double-click tab bar to trigger."""
@@ -1280,8 +1291,24 @@ class MainWindow(QMainWindow):
         # Try to auto-detect location
         self._auto_fill_location(loc_edit)
 
+        # Rig step (C-02, Dorothy): a friendly, optional radio picker.
+        from PyQt6.QtWidgets import QComboBox
+        rig_combo = QComboBox()
+        rig_combo.addItem("I'll set this up later", "")
+        rig_combo.addItem("No radio yet — just exploring", "none")
+        try:
+            from core.rig_presets import PRESETS
+            for label in sorted(PRESETS.keys()):
+                rig_combo.addItem(label, label)
+        except Exception:
+            for label in ("ICOM IC-7300", "ICOM IC-7100",
+                          "YAESU FT-991A", "KENWOOD TS-590S",
+                          "Other / configure later"):
+                rig_combo.addItem(label, label)
+
         form.addRow("Callsign:", cs_edit)
         form.addRow("Location:", loc_edit)
+        form.addRow("Radio:", rig_combo)
         lay.addLayout(form)
 
         hint = QLabel(
@@ -1304,6 +1331,10 @@ class MainWindow(QMainWindow):
             cs = re.sub(r'[^A-Z0-9/]', '',
                         cs_edit.text().strip().upper())
             loc = loc_edit.text().strip()
+            rig_choice = rig_combo.currentData()
+            if rig_choice and rig_choice not in ("", "none"):
+                self.cfg.set("rig.preset", rig_choice)
+                self.cfg.save()
 
             if cs:
                 self.cfg.callsign = cs
@@ -1751,6 +1782,12 @@ class MainWindow(QMainWindow):
         # Save window geometry
         self._settings.setValue(
             "window/geometry", self.saveGeometry())
+        # Save the current tab so we can restore it next launch (C-09, Marcus)
+        try:
+            self._settings.setValue(
+                "window/last_tab", self.tabs.currentIndex())
+        except Exception:
+            pass
 
         # Unload plugins
         try:

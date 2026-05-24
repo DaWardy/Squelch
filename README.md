@@ -3,7 +3,7 @@
 **Amateur Radio Operations Platform**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Version](https://img.shields.io/badge/version-0.11.8--alpha-orange)](https://github.com/dawardy/squelch/releases)
+[![Version](https://img.shields.io/badge/version-0.11.9--alpha-orange)](https://github.com/dawardy/squelch/releases)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 
 Squelch is a unified amateur radio operations platform for Windows
@@ -16,7 +16,7 @@ into a single application.
 
 ---
 
-## What Works Now (v0.11.8-alpha)
+## What Works Now (v0.11.9-alpha)
 
 | Feature | Status |
 |---------|--------|

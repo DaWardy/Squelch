@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Squelch
+GenericName=Amateur Radio Operations Platform
+Comment=Ham radio operations: rig control, FT8/digital modes, logging, SDR
+Exec=sh -c 'cd "$HOME/squelch" && venv/bin/python main.py'
+Icon=squelch
+Terminal=false
+Categories=HamRadio;Network;Utility;
+Keywords=ham;radio;amateur;ft8;sdr;rigctld;winlink;

@@ -74,6 +74,28 @@ SMETER_LABELS = [
 ]
 
 
+def diagnose_serial_permission(port: str) -> str:
+    """On Linux, the #1 cause of 'permission denied' on a serial port is the
+    user not being in the 'dialout' group (P4, Linux reviewer). Return a
+    plain-language fix, or '' if not applicable."""
+    import sys, os, grp, getpass
+    if sys.platform != "linux":
+        return ""
+    if not port or not str(port).startswith("/dev/"):
+        return ""
+    try:
+        in_dialout = "dialout" in [g.gr_name for g in grp.getgrall()
+                                   if getpass.getuser() in g.gr_mem]
+    except Exception:
+        in_dialout = True  # can't tell; don't nag
+    if not in_dialout:
+        return ("You are not in the 'dialout' group, which is required to "
+                "access serial ports on Debian/Ubuntu. Fix:\n"
+                "  sudo usermod -aG dialout $USER\n"
+                "then log out and back in (or reboot).")
+    return ""
+
+
 class RigStatus(Enum):
     DISCONNECTED = "Disconnected"
     CONNECTING   = "Connecting..."
@@ -370,10 +392,15 @@ class RigController:
             )
             return False
         except Exception as e:
-            self._error(str(e))
+            hint = diagnose_serial_permission(
+                self.cfg.get("rig.port", ""))
+            if hint:
+                self._error(f"{e}\n\n{hint}")
+            else:
+                self._error(str(e))
             return False
 
-    # ── Socket ────────────────────────────────────────────────────────────
+    # ── Socket ──────────────────────────────────────────────
 
     def _open_socket(self) -> bool:
         try:

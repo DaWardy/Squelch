@@ -119,12 +119,10 @@ Priority key: **P0** blocker · **P1** important · **P2** nice-to-have
 | ID | Persona | Need (consumer voice) | Acceptance test | Maps to | Pri |
 |----|---------|----------------------|-----------------|---------|-----|
 | C-01 | Sam | "The SDR tab is empty — I can't see a waterfall or tune anything." | With an RTL-SDR connected, SDR tab shows a live waterfall + gain/freq/sample-rate controls | R5, S7 | P0 |
-| C-02 | Dorothy | "When I first opened it, I didn't know what to do." | First run shows a wizard: callsign → grid → rig → done | R4, R5 | P1 |
 | C-03 | Hank | "I need to see split and which VFO is transmitting at a glance." | Rig tab shows VFO A/B, split state, and TX VFO unambiguously | R1, R3 | P1 |
 | C-04 | Marcus | "Local RF never returns repeaters and I can't change where it searches from." | Configurable 'From' field added (grid/ZIP/city); RepeaterBook call rewritten to correct API + local distance filter. **Blocked externally**: RepeaterBook now requires an approved API token (policy change 2026-03). UI guides the user to apply + paste token in Settings. | R2, R4 | P1 (partial 0.11.8) |
 | C-05 | Tyler | "The map is kind of dead — just outlines." | Map shows my station, day/night terminator, and live spots with motion | R5 | P2 |
 | C-07 | Dorothy | "The text is small and I couldn't make it bigger." | Font-size setting visibly scales the whole UI | R5 | P1 (shipped 0.11.2) |
-| C-09 | Marcus | "Startup should be fast and remember my last tab and window size." | App restores last tab + geometry; cold start < 3s | R2, R5 | P2 |
 | C-13 | Priya | "Captures need to be reproducible for a report (SigMF metadata)." | SDR captures export with SigMF metadata (freq, rate, time, hw) | R6, S3 | P2 |
 | C-14 | Elena | "In class I arm Auto-CQ to explain it, but it must not transmit in Guest mode." | Arming auto-sequence/auto-CQ in Guest mode is allowed for teaching but never keys the rig | R1, S9 | P1 (shipped 0.11.6) |
 | C-10 | Sam | "Let me export what I see for my lab report." | Waterfall/spectrum and decoded data are exportable (PNG/CSV) | R6, S6 | P2 |
@@ -145,6 +143,8 @@ Priority key: **P0** blocker · **P1** important · **P2** nice-to-have
 | C-11 | Tyler | Big ON-AIR/RECEIVING indicator on FT8 reflecting real TX state | 0.11.6 | Instructor, Tyler |
 | C-14 | Elena | Auto-CQ/seq can be armed in Guest mode for teaching but never keys rig | 0.11.6 | Security, Pentester, Elena |
 | C-12 | Priya | Network Activity log records every outbound connection (AUTO vs USER), viewable in Help menu; credentials redacted | 0.11.7 | Security, Pentester, Priya |
+| C-02 | Dorothy | First-run wizard now includes a radio-selection step (callsign->grid->rig) | 0.11.9 | New Ham, Dorothy |
+| C-09 | Marcus | App restores last-used tab + window geometry on launch | 0.11.9 | Programmer, Marcus |
 
 ---
 

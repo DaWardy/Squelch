@@ -714,6 +714,15 @@ def create_launch_scripts():
                "source venv/bin/activate\n"
                "python3 main.py \"$@\"\n",
                executable=True)
+        try:
+            import stat as _stat
+            for _sh in ("run_squelch.sh", "run_squelch_guest.sh"):
+                _p = BASE_DIR / _sh
+                if _p.exists():
+                    _p.chmod(_p.stat().st_mode | _stat.S_IXUSR
+                             | _stat.S_IXGRP | _stat.S_IXOTH)
+        except Exception:
+            pass
         ok("run_squelch.sh")
 
         _write("run_squelch_guest.sh",

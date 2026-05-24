@@ -8,6 +8,46 @@ Changes not yet in a tagged release.
 
 ---
 
+## [0.11.9-alpha] — 2026-05-24
+
+### Fixed (crash)
+- **`AttributeError: ClickableLabel object has no attribute
+  _apply_saved_guest_mode`** on startup. The Guest-mode startup call was
+  accidentally inserted into ClickableLabel.__init__ instead of
+  MainWindow.__init__ (an edit landed in the wrong class). Moved it to the
+  correct place at the end of MainWindow.__init__.
+
+### Added (Linux / Debian support — new platform reviewer)
+- Added a **Linux / Debian Systems Programmer** to the review panel
+  (docs/DESIGN_REVIEW.md) with platform rules P1-P5, and audited the
+  codebase against them. This ensures Squelch plays nice on Debian-based
+  systems (Debian, Ubuntu, Mint, Raspberry Pi OS).
+- **External-tool detection now works on Linux.** install_check.py only
+  scanned Windows paths; it now also uses `shutil.which()` with Linux
+  binary names (wsjtx, fldigi, rigctld, js8call, dsd), so tools installed
+  via apt in /usr/bin are found. (P3)
+- **Serial permission diagnostics.** On a Linux serial-connect failure,
+  Squelch now detects whether you're missing from the `dialout` group and
+  tells you the fix (`sudo usermod -aG dialout $USER`, then re-login)
+  instead of a cryptic error. (P4)
+- **docs/INSTALL_LINUX.md** — full Debian/Ubuntu/Raspberry Pi install guide
+  (apt packages, dialout, RTL-SDR DVB-T blacklist, XDG dirs, Pi notes).
+- **setup/squelch.desktop** launcher for Linux application menus, and the
+  installer now makes generated `.sh` launch scripts executable. (P5)
+
+### Verified
+- Config/data already use XDG dirs (~/.config/squelch); candidate path lists
+  in launcher/fldigi/location already include Linux paths; no unguarded
+  Windows-only APIs. (P1/P2)
+
+### Pipeline (C-09, C-02)
+- C-09 (Marcus): app now restores the last-used tab on launch (window
+  geometry was already restored).
+- C-02 (Dorothy): first-run wizard now includes a radio-selection step
+  (from the real preset list) in addition to callsign and location.
+
+---
+
 ## [0.11.8-alpha] — 2026-05-23
 
 ### Fixed / Changed (consumer C-04, Marcus — Local RF)

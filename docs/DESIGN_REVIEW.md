@@ -135,3 +135,53 @@ unbounded reads, trusting file extensions, plugins with no sandbox.
 - **S9 (work use):** Squelch makes no outbound connection the user didn't
   initiate (no telemetry/analytics), and every periodic beacon (APRS, PSK,
   Winlink) is off by default and clearly labeled when on.
+
+---
+
+## Additional Reviewer (Platform)
+
+### 8. Linux / Debian Systems Programmer
+Builds and runs Squelch on Debian-based distros (Debian, Ubuntu, Raspberry Pi
+OS, Mint) where many hams actually operate — especially on Raspberry Pi for
+portable/field and digital-mode stations. **Ensures the app plays nice with a
+Debian-based OS.** Cares about:
+- No Windows-only assumptions: paths (`/` vs `\`, no `C:\`), no hardcoded
+  drive letters, no `.exe` assumptions, case-sensitive filesystems.
+- System integration done the Debian way: XDG base directories
+  (`~/.config/squelch`, `~/.local/share/squelch`), a `.desktop` launcher, an
+  icon in the hicolor theme, no writing into the install dir.
+- Dependencies available via `apt` or pip wheels on `aarch64`/`armhf`
+  (Raspberry Pi), and SoapySDR/rtl-sdr/Hamlib installed through the distro's
+  packages (`apt install soapysdr-tools rtl-sdr libhamlib-utils`).
+- Serial/USB device permissions: the user must be in the `dialout` group to
+  reach `/dev/ttyUSB*`/`/dev/ttyACM*`; the app should detect and explain this,
+  not fail cryptically.
+- Audio via PipeWire/PulseAudio/ALSA; device names differ from Windows.
+- No assumption of a single display server (X11 vs Wayland); Qt handles most,
+  but file dialogs and tray icons can differ.
+- Pet peeves: backslash paths, `os.startfile`, `winreg`, shelling out to
+  `cmd`/`powershell`, hardcoded `Program Files`, assuming admin/UAC, CRLF-only
+  files, anything that bricks on a case-sensitive FS.
+
+### Standing Platform Rules
+- **P1:** All filesystem paths use `pathlib.Path`; never hardcode separators,
+  drive letters, or `Program Files`. Config/data go in XDG dirs on Linux.
+- **P2:** No Windows-only API (`winreg`, `os.startfile`, `ctypes.windll`)
+  without an `if platform == "win32"` guard and a Linux/macOS branch.
+- **P3:** External-tool discovery checks Linux locations (`/usr/bin`,
+  `/usr/local/bin`, `$PATH`) and Linux binary names (no `.exe` suffix), and
+  honors the user's configured path.
+- **P4:** Serial access detects missing `dialout` group membership and tells
+  the user how to fix it (`sudo usermod -aG dialout $USER`, re-login).
+- **P5:** Document the Debian/Ubuntu/Raspberry Pi install path
+  (apt packages + pip) alongside Windows; CI runs the test suite on Linux.
+
+### Linux audit 2026-05-24 (v0.11.9-alpha)
+
+| Rule | Finding | Status |
+|------|---------|--------|
+| P3 | install_check.py detected external tools by Windows paths only; on Linux nothing was found even when installed | FIXED — added `shutil.which()` fallback with Linux binary names (wsjtx, fldigi, rigctld, js8call, dsd) |
+| P4 | No detection of missing `dialout` group — serial connect failed cryptically on Debian/Ubuntu | FIXED — `diagnose_serial_permission()` explains the `usermod -aG dialout` fix on connect failure |
+| P5 | No Debian/Pi install docs; `.sh` launchers weren't executable | FIXED — added docs/INSTALL_LINUX.md, setup/squelch.desktop, and chmod +x on generated `.sh` scripts |
+| P1 | Config/data dirs | Already XDG-compliant (`~/.config/squelch`) — verified |
+| P1/P2 | Candidate path lists in launcher/fldigi/location already include Linux paths; no unguarded `winreg`/`os.startfile` | Verified clean |

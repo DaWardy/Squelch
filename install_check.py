@@ -382,6 +382,12 @@ def check_external():
         "Hamlib (rigctld)": "rigctld", "RMS Express": "rms_express",
     }
 
+    # Linux/Debian binary names for PATH lookup (P3 — no .exe suffix)
+    which_names = {
+        "WSJT-X": "wsjtx", "JS8Call": "js8call", "Fldigi": "fldigi",
+        "Hamlib (rigctld)": "rigctld", "DSD+": "dsd",
+    }
+
     for name, paths, desc, url, required in checks:
         # First honor the path the user set in Settings, if it exists
         key = name_to_key.get(name)
@@ -390,6 +396,13 @@ def check_external():
         # Fall back to scanning the standard install locations
         if not found:
             found = any(p.exists() for p in paths)
+        # On Linux/macOS, tools are usually on PATH (e.g. /usr/bin) — check
+        # there too with the platform binary name (P3, Linux reviewer).
+        if not found:
+            import shutil as _sh
+            wn = which_names.get(name)
+            if wn and _sh.which(wn):
+                found = True
         if found:
             ok(f"{name:<16} found  ({desc})")
         elif required:

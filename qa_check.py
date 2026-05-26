@@ -9,7 +9,8 @@ Checks:
   1. Every .py file compiles (syntax).
   2. pyflakes reports no undefined names (the recurring NameError class).
   3. The full pytest suite passes.
-  4. (If PyQt6 present) every tab builds headless.
+  4. Connected method references exist (self._x in .connect()).
+  5. (If PyQt6 present) every tab builds headless.
 """
 from __future__ import annotations
 import ast

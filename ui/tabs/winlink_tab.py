@@ -826,6 +826,106 @@ class WinlinkTab(QWidget):
         except (AttributeError, IndexError):
             return None
 
+
+    # ── Missing methods added (QA gate caught these) ──────────────────────
+
+    def _connect_hf(self):
+        """Connect VARA HF modem to the configured RMS gateway."""
+        try:
+            self._vara_hf.connect()
+            self._set_status("VARA HF connecting…", "#ee8822")
+        except Exception as e:
+            self._set_status(f"VARA HF connect failed: {e}", "#ee4444")
+
+    def _connect_fm(self):
+        """Connect VARA FM modem to the configured RMS gateway."""
+        try:
+            self._vara_fm.connect()
+            self._set_status("VARA FM connecting…", "#ee8822")
+        except Exception as e:
+            self._set_status(f"VARA FM connect failed: {e}", "#ee4444")
+
+    def _clear_compose(self):
+        """Clear the compose form."""
+        try:
+            self._to_edit.clear()
+            self._subj_edit.clear()
+            self._body_edit.clear()
+        except Exception:
+            pass
+
+    def _send_message(self):
+        """Queue and send the composed message via the selected modem."""
+        try:
+            to   = self._to_edit.text().strip()
+            subj = self._subj_edit.text().strip()
+            body = self._body_edit.toPlainText().strip()
+            via  = self._via_combo.currentText() if hasattr(
+                self, "_via_combo") else "VARA HF"
+            if not to or not subj:
+                self._set_status(
+                    "Fill in To: and Subject: before sending.", "#ee4444")
+                return
+            modem = self._vara_fm if "FM" in via else self._vara_hf
+            if not getattr(modem, "is_connected", False):
+                self._set_status(
+                    f"{via} not connected — connect first "
+                    "in the VARA Status tab.", "#ee4444")
+                return
+            modem.send_message(to=to, subject=subj, body=body)
+            self._set_status(f"Message queued → {to}", "#3fbe6f")
+            self._clear_compose()
+        except Exception as e:
+            self._set_status(f"Send failed: {e}", "#ee4444")
+
+    def _refresh_gateways(self):
+        """Fetch RMS gateway list near the operator's location."""
+        import threading
+        self._set_status("Fetching gateways…", "#888888")
+        try:
+            lat = self.cfg.get("location.lat", 0.0)
+            lon = self.cfg.get("location.lon", 0.0)
+        except Exception:
+            lat, lon = 0.0, 0.0
+
+        def _fetch():
+            try:
+                from winlink.gateways import fetch_rms_gateways
+                gws = fetch_rms_gateways(lat, lon)
+            except Exception:
+                gws = []
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._populate_gateways(gws))
+        threading.Thread(target=_fetch, daemon=True,
+                         name="GWFetch").start()
+
+    def _populate_gateways(self, gateways: list):
+        """Fill the gateway table with fetched data."""
+        try:
+            self._gw_table.setRowCount(0)
+            for gw in gateways:
+                r = self._gw_table.rowCount()
+                self._gw_table.insertRow(r)
+                from PyQt6.QtWidgets import QTableWidgetItem
+                for col, val in enumerate([
+                    gw.get("callsign", ""),
+                    gw.get("frequency", ""),
+                    gw.get("mode", ""),
+                    gw.get("distance", ""),
+                    gw.get("last_heard", ""),
+                ]):
+                    self._gw_table.setItem(
+                        r, col, QTableWidgetItem(str(val)))
+            if gateways:
+                self._set_status(
+                    f"{len(gateways)} gateways found", "#3fbe6f")
+            else:
+                self._set_status(
+                    "No gateways found (check location settings)",
+                    "#888888")
+        except Exception as e:
+            self._set_status(f"Gateway list error: {e}", "#ee4444")
+
     def _on_vara_state(self, state: str):
         """Called when VARA modem reports a state change."""
         self._set_status(state)

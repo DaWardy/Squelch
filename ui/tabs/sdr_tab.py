@@ -416,8 +416,7 @@ class SDRTab(QWidget):
             "⭐  Path 1  —  RTL-TCP  (easiest, RTL-SDR only)",
             "#1a3a1a", "#3fbe6f",
             [("No CMake. No Visual Studio. No SoapySDR.\n"
-              "Works with any RTL-SDR dongle in 3 steps.",
-              None, None),
+              "Works with any RTL-SDR dongle in 3 steps.", None),
              ("Step 1: Download rtlsdr-release.zip",
               "Contains rtl_tcp.exe — no install needed.",
               "https://github.com/airspy/airspyone_host/releases",
@@ -443,8 +442,7 @@ class SDRTab(QWidget):
             "(RTL-SDR, HackRF, LimeSDR, USRP, SDRplay)",
             "#1a2a3a", "#4488ff",
             [("One .exe installer. No CMake needed.\n"
-              "Includes SoapySDR + drivers for all major hardware.",
-              None, None),
+              "Includes SoapySDR + drivers for all major hardware.", None),
              ("Step 1: Download and run PothosSDR installer (~150 MB)",
               "Installs SoapySDR, all drivers, GNU Radio (optional).\n"
               "Accept defaults. Reboot when prompted.\n"
@@ -472,8 +470,7 @@ class SDRTab(QWidget):
             "⭐⭐⭐  Path 3  —  radioconda  (GNU Radio users)",
             "#2a1a2a", "#aa44ff",
             [("Full GNU Radio + SoapySDR environment via conda.\n"
-              "No CMake. Best if you also want GNU Radio.",
-              None, None),
+              "No CMake. Best if you also want GNU Radio.", None),
              ("Install radioconda",
               "Pre-loaded with GNU Radio, SoapySDR, RTL-SDR drivers.",
               "https://github.com/ryanvolz/radioconda/releases",

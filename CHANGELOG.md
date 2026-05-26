@@ -8,6 +8,41 @@ Changes not yet in a tagged release.
 
 ---
 
+## [0.11.16-alpha] — 2026-05-26
+
+### QA/QC gate strengthened (root cause of recurring crashes)
+
+Added tests/test_method_references.py — a new static analysis gate that
+parses every UI file's AST and verifies every `.connect(self._x)` has a
+matching method definition. Runs without Qt. This exact check would have
+caught every crash in this release before it shipped.
+
+### Fixed (crashes that reached the user — all caught by new gate)
+
+- **Rig tab crash: 'RigTab' object has no attribute '_toggle_split'** —
+  a duplicate .connect() call to the old name survived from before the
+  rename to _on_split_toggle. Removed the stale wiring.
+
+- **SDR tab crash: not enough values to unpack (expected 4, got 3)** —
+  three setup-path step tuples had 3 elements where the loop expected 4.
+  Added the missing None fourth element to each.
+
+- **Winlink tab crash: 'WinlinkTab' object has no attribute '_connect_hf'** —
+  six methods were connected to UI buttons but never implemented:
+  _connect_hf, _connect_fm, _clear_compose, _send_message,
+  _refresh_gateways, _populate_gateways. All added with real behaviour.
+
+- **DXClusterClient has no attribute 'start'** — DXClusterClient had
+  fetch_async() but no start()/stop() polling loop. HamAlertClient had
+  one; added the same pattern to DXClusterClient so both have a
+  consistent interface.
+
+### Added
+- Help tab: KiwiSDR info (remote web SDRs + VAC-to-Digital-tab workflow)
+  at the user's request. Low priority, informational only.
+
+---
+
 ## [0.11.15-alpha] — 2026-05-26
 
 ### Consumer pipeline

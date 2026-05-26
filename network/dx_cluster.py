@@ -307,6 +307,33 @@ class DXClusterClient:
         self._on_spot = cb
 
 
+    def start(self, band: str = "", mode: str = ""):
+        """Start periodic DX spot polling (mirrors HamAlertClient API)."""
+        import threading
+        self._poll_band = band
+        self._poll_mode = mode
+        self._running   = True
+        self._thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="DXClusterPoll")
+        self._thread.start()
+        log.info("DX Cluster polling started")
+
+    def stop(self):
+        """Stop periodic polling."""
+        self._running = False
+
+    def _poll_loop(self):
+        import time
+        while self._running:
+            try:
+                self.fetch_async(
+                    band=self._poll_band,
+                    mode=self._poll_mode)
+            except Exception as e:
+                log.debug(f"DX Cluster poll: {e}")
+            time.sleep(120)   # poll every 2 minutes
+
+
 class HamAlertClient:
     """
     HamAlert push alert client.

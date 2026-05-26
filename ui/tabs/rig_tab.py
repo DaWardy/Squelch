@@ -510,7 +510,7 @@ class RigTab(QWidget):
             "Split operation\n"
             "RX on VFO-A, TX on VFO-B\n"
             "Tune VFO-B for DX pileup offset")
-        self._split_btn.toggled.connect(self._toggle_split)
+        # (split toggle wired at build — see line 366)
         vfo_row.addWidget(self._split_btn)
 
         vfo_row.addSpacing(10)

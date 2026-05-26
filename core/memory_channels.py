@@ -15,7 +15,6 @@ import io
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger(__name__)
 

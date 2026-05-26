@@ -35,6 +35,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QBrush, QFont
 
 from network.propagation import PropagationFeed, get_prop_feed, SolarData, BandCondition
+from network.grayline import gray_line_info, format_gray_line_status
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class BandConditionsTab(QWidget):
         self._summary_lbl = QLabel(
             self.tr("Fetching solar data…"))
         self._summary_lbl.setStyleSheet(
-            "font-size:13px;font-weight:bold;color:#3fbe6f;")
+            "font-weight:bold;color:#3fbe6f;")
         hdr.addWidget(self._summary_lbl)
         hdr.addStretch()
 
@@ -87,9 +88,9 @@ class BandConditionsTab(QWidget):
 
         self._age_lbl = QLabel("")
         self._age_lbl.setStyleSheet(
-            "color:#555;font-size:12px;")
+            "")
         hdr.addWidget(self._age_lbl)
-        root.addLayout(hdr)
+        root.addLayout(hdr, 0)   # stretch=0 — thin top band
 
         # ── Splitter: left=solar, right=bands ─────────────────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -99,6 +100,7 @@ class BandConditionsTab(QWidget):
         # ── Left: Solar indices ───────────────────────────────────────────
         left = QWidget()
         ll   = QVBoxLayout(left)
+        ll.setAlignment(Qt.AlignmentFlag.AlignTop)
         ll.setContentsMargins(0, 0, 4, 0)
         ll.setSpacing(6)
         left.setMinimumWidth(260)
@@ -119,19 +121,19 @@ class BandConditionsTab(QWidget):
         ]
         for row, (key, label, default, tip) in enumerate(indices):
             lbl = QLabel(label)
-            lbl.setStyleSheet("color:#888;font-size:13px;")
+            lbl.setStyleSheet("")
             lbl.setToolTip(tip)
             sg.addWidget(lbl, row, 0)
 
             val = QLabel(default)
             val.setStyleSheet(
-                "color:#3fbe6f;font-size:14px;"
+                "color:#3fbe6f;"
                 "font-weight:bold;font-family:'Courier New';")
             val.setAlignment(Qt.AlignmentFlag.AlignRight)
             sg.addWidget(val, row, 1)
 
             trend = QLabel("")
-            trend.setStyleSheet("color:#555;font-size:13px;")
+            trend.setStyleSheet("")
             trend.setFixedWidth(20)
             sg.addWidget(trend, row, 2)
 
@@ -145,7 +147,7 @@ class BandConditionsTab(QWidget):
         self._rec_labels = []
         for _ in range(4):
             lbl = QLabel("—")
-            lbl.setStyleSheet("color:#666;font-size:13px;")
+            lbl.setStyleSheet("")
             lbl.setWordWrap(True)
             rl.addWidget(lbl)
             self._rec_labels.append(lbl)
@@ -157,7 +159,7 @@ class BandConditionsTab(QWidget):
         self._aurora_lbl = QLabel("")
         self._aurora_lbl.setWordWrap(True)
         self._aurora_lbl.setStyleSheet(
-            "color:#ffaa00;font-size:13px;")
+            "color:#ffaa00;")
         aw.addWidget(self._aurora_lbl)
         self._aurora_widget.hide()
         ll.addWidget(self._aurora_widget)
@@ -168,6 +170,7 @@ class BandConditionsTab(QWidget):
         # ── Right: Band conditions grid ────────────────────────────────────
         right = QWidget()
         rl2   = QVBoxLayout(right)
+        rl2.setAlignment(Qt.AlignmentFlag.AlignTop)
         rl2.setContentsMargins(4, 0, 0, 0)
         rl2.setSpacing(4)
 
@@ -180,7 +183,7 @@ class BandConditionsTab(QWidget):
         for col, h in enumerate(headers):
             lbl = QLabel(h)
             lbl.setStyleSheet(
-                "color:#555;font-size:12px;font-weight:bold;")
+                "font-weight:bold;")
             bg.addWidget(lbl, 0, col)
 
         self._band_rows = {}
@@ -190,13 +193,13 @@ class BandConditionsTab(QWidget):
         for row, band in enumerate(bands, 1):
             band_lbl = QLabel(band)
             band_lbl.setStyleSheet(
-                "color:#aaa;font-size:12px;"
+                ""
                 "font-family:'Courier New';")
             bg.addWidget(band_lbl, row, 0)
 
             cond_lbl = QLabel("—")
             cond_lbl.setStyleSheet(
-                "color:#555;font-size:13px;")
+                "")
             bg.addWidget(cond_lbl, row, 1)
 
             bar = QProgressBar()
@@ -237,11 +240,11 @@ class BandConditionsTab(QWidget):
         self._spots_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
         self._spots_table.setStyleSheet(
-            "QTableWidget{background:#0d0d0d;color:#aaa;"
-            "gridline-color:#1a1a1a;font-size:12px;"
+            "QTableWidget{background:#0d0d0d;"
+            "gridline-color:#1a1a1a;"
             "alternate-background-color:#111;}"
             "QHeaderView::section{background:#141414;"
-            "color:#666;border:none;font-size:12px;}")
+            "border:none;}")
         self._spots_table.setAlternatingRowColors(True)
         spl.addWidget(self._spots_table)
         rl2.addWidget(spots_grp)
@@ -249,7 +252,7 @@ class BandConditionsTab(QWidget):
         rl2.addStretch()
         splitter.addWidget(right)
         splitter.setSizes([280, 600])
-        root.addWidget(splitter)
+        root.addWidget(splitter, 1)   # stretch=1 so it fills below the header
 
     # ── Callbacks ─────────────────────────────────────────────────────────
 
@@ -270,14 +273,14 @@ class BandConditionsTab(QWidget):
                 if info.is_gray_line:
                     self._gl_lbl.setStyleSheet(
                         "background:#0a1a0a;color:#3fbe6f;"
-                        "font-size:12px;"
+                        ""
                         "font-family:'Courier New';"
                         "border:1px solid #3fbe6f;"
                         "border-radius:3px;padding:2px 8px;")
                 else:
                     self._gl_lbl.setStyleSheet(
-                        "background:#0a0a0a;color:#666;"
-                        "font-size:12px;"
+                        "background:#0a0a0a;"
+                        ""
                         "font-family:'Courier New';"
                         "border:1px solid #1a1a1a;"
                         "border-radius:3px;padding:2px 8px;")
@@ -297,7 +300,7 @@ class BandConditionsTab(QWidget):
             self._summary_lbl.setText(
                 "Fetching solar data from NOAA…")
             self._summary_lbl.setStyleSheet(
-                "font-size:13px;color:#555;")
+                "")
             self._age_lbl.setText("Connecting…")
 
     def _on_solar(self, solar: SolarData):
@@ -324,14 +327,14 @@ class BandConditionsTab(QWidget):
         else:
             color = "#3fbe6f"
         self._summary_lbl.setStyleSheet(
-            f"font-size:13px;font-weight:bold;color:{color};")
+            f"font-weight:bold;color:{color};")
 
         # Indices
         def _set(key, text, trend_text="", color="#3fbe6f"):
             val_lbl, trend_lbl = self._solar_widgets[key]
             val_lbl.setText(text)
             val_lbl.setStyleSheet(
-                f"color:{color};font-size:14px;"
+                f"color:{color};"
                 "font-weight:bold;font-family:'Courier New';")
             trend_lbl.setText(trend_text)
 
@@ -401,7 +404,7 @@ class BandConditionsTab(QWidget):
             cond_lbl.setText(c.condition.capitalize())
             cond_lbl.setStyleSheet(
                 f"color:{color_map.get(c.condition,'#555')};"
-                "font-size:13px;")
+                "")
             bar.setValue(level_map.get(c.condition, 0))
             bar.setStyleSheet(
                 f"QProgressBar{{background:#111;"

@@ -208,12 +208,12 @@ class RigTab(QWidget):
 
         # Band/segment info
         self._band_info = QLabel("20m  |  Digital  |  General+")
-        self._band_info.setStyleSheet("color:#555; font-size:12px;")
+        self._band_info.setStyleSheet(" ")
         vfl.addWidget(self._band_info)
 
         # Step size buttons
         step_lbl = QLabel("Step:")
-        step_lbl.setStyleSheet("color:#555; font-size:12px;")
+        step_lbl.setStyleSheet(" ")
         step_row = QHBoxLayout()
         step_row.setSpacing(2)
         step_row.addWidget(step_lbl)
@@ -226,11 +226,11 @@ class RigTab(QWidget):
             btn.setChecked(i == self._step_idx)
             btn.setFixedHeight(20)
             btn.setStyleSheet("""
-                QPushButton{font-size:13px;border:1px solid #222;
-                  border-radius:3px;background:#111;color:#666;padding:0 4px;}
+                QPushButton{border:1px solid #222;
+                  border-radius:3px;background:#111;padding:0 4px;}
                 QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
                   border-color:#3fbe6f;}
-                QPushButton:hover{background:#1e2e1e;color:#aaa;}
+                QPushButton:hover{background:#1e2e1e;}
             """)
             btn.clicked.connect(
                 lambda _, idx=i, s=hz: self._set_step(idx, s))
@@ -249,8 +249,8 @@ class RigTab(QWidget):
             b.setFixedSize(34, 28)
             b.setToolTip(tip)
             b.setStyleSheet("""
-                QPushButton{font-size:13px;border:1px solid #2a2a2a;
-                  border-radius:4px;background:#141414;color:#888;}
+                QPushButton{border:1px solid #2a2a2a;
+                  border-radius:4px;background:#141414;}
                 QPushButton:hover{background:#1e3a1e;color:#3fbe6f;}
                 QPushButton:pressed{background:#0a1a0a;}
             """)
@@ -276,7 +276,7 @@ class RigTab(QWidget):
         self._band_jump_combo = QComboBox()
         self._band_jump_combo.setFixedWidth(70)
         self._band_jump_combo.setStyleSheet(
-            "font-size:12px;background:#1a1a1a;color:#aaa;border:1px solid #333;")
+            "background:#1a1a1a;border:1px solid #333;")
         self._populate_band_combo()
         arrow_row.addWidget(self._band_jump_combo)
 
@@ -285,7 +285,7 @@ class RigTab(QWidget):
         go_btn.setToolTip(
             "Jump to conventional frequency for this band and active mode")
         go_btn.setStyleSheet("""
-            QPushButton{font-size:12px;border:1px solid #3fbe6f;
+            QPushButton{border:1px solid #3fbe6f;
               border-radius:3px;background:#1a3a1a;color:#3fbe6f;}
             QPushButton:hover{background:#2a4a2a;}
         """)
@@ -301,14 +301,9 @@ class RigTab(QWidget):
         stl.setSpacing(4)
         self.status_lbl = QLabel("● Disconnected")
         self.status_lbl.setStyleSheet(
-            "color:#888; font-size:13px; font-weight:bold;")
-        self.port_lbl = QLabel("Port: —")
-        self.port_lbl.setStyleSheet("color:#666; font-size:12px;")
-        self.model_lbl = QLabel("")
-        self.model_lbl.setStyleSheet("color:#555; font-size:12px;")
-
+            "  font-weight:bold;")
         sm_lbl = QLabel("S-Meter")
-        sm_lbl.setStyleSheet("color:#555; font-size:12px;")
+        sm_lbl.setStyleSheet(" ")
         self.smeter_bar = QProgressBar()
         self.smeter_bar.setRange(0, 13)
         self.smeter_bar.setValue(0)
@@ -319,19 +314,79 @@ class RigTab(QWidget):
             "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
             "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
         self.smeter_val = QLabel("S0")
-        self.smeter_val.setStyleSheet("color:#777; font-size:12px;")
+        self.smeter_val.setStyleSheet(" ")
         sm_row = QHBoxLayout()
         sm_row.addWidget(self.smeter_bar)
         sm_row.addWidget(self.smeter_val)
 
         stl.addWidget(self.status_lbl)
-        stl.addWidget(self.port_lbl)
-        stl.addWidget(self.model_lbl)
         stl.addWidget(sm_lbl)
         stl.addLayout(sm_row)
         stl.addStretch()
         row1.addWidget(stat_grp, 2)
         root.addLayout(row1)
+
+        # ── VFO A/B + Split (C-03, Hank) ─────────────────────────────────
+        # A seasoned operator needs to see both VFOs and control split easily.
+        # TX VFO is shown clearly — critical for "no unexpected TX" (C-08).
+        vfo_ab_grp = QGroupBox("VFO A / B")
+        vab = QHBoxLayout(vfo_ab_grp)
+        vab.setSpacing(8)
+
+        # VFO A row
+        va_col = QVBoxLayout()
+        va_hdr = QHBoxLayout()
+        self._vfo_a_ind = QLabel("▶ A")   # ▶ = active/TX indicator
+        self._vfo_a_ind.setStyleSheet(
+            "font-weight:bold; color:#3fbe6f;")
+        self._vfo_a_ind.setToolTip("VFO A — current TX VFO")
+        va_hdr.addWidget(self._vfo_a_ind)
+        va_hdr.addStretch()
+        self._vfo_a_lbl = QLabel("—")
+        self._vfo_a_lbl.setStyleSheet(
+            "font-size:15px; font-weight:bold; font-family:monospace;")
+        self._vfo_a_lbl.setToolTip("VFO A frequency")
+        va_col.addLayout(va_hdr)
+        va_col.addWidget(self._vfo_a_lbl)
+        vab.addLayout(va_col, 2)
+
+        # A↔B swap + split controls
+        ctrl_col = QVBoxLayout()
+        ctrl_col.setSpacing(4)
+        swap_btn = QPushButton("A↔B")
+        swap_btn.setToolTip("Swap VFO A and VFO B frequencies")
+        swap_btn.setFixedHeight(26)
+        swap_btn.clicked.connect(self._swap_vfo)
+        self._split_btn = QPushButton("Split OFF")
+        self._split_btn.setCheckable(True)
+        self._split_btn.setToolTip(
+            "Split: receive on VFO A, transmit on VFO B.\n"
+            "TX VFO indicator updates to show B when active.")
+        self._split_btn.setFixedHeight(26)
+        self._split_btn.toggled.connect(self._on_split_toggle)
+        ctrl_col.addWidget(swap_btn)
+        ctrl_col.addWidget(self._split_btn)
+        ctrl_col.addStretch()
+        vab.addLayout(ctrl_col, 1)
+
+        # VFO B row
+        vb_col = QVBoxLayout()
+        vb_hdr = QHBoxLayout()
+        self._vfo_b_ind = QLabel("  B")
+        self._vfo_b_ind.setStyleSheet("color:#888888;")
+        self._vfo_b_ind.setToolTip("VFO B — RX only (▶ = TX in split mode)")
+        vb_hdr.addWidget(self._vfo_b_ind)
+        vb_hdr.addStretch()
+        self._vfo_b_lbl = QLabel("—")
+        self._vfo_b_lbl.setStyleSheet(
+            "font-size:15px; font-weight:bold; "
+            "font-family:monospace; color:#888888;")
+        self._vfo_b_lbl.setToolTip("VFO B frequency — TX in split mode")
+        vb_col.addLayout(vb_hdr)
+        vb_col.addWidget(self._vfo_b_lbl)
+        vab.addLayout(vb_col, 2)
+
+        root.addWidget(vfo_ab_grp)
 
         # ── Mode buttons ──────────────────────────────────────────────────
         mode_grp = QGroupBox("Mode")
@@ -346,11 +401,11 @@ class RigTab(QWidget):
             btn.setFixedSize(46, 28)
             btn.setToolTip(tip)
             btn.setStyleSheet("""
-                QPushButton{font-size:13px;border:1px solid #2a2a2a;
-                  border-radius:4px;background:#141414;color:#888;}
+                QPushButton{border:1px solid #2a2a2a;
+                  border-radius:4px;background:#141414;}
                 QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
                   border-color:#3fbe6f;font-weight:bold;}
-                QPushButton:hover{background:#1e2e1e;color:#aaa;}
+                QPushButton:hover{background:#1e2e1e;}
             """)
             btn.clicked.connect(
                 lambda _, m=hamlib_mode: self._on_mode_btn(m))
@@ -365,7 +420,7 @@ class RigTab(QWidget):
             "Auto-switch mode by frequency:\n"
             "LSB below 10 MHz, USB above,\n"
             "FM on VHF/UHF, PKT on digital freqs")
-        self._auto_mode_cb.setStyleSheet("color:#666; font-size:12px;")
+        self._auto_mode_cb.setStyleSheet(" ")
         self._auto_mode_cb.toggled.connect(
             lambda c: setattr(self, '_auto_mode', c))
         ml.addWidget(self._auto_mode_cb)
@@ -381,7 +436,7 @@ class RigTab(QWidget):
         self.ptt_btn.setFixedSize(64, 36)
         self.ptt_btn.setStyleSheet("""
             QPushButton{border:2px solid #883333;border-radius:5px;
-              color:#cc4444;font-size:13px;font-weight:bold;background:#1a0808;}
+              color:#cc4444;font-weight:bold;background:#1a0808;}
             QPushButton:checked{background:#cc2222;color:#fff;
               border-color:#ff4444;}
             QPushButton:hover{background:#2a1010;}
@@ -578,7 +633,7 @@ class RigTab(QWidget):
         self._scan_start.setFixedHeight(28)
         self._scan_start.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
-            "border-radius:4px;font-size:13px;")
+            "border-radius:4px;")
         self._scan_start.clicked.connect(self._start_scan)
 
         self._scan_stop = QPushButton("■  Stop")
@@ -591,7 +646,7 @@ class RigTab(QWidget):
         self._scan_lock.setToolTip("Add current frequency to lockout list")
 
         self._scan_status = QLabel("Idle")
-        self._scan_status.setStyleSheet("color:#555; font-size:12px;")
+        self._scan_status.setStyleSheet(" ")
 
         scan_btn_row.addWidget(self._scan_start)
         scan_btn_row.addWidget(self._scan_stop)
@@ -620,10 +675,10 @@ class RigTab(QWidget):
         self._mem_table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch)
         self._mem_table.setStyleSheet(
-            "QTableWidget{background:#111;color:#aaa;"
-            "gridline-color:#222;font-size:13px;}"
-            "QHeaderView::section{background:#1a1a1a;color:#666;"
-            "border:none;font-size:12px;}")
+            "QTableWidget{background:#111;"
+            "gridline-color:#222;}"
+            "QHeaderView::section{background:#1a1a1a;"
+            "border:none;}")
         self._mem_table.cellDoubleClicked.connect(self._mem_recall)
         mem_layout.addWidget(self._mem_table)
 
@@ -641,8 +696,8 @@ class RigTab(QWidget):
         mem_clear.clicked.connect(self._mem_clear)
         for b in (mem_store, mem_recall_btn, mem_clear):
             b.setStyleSheet(
-                "font-size:12px;background:#1a1a1a;border:1px solid #333;"
-                "border-radius:3px;color:#aaa;")
+                "background:#1a1a1a;border:1px solid #333;"
+                "border-radius:3px;")
         mem_btn_row.addWidget(mem_store)
         mem_btn_row.addWidget(mem_recall_btn)
         mem_btn_row.addWidget(mem_clear)
@@ -695,9 +750,9 @@ class RigTab(QWidget):
         self.connect_btn.setStyleSheet("""
             QPushButton{background:#1a3a1a;color:#3fbe6f;
               border:1px solid #3fbe6f;border-radius:4px;
-              font-weight:bold;font-size:12px;padding:5px;}
+              font-weight:bold;padding:5px;}
             QPushButton:hover{background:#2a4a2a;}
-            QPushButton:disabled{background:#111;color:#444;border-color:#333;}
+            QPushButton:disabled{background:#111;border-}
         """)
         cgl.addWidget(self.connect_btn, 1, 3)
 
@@ -721,6 +776,9 @@ class RigTab(QWidget):
         root.addWidget(self._spectrum_widget)
 
         root.addStretch()
+
+        # Initialise VFO TX indicator (simplex by default)
+        self._update_vfo_tx_indicator(split=False)
 
     # ── Wire signals ──────────────────────────────────────────────────────
 
@@ -924,17 +982,67 @@ class RigTab(QWidget):
             self.rig.set_vfo(vfo)
 
     def _swap_vfo(self):
-        """Swap VFO A and B."""
+        """Swap VFO A and B and update the displays."""
         if self.rig.is_connected:
             self.rig.swap_vfo()
+            self._refresh_vfo_displays()
 
-    def _toggle_split(self, enabled: bool):
-        """Toggle split TX/RX operation."""
+    def _on_split_toggle(self, enabled: bool):
+        """Enable/disable split TX. TX VFO indicator updates to show B."""
         if self.rig.is_connected:
             self.rig.set_split(enabled)
+        self._split_btn.setText("Split ON" if enabled else "Split OFF")
         self._split_btn.setStyleSheet(
-            "background:#1a3a1a;color:#3fbe6f;"
+            "background:#1a3a1a;color:#3fbe6f;border-color:#3fbe6f;"
             if enabled else "")
+        self._update_vfo_tx_indicator(split=enabled)
+
+    def _update_vfo_tx_indicator(self, split: bool = False):
+        """Show clearly which VFO is TX (▶ marker) — critical for C-08."""
+        if split:
+            self._vfo_a_ind.setText("  A")
+            self._vfo_a_ind.setStyleSheet("color:#888888;")
+            self._vfo_a_ind.setToolTip("VFO A — RX only in split mode")
+            self._vfo_b_ind.setText("▶ B TX")
+            self._vfo_b_ind.setStyleSheet(
+                "font-weight:bold; color:#ee8822;")
+            self._vfo_b_ind.setToolTip("VFO B — TRANSMIT in split mode")
+            self._vfo_b_lbl.setStyleSheet(
+                "font-size:15px; font-weight:bold; "
+                "font-family:monospace; color:#ee8822;")
+        else:
+            self._vfo_a_ind.setText("▶ A TX")
+            self._vfo_a_ind.setStyleSheet(
+                "font-weight:bold; color:#3fbe6f;")
+            self._vfo_a_ind.setToolTip("VFO A — TRANSMIT (simplex)")
+            self._vfo_b_ind.setText("  B")
+            self._vfo_b_ind.setStyleSheet("color:#888888;")
+            self._vfo_b_ind.setToolTip("VFO B — standby")
+            self._vfo_b_lbl.setStyleSheet(
+                "font-size:15px; font-weight:bold; "
+                "font-family:monospace; color:#888888;")
+
+    def _refresh_vfo_displays(self):
+        """Update VFO A and B frequency labels from the rig (or cache)."""
+        try:
+            freq_a = self.rig.state.freq_hz
+            hz = freq_a or 0
+            mhz_a = f"{hz / 1_000_000:.6f} MHz"
+            self._vfo_a_lbl.setText(mhz_a)
+        except Exception:
+            self._vfo_a_lbl.setText("—")
+        try:
+            if self.rig.is_connected:
+                import threading
+                def _get_b():
+                    fb = self.rig.get_vfo_b_freq()
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(
+                        0, lambda: self._vfo_b_lbl.setText(
+                            f"{fb / 1_000_000:.6f} MHz" if fb else "—"))
+                threading.Thread(target=_get_b, daemon=True).start()
+        except Exception:
+            pass
 
     def _set_rit(self, hz: int):
         """Set RIT offset."""
@@ -964,7 +1072,7 @@ class RigTab(QWidget):
         self._scan_start.setEnabled(False)
         self._scan_stop.setEnabled(True)
         self._scan_status.setText("Scanning…")
-        self._scan_status.setStyleSheet("color:#3fbe6f; font-size:12px;")
+        self._scan_status.setStyleSheet("color:#3fbe6f; ")
 
     def _stop_scan(self):
         self._scan_running = False
@@ -972,7 +1080,7 @@ class RigTab(QWidget):
         self._scan_start.setEnabled(True)
         self._scan_stop.setEnabled(False)
         self._scan_status.setText("Idle")
-        self._scan_status.setStyleSheet("color:#555; font-size:12px;")
+        self._scan_status.setStyleSheet(" ")
 
     def _scan_step(self):
         if not self._scan_running:
@@ -1035,15 +1143,12 @@ class RigTab(QWidget):
         txt, col = STATUS.get(state.status, ("● Unknown","#777"))
         self.status_lbl.setText(txt)
         self.status_lbl.setStyleSheet(
-            f"color:{col}; font-size:13px; font-weight:bold;")
+            f"color:{col};  font-weight:bold;")
 
         connected = self.rig.is_connected
         self.connect_btn.setEnabled(not connected)
         self.connect_btn.setText("Connect")
         self.disconnect_btn.setEnabled(connected)
-
-        if state.port:
-            self.port_lbl.setText(f"Port: {state.port}")
 
         if connected:
             self.freq_display.set_freq(state.freq_hz)
@@ -1051,6 +1156,13 @@ class RigTab(QWidget):
             self.freq_display.set_tx(state.ptt)
             self._set_mode_ui(state.mode)
             self._refresh_band_info(state.freq_hz)
+            # Update VFO A label from live state; B updated periodically
+            try:
+                hz = state.freq_hz or 0
+                self._vfo_a_lbl.setText(
+                    f"{hz / 1_000_000:.6f} MHz" if hz else "—")
+            except Exception:
+                pass
             if self._spectrum_widget:
                 self._spectrum_widget.set_center_freq(state.freq_hz)
                 if not self._spectrum_widget._running:
@@ -1085,9 +1197,9 @@ class RigTab(QWidget):
         else:
             self._band_info.setText("Out of amateur band")
             self._band_info.setStyleSheet(
-                "color:#cc4444; font-size:12px;")
+                "color:#cc4444; ")
             return
-        self._band_info.setStyleSheet("color:#555; font-size:12px;")
+        self._band_info.setStyleSheet(" ")
 
     # ── Port / model population ───────────────────────────────────────────
 
@@ -1240,7 +1352,7 @@ class RigTab(QWidget):
                 self.rig._notify()
             return
         # Standard hamlib/rigctld path
-        _on_connect_standard(self)
+        self._on_connect_standard()
 
     def _on_connect_standard(self):
         raw  = self.port_combo.currentText().strip()
@@ -1278,10 +1390,10 @@ def _collapse_btn(title: str) -> QPushButton:
     btn.setCheckable(True)
     btn.setChecked(False)
     btn.setStyleSheet("""
-        QPushButton{background:#111;border:none;color:#555;
-          font-size:12px;text-align:left;padding:2px 6px;}
+        QPushButton{background:#111;border:none;
+          text-align:left;padding:2px 6px;}
         QPushButton:checked{color:#3fbe6f;}
-        QPushButton:hover{color:#aaa;}
+        QPushButton:hover{}
     """)
     btn.toggled.connect(
         lambda c, b=btn, t=title: b.setText(

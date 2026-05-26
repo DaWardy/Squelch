@@ -282,7 +282,7 @@ APPS: list[AppDef] = [
     AppDef(
         key          = "paths.chirp",
         name         = "CHIRP",
-        description  = "Radio programming — memories, channels, CTCSS",
+        description = "Radio programming for Baofeng UV-5R, IC-7100, FT-991A, QRZ-1, Kenwood, Yaesu, and 200+ other radios",
         category     = "programming",
         exe_name     = "chirp",
         common_paths = [

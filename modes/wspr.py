@@ -1,4 +1,4 @@
-# APEX — Amateur Platform for EXperimentation
+# Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
@@ -18,7 +18,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-"""APEX -- modes/wspr.py
+"""Squelch -- modes/wspr.py
 WSPR beacon and decode engine.
 Controls WSJT-X WSPR mode and uploads spots to WSPRnet.
 """
@@ -255,7 +255,7 @@ class WSPREngine:
                 "tcall":      spot.callsign,
                 "tgrid":      spot.grid,
                 "dbm":        str(spot.power_dbm),
-                "version":    "APEX-1.0",
+                "version":    "Squelch/1.0",
                 "mode":       "2",
             }
             resp = requests.get(

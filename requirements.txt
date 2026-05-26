@@ -1,7 +1,7 @@
 # ── Critical — Squelch will not start without these ────────────────────────
-PyQt6>=6.6.0
-PyQt6-Qt6>=6.6.0
-PyQt6-sip>=13.6.0
+PyQt6==6.6.1
+PyQt6-Qt6==6.6.1
+PyQt6-sip>=13.6.0,<14
 requests>=2.31.0
 python-dateutil>=2.8.2
 defusedxml>=0.7.1
@@ -50,6 +50,5 @@ scipy>=1.11.0
 pywin32>=306; sys_platform == "win32"
 
 # ── Development / Testing ───────────────────────────────────────────────────
-pytest>=8.0.0
 
 sgp4>=2.22      # satellite orbit prediction

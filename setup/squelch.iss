@@ -9,17 +9,17 @@
 ;   1. Install Inno Setup 6.x
 ;   2. Open this file in Inno Setup Compiler
 ;   3. Build → Compile  (or press F9)
-;   Output: Output\Squelch_Setup_v0.9.0.exe
+;   Output: Output\Squelch_Setup_v0.10.0.exe
 ;
 ; Or from command line:
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" squelch.iss
 
 #define MyAppName      "Squelch"
-#define MyAppVersion   "0.9.0-alpha"
+#define MyAppVersion   "0.10.0-alpha"
 #define MyAppPublisher "Squelch Project"
 #define MyAppURL       "https://github.com/dawardy/squelch"
 #define MyAppExe       "run_squelch.bat"
-#define MyOutputBase   "Squelch_Setup_v0.9.0"
+#define MyOutputBase   "Squelch_Setup_v0.10.0"
 #define MyBuildDir     ".."
 
 [Setup]
@@ -43,7 +43,7 @@ SolidCompression=yes
 WizardStyle=modern
 WizardResizable=yes
 LicenseFile={#MyBuildDir}\LICENSE
-MinVersion=10.0.17763
+MinVersion=10.10.0
 ArchitecturesInstallIn64BitMode=x64compatible
 
 ; Windows SmartScreen workaround note:

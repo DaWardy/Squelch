@@ -42,3 +42,46 @@ class TestSafetyManager:
         s1 = get_safety()
         s2 = get_safety()
         assert s1 is s2
+
+
+def test_demo_mode_blocks_transmit():
+    """C-06: Demo mode must disable all transmit (lecture safety)."""
+    from core.safety import SafetyManager
+    s = SafetyManager()
+    # Normally can transmit from IDLE
+    assert s.can_transmit() is True
+    # Guest mode blocks it
+    s.set_demo_mode(True)
+    assert s.can_transmit() is False
+    # And re-enables when off
+    s.set_demo_mode(False)
+    assert s.can_transmit() is True
+
+
+
+def test_ft8_autotx_blocked_in_guest_mode(monkeypatch):
+    """C-14: FT8 auto-sequence may be armed for teaching, but _queue_tx
+    must not transmit when Demo mode is on."""
+    from core.safety import get_safety, SafetyManager
+    import core.safety as safety_mod
+    # Fresh singleton in guest mode
+    sm = SafetyManager()
+    sm.set_demo_mode(True)
+    monkeypatch.setattr(safety_mod, "_safety", sm)
+    monkeypatch.setattr(safety_mod, "get_safety", lambda: sm)
+
+    sent = []
+    # Minimal stand-in for the engine's send path
+    class FakeEngine:
+        _on_tx = None
+        _on_state_change = None
+        _halted = False
+        _tx_message = None
+        _in_tx = False
+        def _send_reply_packet(self, m): sent.append(m)
+        # bind the real _queue_tx
+        from modes.ft8 import FT8Engine as _E
+        _queue_tx = _E._queue_tx
+
+    FakeEngine()._queue_tx("CQ TEST GRID")
+    assert sent == [], "Demo mode must block FT8 auto-TX"

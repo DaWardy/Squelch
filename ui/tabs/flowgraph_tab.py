@@ -92,8 +92,8 @@ class FlowgraphTab(QWidget):
         self._status.setFixedHeight(22)
         self._status.setContentsMargins(8, 0, 0, 0)
         self._status.setStyleSheet(
-            "background:#0a0a0a;color:#666;"
-            "font-size:11px;font-family:'Courier New';"
+            "background:#0a0a0a;"
+            "font-family:'Courier New';"
             "border-top:1px solid #1a1a1a;")
         root.addWidget(self._status)
 
@@ -160,7 +160,7 @@ class FlowgraphTab(QWidget):
 
         self._uptime_lbl = QLabel("")
         self._uptime_lbl.setStyleSheet(
-            "color:#555;font-size:11px;"
+            ""
             "font-family:'Courier New';")
         l.addWidget(self._uptime_lbl)
 
@@ -187,7 +187,7 @@ class FlowgraphTab(QWidget):
         self._block_tree.setHeaderLabel("Blocks")
         self._block_tree.setStyleSheet(
             "QTreeWidget{background:#080808;"
-            "color:#aaa;font-size:12px;"
+            ""
             "border:1px solid #1a1a1a;}"
             "QTreeWidgetItem{padding:2px;}"
             "QTreeWidget::item:selected{"
@@ -293,7 +293,7 @@ class FlowgraphTab(QWidget):
         ml.addStretch()
         self._node_count_lbl = QLabel("0 blocks")
         self._node_count_lbl.setStyleSheet(
-            "color:#444;font-size:11px;")
+            "")
         ml.addWidget(self._node_count_lbl)
         l.addWidget(mini)
 
@@ -309,7 +309,7 @@ class FlowgraphTab(QWidget):
 
         header = QLabel("Properties")
         header.setStyleSheet(
-            "color:#3fbe6f;font-size:13px;"
+            "color:#3fbe6f;"
             "font-weight:bold;")
         l.addWidget(header)
 
@@ -422,7 +422,7 @@ class FlowgraphTab(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Flowgraph",
             str(Path.home()),
-            "Squelch Flowgraph (*.sqfg);;All (*)")
+            "Squelch Flowgraph (*.sqfg);All (*)")
         if path:
             self._new_graph()
             ok = self._fg.load(path)
@@ -438,7 +438,7 @@ class FlowgraphTab(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self, "Save Flowgraph",
             "flowgraph.sqfg",
-            "Squelch Flowgraph (*.sqfg);;All (*)")
+            "Squelch Flowgraph (*.sqfg);All (*)")
         if path:
             self._sync_canvas_to_graph()
             self._fg.save(path)
@@ -448,8 +448,8 @@ class FlowgraphTab(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self, "Import GNU Radio Companion File",
             str(Path.home()),
-            "GRC Files (*.grc);;JSON (*.json)"
-            ";;All Files (*)")
+            "GRC Files (*.grc);JSON (*.json)"
+            "All Files (*)")
         if not path:
             return
         from dsp.gnuradio_compat import import_grc
@@ -598,8 +598,8 @@ class FlowgraphTab(QWidget):
         # Block name header
         header = QLabel(node.block_name)
         header.setStyleSheet(
-            "font-size:13px;font-weight:bold;"
-            "color:#aaa;")
+            "font-weight:bold;"
+            "")
         self._props_layout.addRow(header)
 
         # Description
@@ -610,7 +610,7 @@ class FlowgraphTab(QWidget):
                 desc = QLabel(cls.description)
                 desc.setWordWrap(True)
                 desc.setStyleSheet(
-                    "color:#555;font-size:11px;")
+                    "")
                 self._props_layout.addRow(desc)
         except Exception:
             pass

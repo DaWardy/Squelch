@@ -1,175 +1,240 @@
-# Squelch — Dependency Version Matrix
+# Squelch — Software Dependencies
 
-Consult this file before updating any external dependency.
-All links verified to official sources only.
-
-**Squelch version:** 1.0.0
-**Last updated:** Chunk 1
-**Test platform:** Windows 11 64-bit, Python 3.13.x
+Every package Squelch uses, where it comes from, who maintains it,
+and why it is included. Users should be able to make informed decisions
+about what runs on their system.
 
 ---
 
-## Update Safety Reference
+## Core Runtime
 
-| Component | Safe to update? | Risk if broken |
-|-----------|----------------|----------------|
-| Python packages | ✅ Generally safe | Easy to roll back |
-| Hamlib 4.x | ✅ Within 4.x | Rig control stops |
-| WSJT-X | ⚠️ Check notes | FT8/WSPR stops |
-| JS8Call 2.x | ✅ Generally | JS8 tab stops |
-| Fldigi 4.x | ✅ Generally | PSK31/RTTY/CW stops |
-| VARA HF/FM | ⚠️ Check notes | Winlink stops |
-| OP25 | ❌ Pin to commit | P25 decode stops |
-| DSD+ | ⚠️ Test first | DMR/NXDN stops |
-| dump1090-fa | ✅ Generally | ADS-B stops |
-| UHD 4.x | ✅ Generally | B210 not detected |
-| SoapySDR | ⚠️ Match plugins | All SDR stops |
-| SDRplay API 3.x | ✅ Generally | RSP not detected |
+### Python
+- **Version required:** 3.9+ (3.9 recommended for SoapySDR compatibility)
+- **Source:** python.org
+- **Maintainer:** Python Software Foundation (PSF), US non-profit
+- **License:** PSF License (permissive, BSD-like)
+- **Est. users:** 8+ million developers worldwide
+- **Why:** Application runtime. All Squelch code runs on Python.
+- **Country of origin:** USA
+- **Audit:** Full source at github.com/python/cpython, reviewed by thousands
 
----
-
-## Python Packages
-
-Installed via `pip install -r requirements.txt`
-Safe to update within stated version ranges.
-If something breaks after update: `pip install packagename==LAST_KNOWN_GOOD`
-
-| Package | Minimum | Tested | Purpose |
-|---------|---------|--------|---------|
-| PyQt6 | 6.6.0 | 6.7.x | GUI |
-| numpy | 1.26.0 | 2.x | FFT / arrays |
-| scipy | 1.11.0 | 1.13.x | Signal processing |
-| sounddevice | 0.4.6 | 0.4.6 | Audio I/O |
-| soundfile | 0.12.1 | 0.12.1 | Audio files |
-| pyserial | 3.5 | 3.5 | Serial ports |
-| requests | 2.31.0 | 2.31.x | HTTP APIs |
-| aiohttp | 3.9.0 | 3.9.x | Async HTTP |
-| websockets | 12.0 | 12.x | WebSocket |
-| folium | 0.15.0 | 0.15.x | Maps |
-| geopy | 2.4.0 | 2.4.x | Geocoding |
-| maidenhead | 1.0.0 | 1.0.x | Grid squares |
-| mgrs | 1.4.4 | 1.4.x | MGRS coordinates |
-| adif-io | 0.0.5 | 0.0.5 | ADIF logs |
-| xmltodict | 0.13.0 | 0.13.x | XML parsing |
-| python-dateutil | 2.8.2 | 2.9.x | Dates |
-| pyhamtools | 0.6.8 | 0.6.8 | DXCC / propagation |
-| appdirs | 1.4.4 | 1.4.4 | App paths |
-| psutil | 5.9.0 | 6.x | Process management |
-| Markdown | 3.5.0 | 3.6.x | Help text |
-| Pillow | 10.0.0 | 10.x | Images |
-| pyqtgraph | 0.13.3 | 0.13.x | Waterfall display |
-| pywin32 | 306 | 306 | Windows API |
+### PyQt6
+- **Source:** pypi.org/project/PyQt6
+- **Pinned:** `PyQt6==6.6.1`, `PyQt6-Qt6==6.6.1`, `PyQt6-sip>=13.6.0,<14`
+  — the three components must be a matched set, or Windows raises
+  "DLL load failed ... specified procedure could not be found".
+- **Maintainer:** Riverbank Computing, UK
+- **License:** GPL v3 / Commercial
+- **Est. users:** Millions (Qt is used in KDE, VirtualBox, many others)
+- **Why:** All UI windows, widgets, dialogs, and event loop.
+- **Country of origin:** UK (Qt framework: Norway/Finland, now owned by Qt Group Finland)
+- **Audit:** Qt source open at code.qt.io; PyQt bindings at riverbankcomputing.com
 
 ---
 
-## External Programs
+## Signal Processing / SDR
 
-Must be installed manually. Squelch controls via subprocess / TCP socket.
+### numpy
+- **Source:** pypi.org/project/numpy OR conda-forge
+- **Maintainer:** NumPy community, NumFOCUS (US non-profit)
+- **License:** BSD 3-Clause
+- **Est. users:** 250+ million downloads/month on PyPI
+- **Why:** All IQ sample math — FFT, filtering, conversion, demodulation.
+- **Country of origin:** USA (global contributor base)
+- **Audit:** github.com/numpy/numpy — one of the most audited Python packages
 
-### Hamlib
-- **Tested:** 4.5.x
-- **Download:** https://github.com/Hamlib/Hamlib/releases
-- **Install to:** C:\hamlib\ — add C:\hamlib\bin to system PATH
-- **IC-7100 model:** 370
-- **Update risk:** Low within 4.x. Do not use 3.x.
-- **Breaking changes:** Rare in 4.x series
+### SoapySDR
+- **Source:** github.com/pothosware/SoapySDR OR conda-forge
+- **Maintainer:** Pothosware (Josh Blum), community
+- **License:** Boost Software License 1.0 (permissive)
+- **Est. users:** Standard SDR abstraction layer — used by GNU Radio,
+  SDR#, CubicSDR, and most open-source SDR software
+- **Why:** Hardware abstraction — same code works with RTL-SDR,
+  HackRF, USRP, SDRplay, Airspy, LimeSDR.
+- **Country of origin:** USA
+- **Audit:** github.com/pothosware/SoapySDR — ~500 stars, active community
+- **Install options:**
+  - PothosSDR bundle (Windows): downloads.myriadrf.org — Python 3.9 only
+  - conda-forge: `conda install -c conda-forge soapysdr` — Python 3.10+
+  - Linux: `apt install python3-soapysdr`
 
-### WSJT-X
-- **Tested:** 2.6.1
-- **Download:** https://wsjt.sourceforge.io/wsjtx.html
-- **Update risk:** Medium — UDP message format changed 2.5 → 2.6
-- **Notes:** Stay on 2.6.x until Squelch is verified with 2.7+
-- **Do not:** Configure audio manually — Squelch manages it
+### pyqtgraph
+- **Source:** pypi.org/project/pyqtgraph
+- **Maintainer:** pyqtgraph community, Luke Campagnola (original author)
+- **License:** MIT
+- **Est. users:** ~5 million downloads/month
+- **Why:** SDR waterfall display and spectrum plot — high-performance
+  real-time plotting built on numpy.
+- **Country of origin:** USA/Canada
+- **Audit:** github.com/pyqtgraph/pyqtgraph — 3,800+ stars
 
-### JS8Call
-- **Tested:** 2.2.0
-- **Download:** https://js8call.com/
-- **Update risk:** Low — TCP API stable across 2.x
-- **Port:** 2442
+### conda-forge (alternative install method)
+- **Source:** conda-forge.org
+- **Maintainer:** conda-forge community (4,000+ contributors)
+- **License:** BSD 3-Clause (conda itself)
+- **Est. users:** 25+ million monthly downloads
+- **Why recommended:** Provides pre-built SoapySDR wheels for
+  Python 3.10, 3.11, 3.12 — no version mismatch with PothosSDR.
+- **Country of origin:** USA (Anaconda Inc., Austin TX)
+- **Audit:** All conda-forge builds are reproducible and source is
+  on GitHub at github.com/conda-forge. Every package has a
+  "feedstock" repo showing exactly how it was built.
+- **Provenance:** NumFOCUS endorses the ecosystem. Used by NASA,
+  CERN, and major research institutions worldwide.
+- **Install:** miniforge3 (minimal, community build of conda):
+  github.com/conda-forge/miniforge — ~150 MB
+- **Usage for Squelch:**
+  ```
+  conda create -n squelch python=3.12
+  conda activate squelch
+  conda install -c conda-forge soapysdr soapyrtlsdr pyqtgraph
+  pip install PyQt6 requests sounddevice sgp4 defusedxml
+  ```
 
-### Fldigi
-- **Tested:** 4.1.26
-- **Download:** https://sourceforge.net/projects/fldigi/
-- **Update risk:** Low — XML-RPC API stable for years
-- **Port:** 7362
+### sgp4
+- **Source:** pypi.org/project/sgp4
+- **Maintainer:** Brandon Rhodes
+- **License:** MIT
+- **Est. users:** ~2 million downloads/month
+- **Why:** Satellite orbital mechanics — computes satellite positions
+  from TLE data (Two-Line Elements from Celestrak).
+- **Country of origin:** USA
+- **Audit:** github.com/brandon-rhodes/python-sgp4 — pure Python,
+  minimal, easy to read
 
-### VARA HF
-- **Tested:** 4.8.x
-- **Download:** https://rosmodem.wordpress.com/
-- **Update risk:** Medium — EA5HVK occasionally changes TCP protocol
-- **Port:** 8300 (default)
-- **Notes:** Read release notes before any update. Free version speed-limited.
+---
 
-### VARA FM
-- **Tested:** 5.0.x
-- **Download:** https://rosmodem.wordpress.com/
-- **Update risk:** Medium — same as VARA HF
-- **Port:** 8400 (default)
+## Networking
 
-### DSD+
-- **Tested:** 1.101
-- **Download:** https://www.dsdplus.com/
-- **Update risk:** Medium — closed source, no changelog published
-- **Notes:** Test DMR decode after any update
+### requests
+- **Source:** pypi.org/project/requests
+- **Maintainer:** Python Software Foundation (donated by Kenneth Reitz)
+- **License:** Apache 2.0
+- **Est. users:** 300+ million downloads/month — most downloaded Python package
+- **Why:** HTTP requests to NOAA solar data, Winlink API, RepeaterBook,
+  Nominatim geocoding, Celestrak TLE data.
+- **Country of origin:** USA
+- **Audit:** github.com/psf/requests — extensively audited, PSF stewardship
 
-### OP25 (P25 Decode)
-- **No version numbers** — git repository only
-- **Repository:** https://github.com/osmocom/op25
-- **Tested commit:** Pin to a specific commit for classroom use
-- **Update risk:** HIGH — interface changes without warning
-- **Recommendation:** `git clone` then `git checkout <commit_hash>` — never pull
-- **Windows:** Requires specific GNU Radio Windows build — see help/digital_protocols.md
-- **Port:** 8080 (built-in HTTP server)
+### defusedxml
+- **Source:** pypi.org/project/defusedxml
+- **Maintainer:** Christian Heimes (CPython core developer)
+- **License:** PSF License
+- **Est. users:** ~50 million downloads/month
+- **Why:** Safe XML parsing — prevents XML External Entity (XXE) attacks
+  when parsing QRZ.com callsign data and FLRig XML-RPC responses.
+  **Security-critical: do not replace with stdlib xml.etree.**
+- **Country of origin:** Germany
+- **Audit:** github.com/tiran/defusedxml — authored by CPython core dev,
+  well-reviewed security library
 
-### dump1090-fa (ADS-B)
-- **Tested:** 8.x
-- **Download:** https://github.com/flightaware/dump1090
-- **Maintained by:** FlightAware (US company)
-- **Update risk:** Low — JSON output format stable
+---
+
+## Audio
+
+### sounddevice
+- **Source:** pypi.org/project/sounddevice
+- **Maintainer:** Matthias Geier
+- **License:** MIT
+- **Est. users:** ~5 million downloads/month
+- **Why:** Audio input/output — rig USB audio as IQ source,
+  audio playback for digital mode monitoring.
+- **Country of origin:** Germany
+- **Audit:** github.com/spatialaudio/python-sounddevice
+
+---
+
+## Security / Utilities
+
+### PyYAML (optional)
+- **Source:** pypi.org/project/PyYAML
+- **Maintainer:** Kirill Simonov, community
+- **License:** MIT
+- **Est. users:** 200+ million downloads/month
+- **Why:** Imports GNU Radio .grc flowgraph files (optional feature).
+- **Country of origin:** Russia (original author), now community-maintained
+- **Audit:** github.com/yaml/pyyaml — well-audited, widely used
+- **Note:** Only used for reading .grc files, never for untrusted input.
+  If you prefer to exclude it, .grc import will show a warning.
+
+---
+
+## Hardware Drivers (not Python packages)
+
+### Hamlib / rigctld
+- **Source:** hamlib.org
+- **Maintainer:** Hamlib development team (international ham radio community)
+- **License:** LGPL v2.1
+- **Est. users:** Standard CAT control library — used by WSJT-X, fldigi,
+  JS8Call, N1MM+, and virtually all open-source ham radio software
+- **Why:** CAT control for IC-7100, FT-991A, TS-2000, and 300+ other rigs.
+- **Country of origin:** International open source community
+- **Audit:** github.com/Hamlib/Hamlib — 1,200+ stars, 20+ year history
+
+### PothosSDR bundle (Windows)
+- **Source:** downloads.myriadrf.org/builds/PothosSDR/
+- **Maintainer:** Josh Blum (Pothosware), MyriadRF (Lime Microsystems)
+- **License:** Various open source (Boost, GPL, LGPL per component)
+- **Why:** Windows installer that bundles SoapySDR + hardware drivers
+  for RTL-SDR, HackRF, LimeSDR, USRP, SDRplay in one package.
+- **Country of origin:** USA (Pothosware), UK (MyriadRF/Lime Microsystems)
+- **Note:** Bundles Python 3.9 — Squelch venv must match this version.
+  Alternative: conda-forge provides Python 3.10+ compatible packages.
 
 ### SDRplay API
-- **Current version:** 3.15
-- **Download:** https://www.sdrplay.com/api/
-- **Update risk:** Low within 3.x
-- **Notes:** Install BEFORE SoapySDRPlay3. Installs as Windows service.
+- **Source:** sdrplay.com/softwarehome/
+- **Maintainer:** SDRplay Ltd
+- **License:** Proprietary (free, no-cost)
+- **Why:** Required hardware API for all SDRplay RSP devices
+  (RSP2Pro, RSP1A, RSPdx, RSPduo). Must be installed before PothosSDR.
+- **Country of origin:** UK
+- **Note:** Closed-source hardware driver. Source not auditable.
+  Standard practice for hardware vendors (same as NVIDIA, Intel, etc.)
 
-### SoapySDRPlay3
-- **Download:** https://github.com/pothosware/SoapySDRPlay3
-- **Requires:** SDRplay API 3.x installed first
-- **Update risk:** Match to SoapySDR core version
-
-### UHD (USRP B210/B200)
-- **Tested:** 4.6.x
-- **Download:** https://files.ettus.com/manual/page_install.html
-- **Maintained by:** Ettus Research / NI (US company)
-- **Notes:** USB 3.0 required. Firmware auto-downloads on first use.
-
-### SoapySDR Core
-- **Tested:** 0.8.x
-- **Download:** https://github.com/pothosware/SoapySDR
-- **Notes:** Version must match all hardware plugins (SoapyRTLSDR, SoapyUHD, etc.)
-  Mismatched versions cause silent detection failures.
-
-### SoapyRTLSDR
-- **Download:** https://github.com/pothosware/SoapyRTLSDR
-
-### SoapyUHD
-- Included with UHD Windows package
-
-### Artemis Signal Database
-- **Download:** https://github.com/AresValley/Artemis
-- **Maintained by:** Società Italiana Radioascolto (Italian amateur radio society)
-- **Notes:** Bundle locally for offline use. Update periodically from official source.
+### VARA HF / VARA FM
+- **Source:** rosmodem.com
+- **Maintainer:** EA5HVK (Jose Alberto Nieto Ros)
+- **License:** Freeware (shareware for full speed)
+- **Why:** Winlink over HF and VHF/UHF. VARA is the modem software;
+  Squelch connects to it via TCP.
+- **Country of origin:** Spain
+- **Note:** Closed-source. Widely used in ham radio emergency
+  communications (ARES, RACES, EMCOMM). Source not auditable.
 
 ---
 
-## CP210x Driver
+## What Squelch does NOT use
 
-- **Required version:** CP210x Universal Windows Driver v11.5.0
-- **Download:** https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip
-- **Maintained by:** Silicon Labs (US company)
-- **Do not use:** CP210x VCP Windows v6.7 / v6.7.6 (Windows XP/7 era drivers)
+To address common concerns:
+
+- **No telemetry or analytics** — Squelch does not phone home,
+  report usage, or collect any data about you or your operating habits.
+- **No ads** — No advertising SDKs or tracking.
+- **No cloud dependencies** — All core functions work offline.
+  Internet is used only when you explicitly request data
+  (band conditions, repeater lookup, QRZ lookup, etc.)
+- **No auto-update** — Squelch never downloads or executes
+  code from the internet. Updates are manual.
+- **No cloud storage** — All your logs, settings, and recordings
+  stay on your machine.
 
 ---
 
-*Update this file whenever a new version is tested and confirmed working.*
+## Verifying what is installed
+
+After installation, you can audit exactly what packages are in your venv:
+
+```
+venv\Scripts\pip list
+venv\Scripts\pip show <package>   # shows version, source, license
+```
+
+For a full dependency tree including transitive dependencies:
+```
+venv\Scripts\pip install pipdeptree
+venv\Scripts\pipdeptree
+```
+
+---
+
+*Last updated: 2026-05 — Squelch 0.11.3-alpha*

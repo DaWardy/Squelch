@@ -33,7 +33,6 @@ try:
 except ImportError:
     import xml.etree.ElementTree as ET  # fallback
 from dataclasses import dataclass, field
-from typing import Optional
 from core.validator import api_string, api_callsign, api_float
 
 log = logging.getLogger(__name__)
@@ -148,7 +147,7 @@ class CallsignLookup:
             resp = requests.get(
                 QRZ_XML_URL,
                 params={"username": user, "password": pw,
-                        "agent": "APEX-1.0"},
+                        "agent": "Squelch/1.0"},
                 timeout=10)
             if len(resp.content) > 50_000:
                 return None  # response too large

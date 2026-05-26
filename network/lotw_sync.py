@@ -17,15 +17,17 @@ import logging
 import subprocess
 import threading
 import tempfile
-import time
 from pathlib import Path
 from typing import Callable
 from dataclasses import dataclass
+from core.sanitize import redact_url as _redact_url
 
 log = logging.getLogger(__name__)
 
 
 @dataclass
+
+
 class LoTWResult:
     success:     bool
     uploaded:    int   = 0

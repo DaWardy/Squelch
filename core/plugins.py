@@ -34,7 +34,7 @@ plugin.json format:
   "version": "1.0.0",
   "author": "W4XYZ",
   "description": "Does something cool",
-  "apex_min_version": "1.3",
+  "squelch_min_version": "1.3",
   "hooks": ["on_decode", "on_frequency_change"]
 }
 """
@@ -57,7 +57,7 @@ class PluginMeta:
     version:          str
     author:           str
     description:      str
-    apex_min_version: str
+    squelch_min_version: str
     hooks:            list[str]
     directory:        Path
     enabled:          bool = True
@@ -77,12 +77,12 @@ class ApexPlugin:
     VERSION     = "0.0.0"
     DESCRIPTION = ""
 
-    def __init__(self, apex_api):
+    def __init__(self, squelch_api):
         """
-        apex_api provides access to Squelch internals.
+        squelch_api provides access to Squelch internals.
         See PluginAPI below for available methods.
         """
-        self.api = apex_api
+        self.api = squelch_api
 
     # ── Available hooks ───────────────────────────────────────────────────
 
@@ -240,7 +240,7 @@ class PluginManager:
                     version          = str(meta_data.get("version", "0.0.0"))[:20],
                     author           = str(meta_data.get("author", "Unknown"))[:50],
                     description      = str(meta_data.get("description", ""))[:200],
-                    apex_min_version = str(meta_data.get("apex_min_version", "1.0")),
+                    squelch_min_version = str(meta_data.get("squelch_min_version", "1.0")),
                     hooks            = [str(h)[:50] for h in
                                         meta_data.get("hooks", [])[:20]],
                     directory        = plugin_dir,
@@ -264,7 +264,7 @@ class PluginManager:
         try:
             main_file = meta.directory / "main.py"
             spec = importlib.util.spec_from_file_location(
-                f"apex_plugin_{name}", str(main_file))
+                f"squelch_plugin_{name}", str(main_file))
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 

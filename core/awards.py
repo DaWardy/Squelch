@@ -12,7 +12,6 @@ Computed from the QSO log database.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 log = logging.getLogger(__name__)
 

@@ -258,7 +258,7 @@ class DXClusterClient:
                 DXSUMMIT_URL,
                 params=params,
                 timeout=8,
-                headers={"User-Agent": "APEX/1.0"})
+                headers={"User-Agent": "Squelch/1.0"})
             if len(resp.content) > 100_000:
                 return None  # response too large
             if resp.status_code == 200:
@@ -361,7 +361,7 @@ class HamAlertClient:
                 f"{HAMALERT_URL}/spots",
                 headers={
                     "Authorization": f"Bearer {key}",
-                    "User-Agent": "APEX/1.0",
+                    "User-Agent": "Squelch/1.0",
                 },
                 params={"since_id": self._last_id},
                 timeout=8)
@@ -463,7 +463,7 @@ class RBNClient:
                     "rows": 20,
                 },
                 timeout=8,
-                headers={"User-Agent": "APEX/1.0"})
+                headers={"User-Agent": "Squelch/1.0"})
 
             if resp.status_code == 200:
                 self._spots = self._parse_rbn(resp.json())
@@ -543,7 +543,7 @@ class ClubLogClient:
                     "adif":     adif_content,
                 },
                 timeout=30,
-                headers={"User-Agent": "APEX/1.0"})
+                headers={"User-Agent": "Squelch/1.0"})
             ok = resp.status_code == 200 and "OK" in resp.text
             if ok:
                 log.info("ClubLog upload: OK")

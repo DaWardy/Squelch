@@ -74,6 +74,28 @@ SMETER_LABELS = [
 ]
 
 
+def diagnose_serial_permission(port: str) -> str:
+    """On Linux, the #1 cause of 'permission denied' on a serial port is the
+    user not being in the 'dialout' group (P4, Linux reviewer). Return a
+    plain-language fix, or '' if not applicable."""
+    import sys, os, grp, getpass
+    if sys.platform != "linux":
+        return ""
+    if not port or not str(port).startswith("/dev/"):
+        return ""
+    try:
+        in_dialout = "dialout" in [g.gr_name for g in grp.getgrall()
+                                   if getpass.getuser() in g.gr_mem]
+    except Exception:
+        in_dialout = True  # can't tell; don't nag
+    if not in_dialout:
+        return ("You are not in the 'dialout' group, which is required to "
+                "access serial ports on Debian/Ubuntu. Fix:\n"
+                "  sudo usermod -aG dialout $USER\n"
+                "then log out and back in (or reboot).")
+    return ""
+
+
 class RigStatus(Enum):
     DISCONNECTED = "Disconnected"
     CONNECTING   = "Connecting..."
@@ -238,6 +260,32 @@ class RigController:
         """Swap VFO A and VFO B."""
         self._cmd("G")  # Hamlib: swap VFO
 
+    def get_vfo_b_freq(self) -> int:
+        """Return the VFO B frequency (Hz). Briefly switches to B, reads,
+        switches back to A — transparent to the operator."""
+        try:
+            self._cmd("V VFOB")
+            r = self._cmd("f")
+            return int(r.strip()) if r else 0
+        except Exception:
+            return 0
+        finally:
+            try:
+                self._cmd("V VFOA")
+            except Exception:
+                pass
+
+    def set_vfo_b_freq(self, freq_hz: int):
+        """Set VFO B to freq_hz without disturbing VFO A tuning."""
+        try:
+            self._cmd("V VFOB")
+            self._cmd(f"F {freq_hz}")
+        finally:
+            try:
+                self._cmd("V VFOA")
+            except Exception:
+                pass
+
     # ── CW Keyer ──────────────────────────────────────────────────────────
 
     def send_cw(self, text: str, wpm: int = 20) -> bool:
@@ -334,6 +382,24 @@ class RigController:
         model  = self.cfg.get("rig.hamlib_model", IC7100_MODEL)
         baud   = self.cfg.get("rig.baud", 19200)
         binary = self.cfg.get("paths.hamlib_rigctld", "rigctld")
+        # Validate args before passing to subprocess (defense-in-depth)
+        import re as _re
+        # Port: COM port or /dev/ttyUSBx - no shell metacharacters
+        if not _re.match(r'^(COM[0-9]{1,3}|/dev/[a-zA-Z0-9_/]+|localhost)$',
+                          str(port), _re.I):
+            # Allow common patterns, reject anything with shell chars
+            _safe = _re.sub(r'[^A-Za-z0-9_/:\.\-]', '', str(port))
+            log.warning(f"Port sanitized: {port!r} -> {_safe!r}")
+            port = _safe or "COM3"
+        # Model: integer only
+        try:
+            model = int(model)
+        except (ValueError, TypeError):
+            model = 370  # IC-7100 default
+        # Baud: allowlist
+        if int(baud) not in (1200,2400,4800,9600,19200,38400,57600,115200):
+            baud = 19200
+
         cmd = [binary, "-m", str(model), "-r", port, "-s", str(baud),
                "-T", RIGCTLD_HOST, "-t", str(RIGCTLD_PORT),
                "--no-restore-ai"]
@@ -352,10 +418,15 @@ class RigController:
             )
             return False
         except Exception as e:
-            self._error(str(e))
+            hint = diagnose_serial_permission(
+                self.cfg.get("rig.port", ""))
+            if hint:
+                self._error(f"{e}\n\n{hint}")
+            else:
+                self._error(str(e))
             return False
 
-    # ── Socket ────────────────────────────────────────────────────────────
+    # ── Socket ──────────────────────────────────────────────
 
     def _open_socket(self) -> bool:
         try:

@@ -27,7 +27,7 @@ Import from here — never hardcode these elsewhere.
 # ── Application identity ──────────────────────────────────────────────────
 APP_NAME        = "Squelch"
 APP_FULL        = "Amateur Radio Operations Platform"
-APP_VERSION     = "0.9.0-alpha"
+APP_VERSION     = "0.11.15-alpha"
 APP_URL         = "https://github.com/dawardy/squelch"
 APP_ISSUES_URL  = "https://github.com/dawardy/squelch/issues"
 APP_LICENSE     = "GNU General Public License v3"
@@ -56,17 +56,29 @@ HOST_WSPRNET        = "www.wsprnet.org"
 HOST_RR             = "www.radioreference.com"
 
 # ── NOAA SWPC URLs ────────────────────────────────────────────────────────
+# NOAA SWPC real-time data endpoints
 NOAA_SOLAR_URL  = (
+    # Real-time 45-day solar flux index (F10.7)
     "https://services.swpc.noaa.gov/json/solar-cycle/"
     "observed-solar-cycle-indices.json")
+NOAA_SOLAR_RT_URL = (
+    # Real-time solar indices (preferred - updates every 3 hours)
+    "https://services.swpc.noaa.gov/products/summary/"
+    "10cm-flux.json")
 NOAA_KP_URL     = (
+    # 3-hour planetary K-index
     "https://services.swpc.noaa.gov/products/"
     "noaa-planetary-k-index.json")
+NOAA_KP_RT_URL  = (
+    # Real-time K-index (updates every 3 min)
+    "https://services.swpc.noaa.gov/products/summary/"
+    "geomag-field.json")
 NOAA_XRAY_URL   = (
     "https://services.swpc.noaa.gov/json/goes/primary/"
     "xrays-1-day.json")
 NOAA_ALERTS_URL = (
     "https://services.swpc.noaa.gov/products/alerts.json")
+# All NOAA endpoints have CORS headers and are public/free
 
 # ── Geolocation ───────────────────────────────────────────────────────────
 IPAPI_URL           = "https://ipapi.co/json/"

@@ -19,7 +19,7 @@ plugins/
   "version": "1.0.0",
   "author": "W4XYZ",
   "description": "Does something useful",
-  "apex_min_version": "0.7.0",
+  "squelch_min_version": "0.7.0",
   "hooks": ["on_decode", "on_frequency_change"]
 }
 ```

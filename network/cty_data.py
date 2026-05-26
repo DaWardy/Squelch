@@ -1,4 +1,4 @@
-# APEX — Amateur Platform for EXperimentation
+# Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/apex
 #
 # This program is free software: you can redistribute it
@@ -18,7 +18,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-"""APEX -- network/cty_data.py
+"""Squelch -- network/cty_data.py
 CTY.DAT country file parser (AD1C format).
 Maps callsign prefixes to DXCC entities, CQ zones, ITU zones.
 Bundled copy updated periodically from:
@@ -30,7 +30,6 @@ import logging
 import requests
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
 
 log = logging.getLogger(__name__)
 

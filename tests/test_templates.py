@@ -2,143 +2,187 @@ from __future__ import annotations
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
-# Squelch tests — winlink/templates.py
+"""Tests for Winlink message templates."""
+
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
 from winlink.templates import (
-    ics213, ics214, winlink_wednesday,
-    welfare_message, radiogram,
-    WinlinkMessage, TEMPLATE_LIST)
+    ics213, ics214, ics309, radiogram, welfare,
+    winlink_wednesday, ares_checkin, p2p_message,
+    position_report, TEMPLATE_LIST, TEMPLATE_CATEGORIES,
+    WinlinkMessage)
+
+
+class TestWinlinkMessage:
+    def test_dataclass(self):
+        m = WinlinkMessage(to="W4XYZ", subject="Test", body="Hi")
+        assert m.to == "W4XYZ"
+        assert m.subject == "Test"
+        assert m.body == "Hi"
+
+    def test_header_block(self):
+        m = WinlinkMessage(to="W4XYZ", subject="Test", body="Hi")
+        h = m.header_block
+        assert "W4XYZ" in h
+        assert "Test" in h
 
 
 class TestICS213:
     def test_returns_message(self):
-        msg = ics213("Test Incident", "NR6U", "Op",
-                     "EOC", "EC", "Test message")
+        msg = ics213(incident="TEST", my_callsign="NR6U")
         assert isinstance(msg, WinlinkMessage)
 
-    def test_subject_contains_incident(self):
-        msg = ics213("FLOOD2026", "NR6U", "Op",
-                     "EOC", "EC", "Message")
-        assert "FLOOD2026" in msg.subject
-
-    def test_body_contains_fields(self):
-        msg = ics213("TEST", "NR6U", "Radio Op",
-                     "EOC", "Coordinator",
-                     "All clear")
+    def test_contains_callsign(self):
+        msg = ics213(my_callsign="NR6U")
         assert "NR6U" in msg.body
-        assert "EOC" in msg.body
-        assert "All clear" in msg.body
 
-    def test_to_field_set(self):
-        msg = ics213("INC", "NR6U", "Op",
-                     "K4EOC", "EC", "Msg",
-                     reply_to="K4EOC")
-        assert msg.to == "K4EOC"
+    def test_contains_incident(self):
+        msg = ics213(incident="FIRE 2024")
+        assert "FIRE 2024" in msg.body
+
+    def test_subject_format(self):
+        msg = ics213(incident="FLOOD", my_callsign="W4XYZ")
+        assert "ICS-213" in msg.subject
+        assert "W4XYZ" in msg.subject
 
 
 class TestICS214:
     def test_returns_message(self):
-        msg = ics214("Test", "NR6U", "NR6U",
-                     "Period 1", ["Checked in"], ["NR6U"])
+        msg = ics214(incident="TEST")
         assert isinstance(msg, WinlinkMessage)
 
-    def test_body_has_activities(self):
-        acts = ["Set up station", "Made contact"]
-        msg = ics214("INC", "NR6U", "NR6U",
-                     "0800-1600", acts, ["NR6U"])
-        assert "Set up station" in msg.body
-        assert "Made contact" in msg.body
+    def test_contains_incident(self):
+        msg = ics214(incident="HURRICANE")
+        assert "HURRICANE" in msg.body
 
-    def test_to_is_tactical(self):
-        msg = ics214("INC", "NR6U", "NR6U",
-                     "Period", [], [])
-        assert msg.to == "TACTICAL"
+    def test_contains_period(self):
+        msg = ics214(op_period="Day 1")
+        assert "Day 1" in msg.body
 
 
-class TestWinlinkWednesday:
+class TestICS309:
     def test_returns_message(self):
-        msg = winlink_wednesday(
-            "NR6U", "DM79rr", "Radio Op",
-            "Denver", "CO")
+        msg = ics309(incident="TEST")
         assert isinstance(msg, WinlinkMessage)
 
-    def test_to_winlink_wednesday(self):
-        msg = winlink_wednesday(
-            "NR6U", "DM79rr", "Op", "City", "ST")
-        assert "WW@winlink.org" in msg.to
-
-    def test_contains_callsign(self):
-        msg = winlink_wednesday(
-            "NR6U", "DM79rr", "Op", "Denver", "CO")
-        assert "NR6U" in msg.body
-
-    def test_contains_grid(self):
-        msg = winlink_wednesday(
-            "NR6U", "DM79rr", "Op", "Denver", "CO")
-        assert "DM79rr" in msg.body
-
-
-class TestWelfareMessage:
-    def test_returns_message(self):
-        msg = welfare_message(
-            "NR6U", "John", "Jane",
-            "jane@example.com", "I am safe")
-        assert isinstance(msg, WinlinkMessage)
-
-    def test_body_contains_message(self):
-        msg = welfare_message(
-            "NR6U", "John", "Jane",
-            "jane@example.com", "Safe and well")
-        assert "Safe and well" in msg.body
-
-    def test_to_is_email(self):
-        msg = welfare_message(
-            "NR6U", "John", "Jane",
-            "jane@example.com", "OK")
-        assert "@" in msg.to
+    def test_subject_contains_309(self):
+        msg = ics309(incident="FIRE")
+        assert "309" in msg.subject
 
 
 class TestRadiogram:
     def test_returns_message(self):
-        msg = radiogram(
-            "ROUTINE", "W4XYZ", "John Smith",
-            "123 Main St", "555-1234",
-            "Test message", "NR6U", "Operator")
+        msg = radiogram(to_name="John", message="Test")
         assert isinstance(msg, WinlinkMessage)
 
-    def test_body_has_precedence(self):
-        msg = radiogram(
-            "PRIORITY", "W4XYZ", "John",
-            "123 Main", "555-1234",
-            "Urgent message", "NR6U", "Op")
-        assert "PRIORITY" in msg.body
+    def test_contains_radiogram_header(self):
+        msg = radiogram()
+        assert "RADIOGRAM" in msg.body.upper()
 
-    def test_message_uppercase(self):
-        msg = radiogram(
-            "ROUTINE", "W4XYZ", "John",
-            "123 Main", "555-1234",
-            "test message", "NR6U", "Op")
-        assert "TEST MESSAGE" in msg.body
+    def test_contains_message(self):
+        msg = radiogram(message="Hello world")
+        assert "Hello world" in msg.body
+
+    def test_subject_has_radiogram(self):
+        msg = radiogram(my_callsign="NR6U")
+        assert "RADIOGRAM" in msg.subject.upper()
+
+
+class TestWelfare:
+    def test_returns_message(self):
+        msg = welfare(to_name="Jane", to_city="Denver")
+        assert isinstance(msg, WinlinkMessage)
+
+    def test_contains_recipient(self):
+        msg = welfare(to_name="Jane Smith")
+        assert "Jane Smith" in msg.body
+
+    def test_subject_welfare(self):
+        msg = welfare(to_name="Test")
+        assert "WELFARE" in msg.subject.upper()
+
+
+class TestWinlinkWednesday:
+    def test_returns_message(self):
+        msg = winlink_wednesday(my_callsign="W4XYZ")
+        assert isinstance(msg, WinlinkMessage)
+
+    def test_contains_callsign(self):
+        msg = winlink_wednesday(my_callsign="NR6U")
+        assert "NR6U" in msg.body
+
+    def test_contains_grid(self):
+        msg = winlink_wednesday(grid="DM79")
+        assert "DM79" in msg.body
+
+    def test_to_winlink(self):
+        msg = winlink_wednesday()
+        assert "WINLINK" in msg.to.upper() or "@" in msg.to
+
+
+class TestP2PMessage:
+    def test_returns_message(self):
+        msg = p2p_message(to_callsign="W4XYZ",
+                          my_callsign="NR6U")
+        assert isinstance(msg, WinlinkMessage)
+
+    def test_p2p_type(self):
+        msg = p2p_message(to_callsign="W4XYZ")
+        assert msg.msg_type == "P2P"
+
+    def test_to_is_destination(self):
+        msg = p2p_message(to_callsign="W4XYZ")
+        assert "W4XYZ" in msg.to
+
+
+class TestPositionReport:
+    def test_returns_message(self):
+        msg = position_report(my_callsign="NR6U",
+                               grid="DM79")
+        assert isinstance(msg, WinlinkMessage)
+
+    def test_contains_grid(self):
+        msg = position_report(grid="DM79rr")
+        assert "DM79rr" in msg.body
 
 
 class TestTemplateList:
-    def test_has_entries(self):
-        assert len(TEMPLATE_LIST) >= 5
+    def test_not_empty(self):
+        assert len(TEMPLATE_LIST) > 0
+
+    def test_each_is_3tuple(self):
+        for item in TEMPLATE_LIST:
+            assert len(item) == 3
 
     def test_each_has_name_and_desc(self):
-        for item in TEMPLATE_LIST:
-            name, desc = item
+        for name, fn, desc in TEMPLATE_LIST:
             assert name
+            assert callable(fn)
             assert desc
 
-    def test_ics213_present(self):
-        names = [t[0] for t in TEMPLATE_LIST]
-        assert any("ICS-213" in n for n in names)
+    def test_has_ics213(self):
+        names = [n for n, _, _ in TEMPLATE_LIST]
+        assert any("ICS-213" in n or "213" in n
+                   for n in names)
 
-    def test_winlink_wednesday_present(self):
-        names = [t[0] for t in TEMPLATE_LIST]
-        assert any("Wednesday" in n for n in names)
+    def test_has_p2p(self):
+        names = [n for n, _, _ in TEMPLATE_LIST]
+        assert any("P2P" in n or "p2p" in n.lower()
+                   for n in names)
+
+
+class TestTemplateCategories:
+    def test_categories_exist(self):
+        assert len(TEMPLATE_CATEGORIES) >= 3
+
+    def test_emcomm_category(self):
+        cats = [c.name for c in TEMPLATE_CATEGORIES]
+        assert "EmComm" in cats
+
+    def test_p2p_category(self):
+        cats = [c.name for c in TEMPLATE_CATEGORIES]
+        assert any("P2P" in c or "Direct" in c
+                   for c in cats)

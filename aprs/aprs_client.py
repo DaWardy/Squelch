@@ -3,6 +3,7 @@ from __future__ import annotations
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 """
+from core.constants import APP_VERSION
 Squelch -- aprs/aprs_client.py
 APRS-IS internet gateway client.
 Receives position packets within radius of station.
@@ -96,6 +97,7 @@ class APRSClient:
         return self._running and self._sock is not None
 
     def connect(self, radius_km: float = 150) -> bool:
+        """Open connection to APRS-IS server."""
         callsign = self.cfg.callsign
         if not callsign:
             log.warning("APRS: no callsign")
@@ -126,6 +128,7 @@ class APRSClient:
             return False
 
     def disconnect(self):
+        """Close connection to APRS-IS server cleanly."""
         self._running = False
         try:
             if self._sock:

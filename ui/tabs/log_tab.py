@@ -23,6 +23,8 @@ QSO logbook tab. Sortable table, awards tracking,
 ADIF import/export, LoTW/QRZ queue, manual entry,
 callsign lookup integration.
 """
+from core.constants import APP_VERSION
+from core.sanitize import csv_safe
 
 import logging
 from pathlib import Path
@@ -42,6 +44,8 @@ from core.log_db import LogDB, QSO, get_log_db
 from core.validator import callsign_soft, grid_square_soft
 
 log = logging.getLogger(__name__)
+
+
 
 # Column indices
 C_DATE  = 0
@@ -119,7 +123,7 @@ class LogTab(QWidget):
             gl = QVBoxLayout(grp)
             val = QLabel("0")
             val.setStyleSheet(
-                "color:#3fbe6f;font-size:18px;"
+                "color:#3fbe6f;"
                 "font-weight:bold;font-family:'Courier New';")
             val.setAlignment(Qt.AlignmentFlag.AlignCenter)
             gl.addWidget(val)
@@ -178,15 +182,42 @@ class LogTab(QWidget):
         self._table.verticalHeader().setVisible(False)
         self._table.setStyleSheet("""
             QTableWidget{
-              background:#0d0d0d;color:#aaa;
-              gridline-color:#1a1a1a;font-size:13px;
+              background:#0d0d0d;
+              gridline-color:#1a1a1a;
               font-family:'Courier New';
-              alternate-background-color:#111;
-              selection-background-color:#1a3a1a;}
+              alternate-background-color:#0a1a0a;}
+            QTableWidget::item{
+              padding:2px 4px;}
+            QTableWidget::item:hover{
+              background:#1a2a1a;color:#fff;}
+            QTableWidget::item:selected{
+              background:#1a3a1a;color:#3fbe6f;}
             QHeaderView::section{
-              background:#141414;color:#666;
-              border:none;font-size:12px;padding:3px;}
+              background:#141414;
+              border:none;padding:4px;}
         """)
+
+        # Right-click context menu
+        self._table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        # Restore saved column widths
+        _qs = __import__("PyQt6.QtCore", fromlist=["QSettings"])
+        _settings = _qs.QSettings("Squelch", "squelch")
+        for col in range(self._table.columnCount()):
+            w = _settings.value(f"log/col_{col}_width")
+            if w:
+                self._table.setColumnWidth(col, int(w))
+        self._table.horizontalHeader().sectionResized.connect(
+            lambda col, _, new_w: __import__("PyQt6.QtCore",
+                fromlist=["QSettings"]).QSettings("Squelch", "squelch")
+            .setValue(f"log/col_{col}_width", new_w))
+        self._table.customContextMenuRequested.connect(
+            self._log_context_menu)
+
+        # Double-click to edit
+        self._table.doubleClicked.connect(
+            lambda idx: self._edit_qso_row(idx.row()))
+
         root.addWidget(self._table, 4)
 
         # ── Action buttons ────────────────────────────────────────────────
@@ -219,7 +250,7 @@ class LogTab(QWidget):
 
         self._queue_label = QLabel("")
         self._queue_label.setStyleSheet(
-            "color:#666; font-size:12px;")
+            " ")
         btn_row.addWidget(self._queue_label)
 
         root.addLayout(btn_row)
@@ -303,13 +334,13 @@ class LogTab(QWidget):
                 "QProgressBar{background:#141414;"
                 "border:1px solid #1a1a1a;"
                 "border-radius:3px;text-align:center;"
-                "font-size:11px;color:#888;}"
+                "}"
                 "QProgressBar::chunk{"
                 "background:#3fbe6f;border-radius:2px;}")
             self._award_bars[key] = bar
             ag.addWidget(bar, row, 1)
             lbl = QLabel("0/100")
-            lbl.setStyleSheet("color:#555;font-size:11px;")
+            lbl.setStyleSheet("")
             lbl.setFixedWidth(60)
             ag.addWidget(lbl, row, 2)
             self._award_bars[key + "_lbl"] = lbl
@@ -413,6 +444,11 @@ class LogTab(QWidget):
                                               STATUS_COLORS["none"])
                     item.setBackground(QBrush(color))
 
+                # Store QSO id on column 0 for right-click/edit lookup
+                if col == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        getattr(q, 'id', None))
                 self._table.setItem(row, col, item)
 
         self._table.setSortingEnabled(True)
@@ -618,7 +654,7 @@ class LogTab(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Cabrillo",
             f"{self.cfg.callsign or 'log'}.cbr",
-            "Cabrillo (*.cbr *.log);;All Files (*)")
+            "Cabrillo (*.cbr *.log);All Files (*)")
         if not path:
             return
         try:
@@ -670,7 +706,7 @@ class LogTab(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self, "Export CSV",
             f"{self.cfg.callsign or 'log'}_qsos.csv",
-            "CSV (*.csv);;All Files (*)")
+            "CSV (*.csv);All Files (*)")
         if not path:
             return
         try:
@@ -690,14 +726,14 @@ class LogTab(QWidget):
                 date = dt[:10] if len(dt) >= 10 else dt
                 time = dt[11:16] if len(dt) >= 16 else ""
                 freq = f"{q.freq_hz/1e6:.6f}"                        if hasattr(q, "freq_hz") and q.freq_hz                        else ""
-                writer.writerow([
+                writer.writerow([csv_safe(x) for x in (
                     date, time, q.call,
                     q.band, q.mode, freq,
                     q.rst_sent, q.rst_rcvd,
                     q.grid, q.name,
                     getattr(q, "country", ""),
                     q.my_call, q.my_grid,
-                    q.lotw_status, q.comment])
+                    q.lotw_status, q.comment)])
             Path(path).write_text(
                 output.getvalue(), encoding="utf-8")
             QMessageBox.information(
@@ -754,6 +790,170 @@ class LogTab(QWidget):
                 self, "Import Failed", str(e))
 
     # ── LoTW / QRZ queue ─────────────────────────────────────────────────
+
+    def _log_context_menu(self, pos):
+        """Right-click menu on log table rows."""
+        from PyQt6.QtWidgets import QMenu
+        row = self._table.rowAt(pos.y())
+        if row < 0:
+            return
+        menu = QMenu(self)
+        edit_act = menu.addAction("✏️  Edit QSO")
+        menu.addSeparator()
+        del_act  = menu.addAction("🗑  Delete QSO…")
+        action   = menu.exec(
+            self._table.mapToGlobal(pos))
+        if action == edit_act:
+            self._edit_qso_row(row)
+        elif action == del_act:
+            self._delete_qso_row(row)
+
+    def _get_row_qso(self, row: int):
+        """Get QSO object for a table row via stored QSO id."""
+        try:
+            item = self._table.item(row, 0)
+            if item is None:
+                return None
+            qso_id = item.data(Qt.ItemDataRole.UserRole)
+            # Find QSO by id
+            if qso_id is not None:
+                for q in self._all_qsos:
+                    if getattr(q, 'id', None) == qso_id:
+                        return q
+            # Fallback: match by callsign + date from row
+            call_col = 2  # callsign column
+            call_item = self._table.item(row, call_col)
+            if call_item:
+                call = call_item.text()
+                for q in self._all_qsos:
+                    if q.call == call:
+                        return q
+        except Exception:
+            pass
+        return None
+
+    def _edit_qso_row(self, row: int):
+        """Open edit dialog for the QSO at this row."""
+        qso = self._get_row_qso(row)
+        if not qso:
+            QMessageBox.warning(
+                self, "Edit QSO",
+                "Could not find QSO data for this row.")
+            return
+        self._show_edit_dialog(qso)
+
+    def _show_edit_dialog(self, qso):
+        """Open a pre-filled QSO entry dialog for editing."""
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QLineEdit,
+            QComboBox, QDialogButtonBox, QDateTimeEdit)
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(
+            f"Edit QSO — {qso.call}")
+        dlg.setMinimumWidth(360)
+        f = QFormLayout(dlg)
+        f.setSpacing(8)
+        f.setContentsMargins(12, 12, 12, 12)
+
+        call = QLineEdit(qso.call)
+        call.setMaxLength(12)
+        f.addRow("Callsign:", call)
+
+        band = QComboBox()
+        bands = ["160m","80m","60m","40m","30m","20m",
+                 "17m","15m","12m","10m","6m","2m","70cm"]
+        band.addItems(bands)
+        if qso.band in bands:
+            band.setCurrentText(qso.band)
+        f.addRow("Band:", band)
+
+        mode = QComboBox()
+        modes = ["FT8","FT4","CW","SSB","USB","LSB",
+                 "FM","AM","WSPR","JS8","RTTY","PSK31"]
+        mode.addItems(modes)
+        if qso.mode in modes:
+            mode.setCurrentText(qso.mode)
+        f.addRow("Mode:", mode)
+
+        rst_s = QLineEdit(qso.rst_sent)
+        rst_s.setMaxLength(3)
+        f.addRow("RST Sent:", rst_s)
+
+        rst_r = QLineEdit(qso.rst_rcvd)
+        rst_r.setMaxLength(3)
+        f.addRow("RST Rcvd:", rst_r)
+
+        grid = QLineEdit(qso.grid or "")
+        grid.setMaxLength(8)
+        f.addRow("Their Grid:", grid)
+
+        name = QLineEdit(qso.name or "")
+        f.addRow("Name:", name)
+
+        comment = QLineEdit(qso.comment or "")
+        f.addRow("Comment:", comment)
+
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save |
+            QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        f.addRow(btns)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Apply changes
+        try:
+            qso.call     = call.text().strip().upper()
+            qso.band     = band.currentText()
+            qso.mode     = mode.currentText()
+            qso.rst_sent = rst_s.text().strip()
+            qso.rst_rcvd = rst_r.text().strip()
+            qso.grid     = grid.text().strip().upper()
+            qso.name     = name.text().strip()
+            qso.comment  = comment.text().strip()
+            self.log_db.update_qso(qso)
+            self._load_log()
+            log.info(f"QSO edited: {qso.call}")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Save Failed",
+                f"Could not save changes:\n{e}")
+
+    def _delete_qso_row(self, row: int):
+        """Delete QSO at row with confirmation."""
+        qso = self._get_row_qso(row)
+        if not qso:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete QSO",
+            f"Delete this QSO?\n\n"
+            f"  {qso.call}  {qso.band}  {qso.mode}\n"
+            f"  {qso.datetime_on[:16]}\n\n"
+            f"This cannot be undone.",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            self.log_db.delete_qso(qso)
+            self._load_log()
+            log.info(f"QSO deleted: {qso.call}")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Delete Failed",
+                f"Could not delete QSO:\n{e}")
+
+    def _edit_qso(self, index):
+        """Handle double-click on log row."""
+        self._edit_qso_row(index.row())
 
     def _show_lotw_queue(self):
         from network.lotw_sync import LoTWSync
@@ -822,7 +1022,6 @@ class LogTab(QWidget):
                 "and Settings → Paths for TQSL location.")
 
     def _show_qrz_queue(self):
-        from network.qrz_lookup import CallsignLookup
         pending = self.log_db.qrz_pending()
         if not pending:
             QMessageBox.information(

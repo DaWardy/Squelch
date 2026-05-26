@@ -17,19 +17,6 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- ui/tabs/map_tab.py
-Embedded Leaflet map tab.
-Shows: station location, QSO paths, gray line,
-       APRS stations, ADS-B aircraft, repeaters.
-Requires QtWebEngine (PyQtWebEngine).
-Shows a graceful fallback if not installed.
-"""
-
-import sys
 import logging
 from datetime import datetime, timezone
 
@@ -40,7 +27,6 @@ from PyQt6.QtWidgets import (
     QMessageBox
 )
 from PyQt6.QtCore import Qt, QTimer, QUrl
-from PyQt6.QtGui import QDesktopServices
 
 from network.grayline import (
     gray_line_info, format_gray_line_status)
@@ -109,7 +95,7 @@ class MapTab(QWidget):
             Qt.AlignmentFlag.AlignCenter)
         self._gl_bar.setStyleSheet(
             "background:#0a0a0a;color:#3fbe6f;"
-            "font-size:13px;font-family:'Courier New';"
+            "font-family:'Courier New';"
             "border-top:1px solid #1a1a1a;")
         root.addWidget(self._gl_bar)
 
@@ -252,7 +238,7 @@ class MapTab(QWidget):
         tl.addStretch()
 
         note = QLabel("ℹ  Qt fallback renderer")
-        note.setStyleSheet("color:#444;font-size:11px;")
+        note.setStyleSheet("")
         tl.addWidget(note)
 
         refresh_btn = QPushButton("↺")
@@ -275,8 +261,8 @@ class MapTab(QWidget):
         self._gl_bar.setAlignment(
             Qt.AlignmentFlag.AlignCenter)
         self._gl_bar.setStyleSheet(
-            "background:#0a0a0a;color:#666;"
-            "font-size:12px;font-family:'Courier New';"
+            "background:#0a0a0a;"
+            "font-family:'Courier New';"
             "border-top:1px solid #1a1a1a;")
         layout.addWidget(self._gl_bar)
 
@@ -333,13 +319,13 @@ class MapTab(QWidget):
                 if info.is_gray_line:
                     self._gl_bar.setStyleSheet(
                         "background:#0a1a0a;color:#3fbe6f;"
-                        "font-size:13px;"
+                        ""
                         "font-family:'Courier New';"
                         "border-top:1px solid #3fbe6f;")
                 else:
                     self._gl_bar.setStyleSheet(
-                        "background:#0a0a0a;color:#666;"
-                        "font-size:13px;"
+                        "background:#0a0a0a;"
+                        ""
                         "font-family:'Courier New';"
                         "border-top:1px solid #1a1a1a;")
         except Exception as e:
@@ -436,13 +422,13 @@ class MapTab(QWidget):
                 if info.is_gray_line:
                     self._gl_bar.setStyleSheet(
                         "background:#0a1a0a;color:#3fbe6f;"
-                        "font-size:12px;"
+                        ""
                         "font-family:'Courier New';"
                         "border-top:1px solid #3fbe6f;")
                 else:
                     self._gl_bar.setStyleSheet(
-                        "background:#0a0a0a;color:#555;"
-                        "font-size:12px;"
+                        "background:#0a0a0a;"
+                        ""
                         "font-family:'Courier New';"
                         "border-top:1px solid #1a1a1a;")
             else:

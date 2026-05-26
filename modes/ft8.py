@@ -214,10 +214,16 @@ class FT8Engine:
         self._set_state(AutoSeqState.REPLY_DECODED)
         self._send_report()
 
+    def _operating_call(self) -> str:
+        """The callsign to identify with — guest op's call if active, else
+        the station call. Shared across all modes via core.guest_op."""
+        from core.guest_op import operating_callsign
+        return operating_callsign(self.cfg)
+
     def send_cq(self):
         """Transmit a CQ call."""
-        # Guard: need callsign
-        cs = self.cfg.callsign
+        # Guard: need callsign (guest op's call if a guest is operating)
+        cs = self._operating_call()
         if not cs or cs in ("No callsign set", ""):
             log.warning("Cannot CQ — no callsign configured")
             return
@@ -375,7 +381,7 @@ class FT8Engine:
         if not parts:
             return None
 
-        my_call = self.cfg.callsign.upper()
+        my_call = self._operating_call()
         decode  = DecodedSignal(
             snr=snr, dt=dt, freq_hz=df, message=msg)
 
@@ -463,7 +469,7 @@ class FT8Engine:
         if not self._auto_seq or self._halted:
             return
 
-        my_call = self.cfg.callsign.upper()
+        my_call = self._operating_call()
         state   = self._state
 
         if state == AutoSeqState.IDLE:
@@ -541,7 +547,25 @@ class FT8Engine:
         self._set_state(AutoSeqState.IDLE)
 
     def _queue_tx(self, message: str):
-        """Send a TX message command to WSJT-X via UDP."""
+        """Send a TX message command to WSJT-X via UDP.
+
+        This is the SINGLE funnel for every FT8 transmission — manual CQ
+        and the automatic sequence (signal report, RRR, 73, auto-CQ). FT8
+        is an auto-transmit mode: the sequence keys the rig on its own once
+        armed. The safety gate therefore lives HERE, not at the button, so
+        Guest Operator mode (C-06) and unsafe states (C-08) block ALL TX
+        including the automatic steps."""
+        try:
+            from core.safety import get_safety
+            if not get_safety().can_transmit():
+                log.info("FT8 TX blocked — Demo Mode or unsafe state")
+                self._halted = True
+                if self._on_state_change:
+                    self._on_state_change(
+                        "TX BLOCKED — Demo Mode is ON")
+                return
+        except Exception:
+            pass
         self._tx_message = message
         self._in_tx      = True
         log.info(f"TX: {message}")

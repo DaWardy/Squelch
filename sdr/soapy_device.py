@@ -46,24 +46,140 @@ except ImportError:
 # Hardware capability profiles
 # Drives UI — TX controls only shown for TX-capable devices
 DEVICE_PROFILES = {
-    "rtlsdr":   {"name": "RTL-SDR",       "tx": False,
-                 "max_sr": 3_200_000,  "max_span": 3_000_000},
-    "hackrf":   {"name": "HackRF One",    "tx": True,
-                 "max_sr": 20_000_000, "max_span": 18_000_000},
-    "uhd":      {"name": "USRP",          "tx": True,
-                 "max_sr": 61_440_000, "max_span": 56_000_000},
-    "sdrplay":  {"name": "SDRplay",       "tx": False,
-                 "max_sr": 10_000_000, "max_span": 8_000_000},
-    "airspy":   {"name": "Airspy",        "tx": False,
-                 "max_sr": 10_000_000, "max_span": 9_000_000},
-    "lime":     {"name": "LimeSDR",       "tx": True,
-                 "max_sr": 61_440_000, "max_span": 56_000_000},
-    "bladerf":  {"name": "BladeRF",       "tx": True,
-                 "max_sr": 40_000_000, "max_span": 36_000_000},
-    "plutosdr": {"name": "PlutoSDR",      "tx": True,
-                 "max_sr": 61_440_000, "max_span": 20_000_000},
-    "remote":   {"name": "Remote SDR",    "tx": False,
-                 "max_sr": 10_000_000, "max_span": 8_000_000},
+    "rtlsdr": {
+        "name": "RTL-SDR", "tx": False,
+        "max_sr": 3_200_000, "max_span": 3_000_000,
+        "freq_min": 24_000_000, "freq_max": 1_750_000_000,
+        "gain_range": (0, 49.6),
+        "recommended_sr": 2_048_000,
+        "ppm_correction": True,
+        "direct_sampling": True,
+        "stable_rates": [
+            250_000, 1_024_000, 1_536_000,
+            2_048_000, 2_400_000, 3_200_000],
+        "install_note": (
+            "Easiest: rtl_tcp.exe (no SoapySDR needed)\n"
+            "Full: PothosSDR bundle + Zadig"),
+    },
+    "hackrf": {
+        "name": "HackRF One", "tx": True,
+        "max_sr": 20_000_000, "max_span": 18_000_000,
+        "freq_min": 1_000_000, "freq_max": 6_000_000_000,
+        "gain_range": (0, 116),
+        "recommended_sr": 10_000_000,
+        "amp_available": True,
+        "bias_tee": True,
+        "half_duplex": True,
+        "lna_gain_range": (0, 40),
+        "vga_gain_range": (0, 62),
+        "vga_tx_range": (0, 47),
+        "stable_rates": [
+            2_000_000, 4_000_000, 8_000_000,
+            10_000_000, 16_000_000, 20_000_000],
+        "install_note": (
+            "PothosSDR bundle includes SoapyHackRF.\n"
+            "No Zadig needed for HackRF."),
+    },
+    "uhd": {
+        "name": "USRP B200/B210", "tx": True,
+        "max_sr": 61_440_000, "max_span": 56_000_000,
+        "freq_min": 70_000_000, "freq_max": 6_000_000_000,
+        "gain_range": (0, 76),
+        "recommended_sr": 10_000_000,
+        "full_duplex": True,
+        "clock_sources": [
+            "internal", "external", "gpsdo", "mimo"],
+        "subdev_b200mini": "A:A",
+        "subdev_b210": "A:A A:B",
+        "stable_rates": [
+            1_000_000, 2_000_000, 4_000_000,
+            8_000_000, 16_000_000, 25_000_000,
+            56_000_000],
+        "install_note": (
+            "Install UHD first:\n"
+            "  PothosSDR bundle (includes UHD), OR\n"
+            "  files.ettus.com/binaries/uhd/\n"
+            "Then: pip install soapysdr\n"
+            "Verify: uhd_find_devices"),
+    },
+    # SDRplay RSP lineup (all use driver="sdrplay")
+    "sdrplay": {
+        "name": "SDRplay RSP",
+        "tx": False,
+        "max_sr": 10_000_000,
+        "max_span": 8_000_000,
+        "freq_min": 1_000,          # 1 kHz (better than RTL-SDR)
+        "freq_max": 2_000_000_000,  # 2 GHz
+        "gain_range": (0, 102),     # gain reduction 0-102 dB
+        "recommended_sr": 6_000_000,
+        "stable_rates": [
+            200_000, 500_000, 1_000_000,
+            2_000_000, 4_000_000, 6_000_000,
+            7_000_000, 8_000_000, 10_000_000],
+        "if_bandwidths_hz": [
+            200_000, 300_000, 600_000,
+            1_536_000, 5_000_000, 6_000_000,
+            7_000_000, 8_000_000],
+        # Per-model capability flags (detected at runtime)
+        "models": {
+            "RSP1":   {"antennas": ["Antenna A"],
+                       "notch": False, "dab_notch": False,
+                       "bias_tee": False, "hiz": False},
+            "RSP1A":  {"antennas": ["Antenna A"],
+                       "notch": True,  "dab_notch": True,
+                       "bias_tee": False, "hiz": False},
+            "RSP1B":  {"antennas": ["Antenna A"],
+                       "notch": True,  "dab_notch": True,
+                       "bias_tee": False, "hiz": False},
+            "RSP2":   {"antennas": [
+                            "Antenna A", "Antenna B", "Hi-Z"],
+                       "notch": True,  "dab_notch": False,
+                       "bias_tee": True,  "hiz": True},
+            "RSP2Pro":{"antennas": [
+                            "Antenna A", "Antenna B", "Hi-Z"],
+                       "notch": True,  "dab_notch": False,
+                       "bias_tee": True,  "hiz": True},
+            "RSPdx":  {"antennas": [
+                            "Antenna A", "Antenna B", "Antenna C"],
+                       "notch": True,  "dab_notch": True,
+                       "bias_tee": True,  "hiz": False,
+                       "max_sr": 10_000_000},
+            "RSPduo": {"antennas": [
+                            "Tuner 1 50ohm", "Tuner 2 50ohm",
+                            "Tuner 1 Hi-Z"],
+                       "notch": True,  "dab_notch": True,
+                       "bias_tee": True,  "hiz": True,
+                       "dual_tuner": True},
+        },
+        "install_note": (
+            "1. Install SDRplay API (REQUIRED first):\n"
+            "   sdrplay.com/softwarehome\n"
+            "   (Free, no account needed, ~30 MB)\n"
+            "2. Install PothosSDR bundle (includes SoapySDRplay):\n"
+            "   downloads.myriadrf.org/builds/PothosSDR/\n"
+            "3. pip install soapysdr\n"
+            "4. Verify: python installer.py"),
+    },
+    "airspy": {
+        "name": "Airspy", "tx": False,
+        "max_sr": 10_000_000, "max_span": 9_000_000,
+        "freq_min": 24_000_000, "freq_max": 1_750_000_000,
+        "gain_range": (0, 21),
+        "recommended_sr": 10_000_000,
+        "stable_rates": [2_500_000, 10_000_000],
+        "install_note": "PothosSDR bundle includes SoapyAirspy.",
+    },
+    "lime": {
+        "name": "LimeSDR", "tx": True,
+        "max_sr": 61_440_000, "max_span": 56_000_000,
+        "freq_min": 100_000, "freq_max": 3_800_000_000,
+        "gain_range": (0, 73),
+        "recommended_sr": 10_000_000,
+        "stable_rates": [
+            1_000_000, 2_000_000, 5_000_000,
+            10_000_000, 30_720_000, 61_440_000],
+        "install_note": "PothosSDR bundle includes LimeSuite driver.",
+    },
 }
 
 

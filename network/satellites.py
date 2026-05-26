@@ -185,6 +185,8 @@ class SatTracker:
              "https://celestrak.org/pub/TLE/active.tle"),
         ]:
             try:
+                from core.netlog import record_connection
+                record_connection("celestrak.org", purpose="satellite TLEs", user_initiated=False)
                 resp = requests.get(url, timeout=15)
                 if resp.status_code == 200 and resp.text:
                     count = self.load_tles(resp.text)

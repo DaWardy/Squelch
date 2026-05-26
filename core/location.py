@@ -18,6 +18,7 @@
 # <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+from pathlib import Path
 """Squelch -- core/location.py
 Location from IC-7100 GPS, system GPS, manual grid/ZIP/city/MGRS, or IP.
 Fires callbacks when grid changes enough to warrant a RadioReference refresh.
@@ -55,6 +56,53 @@ try:
     _HAS_MGRS = True
 except ImportError:
     _HAS_MGRS = False
+
+
+def geocode_place(query: str) -> tuple[float, float]:
+    """Geocode a ZIP/city/place string to (lat, lon) via Nominatim.
+    Raises on failure so callers can fall back."""
+    if not HAS_REQUESTS:
+        raise RuntimeError("requests not available")
+    try:
+        from core.netlog import record_connection
+        record_connection("nominatim.openstreetmap.org",
+                          purpose="geocode search start point",
+                          user_initiated=True)
+    except Exception:
+        pass
+    r = requests.get(
+        NOMINATIM_SEARCH,
+        params={"q": query, "format": "json", "limit": 1},
+        headers=NOMINATIM_HDR, timeout=8)
+    data = r.json()
+    if not data:
+        raise ValueError(f"no match for {query!r}")
+    return float(data[0]["lat"]), float(data[0]["lon"])
+
+
+def reverse_geocode_state(lat: float, lon: float) -> str:
+    """Return the US state name for a lat/lon via Nominatim, or '' on failure.
+    Used by the repeater search to pick the RepeaterBook state_id."""
+    if not HAS_REQUESTS:
+        return ""
+    try:
+        from core.netlog import record_connection
+        record_connection("nominatim.openstreetmap.org",
+                          purpose="reverse geocode (repeater search)",
+                          user_initiated=True)
+    except Exception:
+        pass
+    try:
+        r = requests.get(
+            NOMINATIM_REV,
+            params={"lat": lat, "lon": lon,
+                    "format": "json", "addressdetails": 1},
+            headers=NOMINATIM_HDR, timeout=8)
+        if r.status_code != 200:
+            return ""
+        return r.json().get("address", {}).get("state", "") or ""
+    except Exception:
+        return ""
 
 
 class LocationSource(Enum):
@@ -222,7 +270,6 @@ class LocationManager:
             # Use Windows.Devices.Geolocation via WinRT
             # Simpler: use the GeoCoordinateWatcher COM API
             # Fall back if not available
-            from ctypes import windll
             # Try WlanAPI for rough location (no permission needed)
             # This is a simplified approach - returns None on failure
             return None
@@ -235,6 +282,10 @@ class LocationManager:
             return None
         try:
             # ipapi.co — free, no API key, HTTPS
+            from core.netlog import record_connection
+            record_connection("ip geolocation service",
+                              purpose="auto-fill grid from IP",
+                              user_initiated=False)
             resp = requests.get(
                 IPAPI_URL,
                 timeout=5,

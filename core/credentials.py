@@ -41,7 +41,6 @@ log = logging.getLogger(__name__)
 
 try:
     import keyring
-    from keyring.errors import KeyringError
     HAS_KEYRING = True
 except ImportError:
     HAS_KEYRING = False

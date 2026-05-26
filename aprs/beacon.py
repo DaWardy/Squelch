@@ -73,6 +73,7 @@ class APRSBeacon:
         return max(0, int(self._interval - (time.time() - self._last_tx)))
 
     def start(self, interval_s: int = BEACON_INTERVAL_S):
+        """Begin periodic beaconing on configured interval."""
         if self._running:
             return
         self._interval = max(MIN_INTERVAL_S, interval_s)
@@ -83,6 +84,7 @@ class APRSBeacon:
         log.info(f"APRS beacon started (interval={self._interval}s)")
 
     def stop(self):
+        """Stop beaconing — current TX completes first."""
         self._running = False
 
     def send_now(self) -> bool:

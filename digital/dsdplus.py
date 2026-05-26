@@ -17,17 +17,6 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- digital/dsdplus.py
-DSD+ subprocess manager for Windows.
-Handles P25 Phase 1/2, DMR, NXDN, YSF, D-STAR decode.
-DSD+ reads audio from a virtual audio device and outputs
-decoded text/audio via stdout and an audio device.
-"""
-
 import subprocess
 import threading
 import logging

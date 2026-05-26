@@ -17,17 +17,7 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- network/repeaterbook.py
-RepeaterBook.com API integration.
-Free API, no key required for basic queries.
-Returns nearest repeaters by lat/lon or state.
-API docs: repeaterbook.com/pages/api.php
-"""
-
+from core.constants import APP_VERSION
 import logging
 import threading
 import time
@@ -42,13 +32,51 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
-RB_BASE = "https://www.repeaterbook.com/api"
-RB_NEAR = f"{RB_BASE}/export.php"
-RB_UA   = "Squelch/0.7.0-alpha (github.com/dawardy/squelch)"
+RB_BASE   = "https://www.repeaterbook.com/api"
+RB_EXPORT = f"{RB_BASE}/export.php"        # North America
+RB_ROW    = f"{RB_BASE}/exportROW.php"     # rest of world
+# User-Agent must identify the app + contact (RepeaterBook policy, 2026-03).
+RB_UA     = (f"Squelch/{APP_VERSION} "
+             "(+https://github.com/dawardy/squelch; squelch@example.org)")
+RB_APPLY_URL = "https://www.repeaterbook.com/api/token_request.php"
 
 REQUEST_TIMEOUT = 10
 RATE_LIMIT_S    = 2.0   # RepeaterBook asks for 2s between requests
 _last_request   = 0.0
+
+# US state / territory name -> FIPS state_id (RepeaterBook export.php key).
+_US_FIPS = {
+    "alabama":"1","alaska":"2","arizona":"4","arkansas":"5","california":"6",
+    "colorado":"8","connecticut":"9","delaware":"10","district of columbia":"11",
+    "florida":"12","georgia":"13","hawaii":"15","idaho":"16","illinois":"17",
+    "indiana":"18","iowa":"19","kansas":"20","kentucky":"21","louisiana":"22",
+    "maine":"23","maryland":"24","massachusetts":"25","michigan":"26",
+    "minnesota":"27","mississippi":"28","missouri":"29","montana":"30",
+    "nebraska":"31","nevada":"32","new hampshire":"33","new jersey":"34",
+    "new mexico":"35","new york":"36","north carolina":"37","north dakota":"38",
+    "ohio":"39","oklahoma":"40","oregon":"41","pennsylvania":"42",
+    "rhode island":"44","south carolina":"45","south dakota":"46",
+    "tennessee":"47","texas":"48","utah":"49","vermont":"50","virginia":"51",
+    "washington":"53","west virginia":"54","wisconsin":"55","wyoming":"56",
+}
+
+
+class RepeaterBookError(Exception):
+    """Carries a user-facing reason so the UI can guide the operator."""
+    def __init__(self, message: str, needs_token: bool = False):
+        super().__init__(message)
+        self.message = message
+        self.needs_token = needs_token
+
+
+def _rb_token() -> str:
+    """The user's approved RepeaterBook API token, from the OS keyring (S4).
+    Empty string if not configured."""
+    try:
+        from core.credentials import CredentialStore
+        return CredentialStore().retrieve("repeaterbook_token") or ""
+    except Exception:
+        return ""
 
 
 @dataclass
@@ -138,40 +166,66 @@ def nearest_repeaters(lat: float, lon: float,
 
     _rate_limit()
 
-    # RepeaterBook API parameters
-    # mode: blank=all, FM, DMR, P25, YSF, DSTAR, NXDN, TETRA
-    params = {
-        "lat":    round(lat, 6),
-        "lon":    round(lon, 6),
-        "radius": min(radius_km, 200),
-        "unit":   "km",
+    # RepeaterBook (policy change 2026-03): there is NO public proximity
+    # endpoint. The supported method is to query by country + state_id and
+    # filter by distance locally. API access also now requires an approved
+    # token (X-RB-App-Token). We honor both here.
+    token = _rb_token()
+    if not token:
+        raise RepeaterBookError(
+            "RepeaterBook now requires an approved API token (as of "
+            "March 2026). Apply for one at "
+            "repeaterbook.com/api/token_request.php, then paste it into "
+            "Settings -> Credentials -> RepeaterBook.",
+            needs_token=True)
+
+    # Resolve the US state for this lat/lon so we can query the right slice,
+    # then filter the returned repeaters to the requested radius locally.
+    state_id = _state_id_for(lat, lon)
+    params = {"country": "United States"}
+    if state_id:
+        params["state_id"] = state_id
+    if mode and mode.upper() not in ("", "ALL"):
+        m = mode.lower()
+        # Map UI mode names to RepeaterBook 'mode' values
+        params["mode"] = {
+            "fm": "analog", "dmr": "DMR", "p25": "P25",
+            "nxdn": "NXDN", "ysf": "analog", "dstar": "analog",
+        }.get(m, "analog")
+
+    headers = {
+        "User-Agent": RB_UA,
+        "X-RB-App-Token": token,
     }
-    if mode and mode.upper() != "ALL":
-        params["type"] = mode.upper().replace("D-STAR", "DSTAR")
 
     try:
         resp = requests.get(
-            RB_NEAR,
-            params=params,
-            timeout=REQUEST_TIMEOUT,
-            headers={"User-Agent": RB_UA})
+            RB_EXPORT, params=params,
+            timeout=REQUEST_TIMEOUT, headers=headers)
 
+        # Record the (user-initiated) outbound call for the activity log (C-12)
+        try:
+            from core.netlog import record_connection
+            record_connection("www.repeaterbook.com",
+                              purpose="repeater search",
+                              user_initiated=True)
+        except Exception:
+            pass
+
+        if resp.status_code == 401 or resp.status_code == 403:
+            raise RepeaterBookError(
+                "RepeaterBook denied the request (token invalid, inactive, "
+                "or not approved). Check your token in Settings, or re-apply "
+                "at repeaterbook.com/api/token_request.php.",
+                needs_token=True)
+        if resp.status_code == 429:
+            raise RepeaterBookError(
+                "RepeaterBook rate limit hit. Wait a bit and try again.")
         if resp.status_code != 200:
-            if resp.status_code == 403:
-                log.warning(
-                    "RepeaterBook API: 403 Forbidden. "
-                    "Check your internet connection and "
-                    "that repeaterbook.com is accessible.")
-            elif resp.status_code == 429:
-                log.warning(
-                    "RepeaterBook API: 429 rate limited. "
-                    "Wait 2+ seconds between requests.")
-            else:
-                log.warning(
-                    f"RepeaterBook API: {resp.status_code}")
-            return []
-        if len(resp.content) > 500_000:
-            return []
+            raise RepeaterBookError(
+                f"RepeaterBook returned HTTP {resp.status_code}.")
+        if len(resp.content) > 2_000_000:
+            raise RepeaterBookError("RepeaterBook response too large.")
 
         data = resp.json()
         results = data.get("results", [])
@@ -197,7 +251,10 @@ def nearest_repeaters(lat: float, lon: float,
                     city         = str(r.get("Nearest City", ""))[:50],
                     lat          = float(r.get("Lat", 0)),
                     lon          = float(r.get("Long", 0)),
-                    distance_km  = float(r.get("distance", 0)),
+                    distance_km  = _haversine(
+                        lat, lon,
+                        float(r.get("Lat", 0) or 0),
+                        float(r.get("Long", 0) or 0)),
                     status       = str(r.get("Operational Status", ""))[:20],
                     use_code     = str(r.get("Use", ""))[:20],
                     notes        = str(r.get("Notes", ""))[:200],
@@ -207,6 +264,10 @@ def nearest_repeaters(lat: float, lon: float,
             except Exception as e:
                 log.debug(f"Repeater parse: {e}")
 
+        repeaters.sort(key=lambda r: r.distance_km)
+        # Filter to the requested radius and sort nearest-first
+        repeaters = [r for r in repeaters
+                     if r.distance_km <= radius_km]
         repeaters.sort(key=lambda r: r.distance_km)
         return repeaters
 
@@ -218,13 +279,68 @@ def nearest_repeaters(lat: float, lon: float,
 def nearest_async(lat: float, lon: float,
                    callback: Callable,
                    radius_km: float = 50.0,
-                   mode: str = ""):
-    """Fetch repeaters in background thread."""
+                   mode: str = "",
+                   error_callback: Callable | None = None):
+    """Fetch repeaters in background thread.
+
+    On success calls callback(list[Repeater]). On a RepeaterBookError
+    (e.g. missing/invalid token) calls error_callback(message, needs_token)
+    if provided, so the UI can guide the operator instead of just showing
+    an empty table."""
     def _do():
-        results = nearest_repeaters(lat, lon, radius_km, mode)
+        try:
+            results = nearest_repeaters(lat, lon, radius_km, mode)
+        except RepeaterBookError as e:
+            if error_callback:
+                try:
+                    error_callback(e.message, e.needs_token)
+                except Exception:
+                    pass
+            else:
+                try:
+                    callback([])
+                except Exception:
+                    pass
+            return
+        except Exception as e:
+            log.debug(f"RepeaterBook fetch: {e}")
+            if error_callback:
+                try:
+                    error_callback(str(e), False)
+                except Exception:
+                    pass
+            else:
+                callback([])
+            return
         try:
             callback(results)
         except Exception as e:
             log.debug(f"RepeaterBook callback: {e}")
     threading.Thread(target=_do, daemon=True,
                      name="RBFetch").start()
+
+
+def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km between two lat/lon points."""
+    import math
+    if not (lat2 or lon2):
+        return 9999.0
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = (math.sin(dp/2)**2
+         + math.cos(p1) * math.cos(p2) * math.sin(dl/2)**2)
+    return r * 2 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _state_id_for(lat: float, lon: float) -> str:
+    """Reverse-geocode a lat/lon to a US FIPS state_id for the RepeaterBook
+    query. Uses the existing Nominatim helper; returns '' if unknown (the
+    query then covers the whole country and we filter locally)."""
+    try:
+        from core.location import reverse_geocode_state
+        name = (reverse_geocode_state(lat, lon) or "").strip().lower()
+        return _US_FIPS.get(name, "")
+    except Exception:
+        return ""

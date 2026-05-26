@@ -28,7 +28,6 @@ import logging
 import threading
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Optional
 from dataclasses import dataclass, field, asdict
 
 log = logging.getLogger(__name__)
@@ -151,11 +150,15 @@ class LogDB:
 
     def __init__(self, db_path: Path = DB_PATH):
         self._path = db_path
+        self._conn = None   # lazy-opened by first _open() call
         self._lock = threading.Lock()
         self._open()
 
-    def _open(self):
-        self._path = Path(self._path)  # ensure Path object
+    def _open(self) -> sqlite3.Connection:
+        """Open (or reuse) the database connection. Always returns a valid connection."""
+        if self._conn is not None:
+            return self._conn
+        self._path = Path(self._path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
             str(self._path),
@@ -166,6 +169,7 @@ class LogDB:
         self._conn.executescript(SCHEMA)
         self._conn.commit()
         log.info(f"Log database: {self._path}")
+        return self._conn
 
     # ── Write ─────────────────────────────────────────────────────────────
 
@@ -298,7 +302,47 @@ class LogDB:
 
     # ── ADIF export ───────────────────────────────────────────────────────
 
-    def export_adif(self, path: Path, qsos: list[QSO] | None = None) -> int:
+    def delete_qso(self, qso) -> bool:
+        """Delete a QSO by its id."""
+        qso_id = getattr(qso, "id", None)
+        if qso_id is None:
+            log.warning("delete_qso: no id on QSO object")
+            return False
+        with self._lock:
+            conn = self._open()
+            conn.execute("DELETE FROM qso WHERE id=?", (qso_id,))
+            conn.commit()
+        return True
+
+    def update_qso(self, qso) -> bool:
+        """Update an edited QSO in the database."""
+        qso_id = getattr(qso, "id", None)
+        if qso_id is None:
+            return False
+        with self._lock:
+            conn = self._open()
+            conn.execute("""
+                UPDATE qso SET
+                    call=?, band=?, mode=?,
+                    rst_sent=?, rst_rcvd=?,
+                    grid=?, name=?, comment=?
+                WHERE id=?
+            """, (qso.call, qso.band, qso.mode,
+                  qso.rst_sent, qso.rst_rcvd,
+                  qso.grid, qso.name,
+                  qso.comment, qso_id))
+            conn.commit()
+            # keep connection open
+        return True
+
+    def export_adif(self, path: Path, qsos: list[QSO] | None = None, qso_ids: list[int] | None = None) -> int:
+        if qso_ids is not None and qsos is None:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT * FROM qso WHERE id IN "
+                    + f"({chr(44).join(chr(63) for _ in qso_ids)})",
+                    qso_ids).fetchall()
+            qsos = [QSO(*r) for r in rows]
         """Export to ADIF. Returns number of records written."""
         if qsos is None:
             qsos = self.recent_qsos(limit=999999)
@@ -313,8 +357,12 @@ class LogDB:
         ]
         for q in qsos:
             lines.append(_qso_to_adif(q) + "\n")
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(lines)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+        except (OSError, PermissionError) as e:
+            log.error(f"ADIF export failed: {e}")
+            raise
         log.info(f"ADIF export: {len(qsos)} records → {path}")
         return len(qsos)
 

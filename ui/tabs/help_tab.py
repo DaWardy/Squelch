@@ -17,15 +17,6 @@ from __future__ import annotations
 # You should have received a copy of the GNU General
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-"""
-Squelch -- ui/tabs/help_tab.py
-Searchable help system with setup guides,
-keyboard shortcuts, and EmComm reference.
-"""
-
 import logging
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
@@ -35,7 +26,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QDesktopServices
-from PyQt6.QtCore import QUrl
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +33,86 @@ log = logging.getLogger(__name__)
 
 HELP_ARTICLES = [
     # (title, category, content)
+    ("Software Dependencies", "Setup",
+     """# Software Dependencies
+
+Every package Squelch uses, where it comes from, and why.
+
+## Python Runtime
+  Python 3.9+     python.org
+                  Python Software Foundation (US non-profit)
+                  PSF License — permissive, BSD-like
+                  250M+ downloads/month
+
+## UI Framework
+  PyQt6           pypi.org/project/PyQt6
+                  Riverbank Computing (UK) / Qt Group (Finland)
+                  GPL v3 — matches Squelch license
+                  Powers all windows, widgets, and dialogs
+
+## Signal Processing
+  numpy           pypi.org/project/numpy
+                  NumFOCUS (US non-profit)
+                  BSD 3-Clause
+                  300M+ downloads/month — most audited math library
+
+  SoapySDR        github.com/pothosware/SoapySDR
+                  Pothosware / Josh Blum (USA)
+                  Boost License (permissive)
+                  Standard SDR hardware abstraction layer
+
+  pyqtgraph       pypi.org/project/pyqtgraph
+                  Community / Luke Campagnola (USA/Canada)
+                  MIT License
+                  Waterfall and spectrum display
+
+  sgp4            pypi.org/project/sgp4
+                  Brandon Rhodes (USA)
+                  MIT License — pure Python, easy to audit
+                  Satellite orbital mechanics
+
+## Networking
+  requests        pypi.org/project/requests
+                  Python Software Foundation (USA)
+                  Apache 2.0
+                  400M+ downloads/month — most downloaded Python package
+                  Used for: NOAA solar data, Winlink API,
+                  RepeaterBook, geocoding, Celestrak TLEs
+
+  defusedxml      pypi.org/project/defusedxml
+                  Christian Heimes / CPython core developer (Germany)
+                  PSF License
+                  SECURITY-CRITICAL: prevents XML injection attacks
+                  in QRZ and FLRig XML parsing
+
+## Audio
+  sounddevice     pypi.org/project/sounddevice
+                  Matthias Geier (Germany)
+                  MIT License
+                  Rig audio input and digital mode audio output
+
+## What Squelch does NOT do
+  No telemetry    — Squelch never phones home
+  No analytics    — No usage tracking of any kind
+  No ads          — No advertising SDKs
+  No auto-update  — Never downloads or executes code from internet
+  No cloud        — All data stays on your machine
+
+## Verifying your install
+  In the Squelch folder:
+    venv/Scripts/pip list
+    venv/Scripts/pip show <package>
+
+  Full audit including transitive dependencies:
+    venv/Scripts/pip install pipdeptree
+    venv/Scripts/pipdeptree
+
+## Full dependency documentation
+  See DEPENDENCIES.md in the Squelch folder
+  for country of origin, estimated user counts,
+  and audit links for every package.
+"""),
+
     ("Getting Started", "Setup",
      """# Getting Started with Squelch
 
@@ -160,7 +230,7 @@ Squelch logs QSOs to:
 ADIF export: Log tab → Export ADIF
 """),
 
-    ("SignaLink USB Setup", "Rig Control",
+    ("SignaLink USB Setup", "Audio & Hardware",
      """# SignaLink USB Setup
 
 ## What It Does
@@ -201,7 +271,7 @@ Works with any rig that has a mic/speaker or accessory port.
   Ground loop: Use audio isolation transformer
 """),
 
-    ("QRZ-1 Explorer", "Rig Control",
+    ("QRZ-1 Explorer", "Audio & Hardware",
      """# Explorer QRZ-1 Setup
 
 ## What It Is
@@ -236,6 +306,425 @@ You may need an SMA-F to SMA-M adapter for some antennas.
 ## CTCSS Note
 If programmed tones don't work after CHIRP:
 Re-upload using RT Systems RPS-QRZ1 software.
+"""),
+
+    ("SDRplay RSP Setup (RSP2Pro, RSPdx, RSPduo)", "SDR",
+     """# SDRplay RSP Setup on Windows
+
+## About the RSP Lineup
+
+SDRplay makes a family of wide-coverage receivers with
+genuine 12-bit or 14-bit ADCs — a real step above RTL-SDR.
+
+  RSP1A  1 kHz - 2 GHz  1 antenna port   best value
+  RSP2   1 kHz - 2 GHz  3 antenna ports  notch filters
+  RSP2Pro 1 kHz - 2 GHz 3 antenna ports  RSP2 + shielding
+  RSPdx  1 kHz - 2 GHz  3 antenna ports  improved filters
+  RSPduo 1 kHz - 2 GHz  2 tuners         dual independent RX
+
+All share the same install path and Squelch settings.
+
+## Step 1 — Install SDRplay API  (REQUIRED first)
+
+  https://www.sdrplay.com/softwarehome/
+
+Download the API installer for Windows.
+Run it before installing PothosSDR.
+This step is mandatory — SoapySDRplay does not work
+without the SDRplay hardware API.
+
+The installer is free, no account required (~30 MB).
+
+## Step 2 — Install PothosSDR Bundle
+
+  https://downloads.myriadrf.org/builds/PothosSDR/
+
+PothosSDR includes SoapySDRplay, which is the
+bridge between the SDRplay API and Squelch.
+Run the installer, accept defaults, reboot.
+
+Order matters: SDRplay API first, then PothosSDR.
+
+## Step 3 — Install Python Binding
+
+  pip install soapysdr
+
+Verify with Squelch installer:
+  python installer.py
+
+Look for: SoapySDR X.X.X — 1 device(s) found
+
+## EASIER PATH — conda / miniforge (recommended for most)
+
+Many users find conda simpler than PothosSDR — it installs SoapySDR
+and the device drivers together, no CMake or reboot dance:
+
+  1. Install Miniforge: github.com/conda-forge/miniforge
+  2. Then, for your hardware (install only what you have):
+       conda install -c conda-forge soapysdr-module-rtlsdr   (RTL-SDR)
+       conda install -c conda-forge soapysdr-module-hackrf   (HackRF)
+       conda install -c conda-forge soapysdr-module-sdrplay  (SDRplay)
+       conda install -c conda-forge soapysdr-module-lms7     (LimeSDR)
+
+Note the package names are 'soapysdr-module-NAME', not 'soapyNAME'.
+RTL-SDR and HackRF are the most reliable on Windows via conda; UHD
+(Ettus) and Airspy modules may be Linux-only on conda-forge — for
+those on Windows, use the PothosSDR bundle below.
+
+The Squelch installer can do this for you: run 'python installer.py'
+and pick your hardware from the SDR Drivers step.
+
+## Squelch SDR Tab — RSP2Pro Specific Settings
+
+When Squelch detects your RSP2Pro, it shows these controls:
+
+### Antenna Port
+  Antenna A  —  main 50Ω SMA input
+  Antenna B  —  50Ω SMA + Bias-Tee DC supply
+  Hi-Z       —  high impedance input
+                 USE THIS for HF below 30 MHz with
+                 a long wire or magnetic loop antenna
+
+### MW/FM Broadcast Notch
+  Attenuates the 150 kHz - 30 MHz MW/LW band and
+  76-108 MHz FM band.
+  Enable if you see FM stations leaking into your HF band.
+  Safe to leave enabled for most HF monitoring.
+
+### Bias-Tee (Port B only)
+  Supplies 4.7V DC via the Antenna B SMA connector.
+  Powers external LNAs like the Nooelec LaNA.
+  ONLY use with Antenna B selected.
+  Do NOT enable with a passive antenna — it will
+  draw through your feedline impedance.
+
+### IF Bandwidth
+  Selects the IF filter before the ADC:
+    200 kHz   — CW/SSB, one signal at a time
+    600 kHz   — NFM, channelized VHF monitoring
+    1.536 MHz — AM broadcast, ATC
+    5 MHz     — general HF/VHF monitoring (recommended start)
+    8 MHz     — maximum coverage (RSPdx only)
+
+### AGC vs Manual IF Gain Reduction
+  AGC on:   RSP adjusts gain automatically
+  AGC off:  You set IF Gain Reduction manually
+            Higher number = less gain (for strong signals)
+            Lower number = more gain (for weak signals)
+            Start at 40 dB and adjust
+
+### I/Q Imbalance Correction
+  Reduces mirror images in the spectrum.
+  Leave enabled — no downside.
+
+## Hi-Z Port — HF Long Wire
+
+The Hi-Z port is unique to the RSP2/Pro/RSPduo.
+It presents a high impedance input that is matched
+to long-wire or magnetic loop antennas on HF.
+
+Ideal bands via Hi-Z:
+  LW/MW:    153 kHz - 1.7 MHz
+  Shortwave: 2 MHz - 30 MHz
+  Not for VHF/UHF — use port A or B above 60 MHz
+
+## RSPduo: Dual-Tuner Mode
+
+The RSPduo has two completely independent tuners.
+Both can operate simultaneously at different frequencies:
+  Tuner 1: any frequency in 1 kHz - 2 GHz
+  Tuner 2: any frequency in 1 kHz - 2 GHz
+
+Example: monitor 14.074 MHz FT8 AND 144 MHz FM
+at the same time with a single RSPduo.
+
+In Squelch, select "Tuner 1 50ohm" for the first
+frequency and "Tuner 2 50ohm" for the second.
+(Full dual-tuner support in a future Squelch update.)
+
+## Troubleshooting
+
+  "No device found" in Squelch:
+    Was SDRplay API installed BEFORE PothosSDR?
+    If no: reinstall PothosSDR after the API.
+    Check sdrplay.com/api to verify API version.
+
+  Broadcast interference on HF:
+    Enable MW/FM notch filter.
+    Reduce sample rate to narrow the captured band.
+
+  Weak signals:
+    Switch to Hi-Z port for HF below 30 MHz.
+    Disable AGC, reduce IFGR to 20-30 dB.
+
+  High noise floor:
+    Enable MW/FM notch.
+    Reduce sample rate.
+    Check for USB 3.0 noise (try a different USB port).
+"""),
+
+    ("HackRF One Setup", "SDR",
+     """# HackRF One Setup on Windows
+
+## Why HackRF is different from RTL-SDR
+
+HackRF is a Software Defined Radio transceiver (TX + RX)
+covering 1 MHz to 6 GHz. It costs more than an RTL-SDR
+but covers a much wider frequency range and can transmit.
+
+Key difference: HackRF does NOT need Zadig.
+It uses its own WinUSB driver that the PothosSDR
+installer handles automatically.
+
+## Step 1 — Install PothosSDR Bundle
+
+  https://downloads.myriadrf.org/builds/PothosSDR/
+
+This single installer includes:
+  SoapySDR
+  SoapyHackRF driver
+  hackrf_info.exe and other tools
+
+Run the installer, accept defaults, reboot.
+
+## Step 2 — Install Python binding
+
+  pip install soapysdr
+
+Then verify with Squelch installer:
+  python installer.py
+
+Look for: HackRF or SoapySDR: N device(s) found
+
+## Step 3 — Configure in Squelch SDR Tab
+
+When HackRF is detected, the SDR tab shows
+HackRF-specific controls:
+
+  RF Amp (+14 dB):
+    Enables HackRF's internal amplifier.
+    Try without it first — amp adds noise.
+    Enable only for very weak signals.
+
+  Bias-Tee:
+    Supplies DC power through the antenna port.
+    Powers external LNAs (e.g. SAWbird for L-band).
+    WARNING: do NOT enable with a direct antenna.
+
+  LNA Gain (0-40 dB, 8 dB steps):
+    First gain stage. Start at 16-24 dB.
+
+  VGA Gain (0-62 dB, 2 dB steps):
+    Second gain stage. Start at 30 dB.
+    Reduce if signals look distorted or noisy.
+
+## Typical Starting Settings
+
+  Frequency:   your band of interest
+  Sample Rate: 10 MHz (good balance of CPU vs coverage)
+  LNA Gain:    24 dB
+  VGA Gain:    30 dB
+  RF Amp:      Off (enable if needed)
+
+## HackRF Limitations
+
+  Half-duplex: TX and RX cannot happen simultaneously.
+  Transmitting with Squelch requires careful setup —
+  the PTT watchdog is your safety net.
+
+## Transmitting (advanced)
+
+  Enable TX in Settings only if you hold an amateur
+  license. The TX power range is roughly 0-10 dBm
+  (-30 to +20 with amp depending on frequency).
+  HackRF is low power — use an external amplifier
+  for any meaningful range.
+"""),
+
+    ("USRP B200 mini / B210 Setup", "SDR",
+     """# USRP B200 mini / B210 Setup on Windows
+
+## What makes the B200/B210 special
+
+The Ettus USRP B-Series are professional-grade
+SDR platforms used in research and commercial deployments.
+
+  B200 mini:  70 MHz - 6 GHz, 1 channel, ~56 MSPS
+  B210:       70 MHz - 6 GHz, 2 channels, simultaneous TX+RX
+
+They connect via USB 3.0 (USB 2.0 supported at lower rates).
+No Zadig needed — UHD installs the driver automatically.
+
+## Step 1 — Install UHD (two options)
+
+Option A — PothosSDR bundle (easier):
+  https://downloads.myriadrf.org/builds/PothosSDR/
+  Includes UHD, SoapySDR, and SoapyUHD driver.
+  Reboot after install.
+
+Option B — Ettus UHD installer (latest UHD):
+  https://files.ettus.com/binaries/uhd/
+  Download the Windows .exe installer.
+  Reboot after install.
+  Then install SoapyUHD separately.
+
+## Step 2 — Install Python binding
+
+  pip install soapysdr
+
+Verify:
+  uhd_find_devices
+  → Should show: USRP Device N: B200 ...
+
+  python installer.py
+  → Look for: SoapySDR N device(s) found
+
+## Step 3 — First run (FPGA image download)
+
+On first connection, UHD downloads the FPGA bitstream.
+This takes 30-60 seconds and requires internet.
+Subsequent connections are immediate.
+
+If you see: "Unable to find an appropriate image"
+Run: uhd_images_downloader.py
+
+## Step 4 — Configure in Squelch SDR Tab
+
+  Clock Source:
+    internal — onboard TCXO, ±2.5 ppm
+    external — 10 MHz ref on REF IN jack (best)
+    gpsdo    — GPS-disciplined oscillator (best accuracy)
+
+  Subdev Spec:
+    A:A         — B200 mini, or B210 single channel
+    A:A A:B     — B210 both channels (MIMO)
+
+  RX Antenna:
+    RX2  — dedicated receive port (recommended)
+    TX/RX — shared transmit/receive port
+
+## Recommended Settings
+
+  Clock: internal (or external if you have a 10 MHz ref)
+  Subdev: A:A (B200 mini), A:A A:B (B210 MIMO)
+  Antenna: RX2
+  Sample Rate: 8-16 MHz for most use cases
+  Gain: 40-60 dB (total), adjust for signal level
+
+## B210 MIMO Operation
+
+With subdev A:A A:B, the B210 provides:
+  CH1 (A:A): independent frequency, gain, antenna
+  CH2 (A:B): independent frequency, gain, antenna
+
+Both channels sample simultaneously and share a
+phase-coherent clock — useful for direction finding
+and two-band monitoring.
+
+## USB 3.0 Required for High Sample Rates
+
+  USB 2.0: up to ~8-10 MSPS
+  USB 3.0: up to 61.44 MSPS
+
+Use a dedicated USB 3.0 port directly on the motherboard,
+not a USB hub. Drop-outs at high rates = USB bandwidth issue.
+"""),
+
+    ("RTL-TCP Quick Start", "SDR",
+     """# RTL-SDR via rtl_tcp — No CMake Required
+
+## Why rtl_tcp?
+
+SoapySDR on Windows requires CMake and Visual Studio
+build tools — a painful process for most ham operators.
+
+rtl_tcp is a much simpler path:
+  No compilation. No CMake. No Visual Studio.
+  Just download, install one driver, and run.
+
+## Step 1 — Download rtlsdr-release.zip
+
+  github.com/rtlsdrblog/rtl-sdr-blog/releases  (official RTL-SDR Blog drivers)
+
+Download the latest Windows .zip file.
+Extract anywhere — it's portable, no installer needed.
+The folder contains rtl_tcp.exe and several DLLs.
+
+## Step 2 — Install WinUSB driver with Zadig
+
+  zadig.akeo.ie
+
+Plug in your RTL-SDR dongle.
+Open Zadig.
+  Options → List All Devices (check this)
+  Select: "Bulk-In, Interface (Interface 0)"
+  Or: "RTL2832U" or "RTL2838UHIDIR"
+  Driver target: WinUSB
+  Click: Replace Driver
+
+This replaces the default driver with one that lets
+software stream raw IQ data. Without this step,
+rtl_tcp will not see the dongle.
+
+Do this once per dongle, per PC.
+
+## Step 3 — Run rtl_tcp.exe
+
+Double-click rtl_tcp.exe. You should see:
+  Found 1 device(s)
+  Found Realtek RTL2832U ...
+  Listening...
+
+Default: localhost:1234, 2.048 MSPS, auto gain.
+
+Custom options:
+  rtl_tcp.exe -f 144390000   Center at 144.39 MHz
+  rtl_tcp.exe -g 30          Manual gain 30 dB
+  rtl_tcp.exe -p 0           PPM correction 0
+
+## Step 4 — Open Squelch
+
+Squelch auto-detects rtl_tcp on localhost:1234.
+The SDR tab shows the waterfall immediately.
+
+If Squelch was open when you started rtl_tcp,
+close and reopen the SDR tab, or restart Squelch.
+
+## Supported Features via rtl_tcp
+
+  ✅ Waterfall display and spectrum
+  ✅ Frequency tuning and gain control
+  ✅ PPM correction
+  ✅ IQ recording and playback
+  ✅ Route to Digital Monitor (P25/DMR)
+
+  ⚠ Scanner requires manual rtl_tcp restart to change freq
+     (SoapySDR/PothosSDR path supports seamless scanning)
+
+## Upgrading to Full SoapySDR Later
+
+When you want more features (USRP, HackRF, scanner):
+
+  1. Install PothosSDR: downloads.myriadrf.org/builds/PothosSDR/
+  2. Reboot
+  3. pip install soapysdr
+  4. Squelch automatically uses SoapySDR instead of rtl_tcp
+
+No settings to change — Squelch prefers SoapySDR when available.
+
+## Troubleshooting
+
+  "No devices found" in rtl_tcp.exe:
+    Zadig driver not installed, or wrong device selected.
+    Unplug/replug dongle and try again.
+
+  Squelch doesn't detect rtl_tcp:
+    Make sure rtl_tcp.exe is running BEFORE opening the SDR tab.
+    Check Windows Firewall isn't blocking localhost:1234.
+
+  Waterfall but no signal:
+    Try gain: rtl_tcp.exe -g 40
+    Or enable AGC: rtl_tcp.exe -g 0 -E agc
 """),
 
     ("SDR Setup", "SDR",
@@ -805,17 +1294,17 @@ class HelpTab(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("🔍 Search help…")
         self._search.setStyleSheet(
-            "background:#141414;color:#aaa;"
+            "background:#141414;"
             "border:1px solid #1a1a1a;border-radius:3px;"
-            "padding:4px 8px;font-size:13px;")
+            "padding:4px 8px;")
         self._search.textChanged.connect(self._do_search)
         lay.addWidget(self._search)
 
         # Article list
         self._list = QListWidget()
         self._list.setStyleSheet(
-            "QListWidget{background:#0a0a0a;color:#aaa;"
-            "border:none;font-size:13px;}"
+            "QListWidget{background:#0a0a0a;"
+            "border:none;}"
             "QListWidget::item{padding:4px 6px;}"
             "QListWidget::item:selected{"
             "background:#1a3a1a;color:#3fbe6f;}"
@@ -837,8 +1326,8 @@ class HelpTab(QWidget):
         self._content = QTextEdit()
         self._content.setReadOnly(True)
         self._content.setStyleSheet(
-            "background:#0d0d0d;color:#bbb;"
-            "font-size:12px;font-family:'Segoe UI',sans-serif;"
+            "background:#0d0d0d;"
+            "font-family:'Segoe UI',sans-serif;"
             "border:none;padding:16px;line-height:1.5;")
         lay.addWidget(self._content, 1)
 
@@ -886,17 +1375,17 @@ class HelpTab(QWidget):
         html  = [
             "<style>"
             "body{font-family:'Segoe UI',sans-serif;"
-            "font-size:12px;color:#bbb;line-height:1.6;}"
-            "h1{color:#3fbe6f;font-size:18px;margin-bottom:4px;}"
-            "h2{color:#aaa;font-size:14px;margin-top:16px;}"
+            "line-height:1.6;}"
+            "h1{color:#3fbe6f;margin-bottom:4px;}"
+            "h2{margin-top:16px;}"
             "code{background:#141414;color:#44aaff;"
             "font-family:'Courier New';padding:1px 4px;}"
-            "pre{background:#141414;color:#aaa;"
-            "font-family:'Courier New';font-size:13px;"
+            "pre{background:#141414;"
+            "font-family:'Courier New';"
             "padding:10px;border-left:3px solid #3fbe6f;}"
             "p{margin:4px 0;}"
             "</style>"
-            f"<p style='color:#555;font-size:12px'>"
+            f"<p style=''>"
             f"{cat}</p>"
         ]
         in_pre = False
@@ -951,11 +1440,11 @@ class HelpTab(QWidget):
     def _show_welcome(self):
         self._content.setHtml("""
 <style>
-body{font-family:'Segoe UI';color:#bbb;font-size:12px;
+body{font-family:'Segoe UI';
      line-height:1.6;}
-h1{color:#3fbe6f;font-size:20px;}
-h2{color:#aaa;font-size:14px;margin-top:16px;}
-.cat{color:#3fbe6f;font-size:13px;}
+h1{color:#3fbe6f;}
+h2{margin-top:16px;}
+.cat{color:#3fbe6f;}
 </style>
 <h1>Squelch Help</h1>
 <p>Select a topic from the left, or search for what you need.</p>
@@ -973,7 +1462,7 @@ Gray Line &nbsp;|&nbsp; EmComm / ARES
 Keyboard Shortcuts
 </p>
 <br>
-<p style='color:#555;font-size:13px;'>
+<p style=''>
 Squelch v0.7.1-alpha &nbsp;|&nbsp;
 github.com/dawardy/squelch &nbsp;|&nbsp;
 GPL v3
@@ -991,8 +1480,16 @@ GPL v3
         for title, cat, content in HELP_ARTICLES:
             key = f"{cat}/{title}"
             idx = _SEARCH_INDEX.get(key, [])
-            score = sum(
-                1 for w in words if w in idx)
+            # Substring match so "ic" finds "IC-7100", "ic-7300", etc.
+            # A query word scores if it appears anywhere in any indexed token,
+            # with a bonus for matching the title.
+            title_l = title.lower()
+            score = 0
+            for w in words:
+                if any(w in tok for tok in idx):
+                    score += 1
+                if w in title_l:
+                    score += 2   # title hits rank higher
             if score > 0:
                 results.append((score, title, cat, content))
 

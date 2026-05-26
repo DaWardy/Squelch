@@ -8,7 +8,6 @@ Signal sink blocks: audio out, file, waterfall display, null.
 """
 
 import logging
-import time
 from pathlib import Path
 from typing import Callable
 
@@ -269,4 +268,5 @@ class NullSink(SinkBlock):
         return True
 
     def consume(self, inputs: dict):
-        pass   # intentionally discard
+        # NullSink discards all input - this is intentional
+        return

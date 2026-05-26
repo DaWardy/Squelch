@@ -12,12 +12,11 @@ PSKReporter API:
   https://pskreporter.info/pskdev.html
   UDP port 14739 or HTTPS POST
 """
+from core.constants import APP_VERSION
 
 import logging
 import threading
 import time
-import socket
-import struct
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -203,7 +202,7 @@ class PSKReporter:
             f'callsign="{_xml_escape(cs)}" '
             f'locator="{_xml_escape(grid[:6])}" '
             f'programId="Squelch" '
-            f'version="0.9.0"/>',
+            f'version="{APP_VERSION.split("-")[0]}"/>',
         ]
 
         for spot in spots:

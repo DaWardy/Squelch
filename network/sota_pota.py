@@ -3,6 +3,7 @@ from __future__ import annotations
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 """
+from core.constants import APP_VERSION
 Squelch -- network/sota_pota.py
 SOTA (Summits on the Air) and POTA (Parks on the Air)
 spot alerts for portable operation.

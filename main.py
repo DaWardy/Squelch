@@ -34,6 +34,8 @@ import logging
 import argparse
 from pathlib import Path
 from core.config import LOG_DIR
+from core.constants import APP_VERSION
+from core.netlog import set_log_path as _set_netlog_path
 from typing import Optional, Callable, List, Dict, Tuple  # safety net for module imports
 
 os.chdir(Path(__file__).parent)
@@ -66,7 +68,161 @@ def parse_args():
     return p.parse_args()
 
 
+
+def _fix_combo_sizing(window):
+    """Make every dropdown size to its content so labels aren't clipped.
+    Several combos had fixed widths narrower than their text (user report)."""
+    from PyQt6.QtWidgets import QComboBox
+    for combo in window.findChildren(QComboBox):
+        try:
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToContents)
+            fm = combo.fontMetrics()
+            longest = 0
+            for i in range(combo.count()):
+                longest = max(longest,
+                              fm.horizontalAdvance(combo.itemText(i)))
+            if longest:
+                combo.view().setMinimumWidth(longest + 40)
+                want = min(longest + 30, 240)
+                if combo.minimumWidth() < want:
+                    combo.setMinimumWidth(want)
+        except Exception:
+            pass
+
+
+def _make_text_selectable(window):
+    """Make all QLabels selectable and all tables Ctrl+C copyable.
+    Users expect to copy text from any view (callsigns, frequencies, etc)."""
+    from PyQt6.QtWidgets import QLabel, QTableWidget, QTreeWidget, QApplication
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QKeySequence, QShortcut
+
+    # Make every QLabel selectable
+    for lbl in window.findChildren(QLabel):
+        try:
+            lbl.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse |
+                Qt.TextInteractionFlag.TextSelectableByKeyboard)
+        except Exception:
+            pass
+
+    # Qt can't drag-select across separate label widgets (title vs body are
+    # different QLabels). For troubleshooting, give every label a right-click
+    # "Copy section text" that grabs ALL label text in its surrounding panel
+    # at once — so the whole block can be pasted in one go.
+    def _copy_section(lbl):
+        try:
+            # Walk up to a meaningful container (group box / panel / tab)
+            container = lbl.parentWidget()
+            for _ in range(4):
+                if container is None:
+                    break
+                nxt = container.parentWidget()
+                if nxt is None:
+                    break
+                container = nxt
+            root = container or lbl
+            texts = []
+            for sub in root.findChildren(QLabel):
+                if sub.isVisible():
+                    t = sub.text().strip()
+                    if t:
+                        texts.append(t)
+            if texts:
+                QApplication.clipboard().setText("\n".join(texts))
+        except Exception:
+            pass
+
+    def _install_label_menu(lbl):
+        from PyQt6.QtWidgets import QMenu
+        def _show_menu(pos, _lbl=lbl):
+            menu = QMenu(_lbl)
+            act_sel = menu.addAction("Copy selected text")
+            act_sec = menu.addAction("Copy section text (all of this panel)")
+            chosen = menu.exec(_lbl.mapToGlobal(pos))
+            if chosen == act_sel:
+                sel = _lbl.selectedText()
+                if sel:
+                    QApplication.clipboard().setText(sel)
+            elif chosen == act_sec:
+                _copy_section(_lbl)
+        lbl.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        lbl.customContextMenuRequested.connect(_show_menu)
+
+    for lbl in window.findChildren(QLabel):
+        try:
+            _install_label_menu(lbl)
+        except Exception:
+            pass
+
+    # Add Ctrl+C copy to every table and tree
+    def _copy_selection(table):
+        try:
+            sel = table.selectedItems()
+            if not sel:
+                return
+            # Group by row
+            rows = {}
+            for item in sel:
+                rows.setdefault(item.row(), []).append(item.text())
+            text = "\n".join("\t".join(rows[r]) for r in sorted(rows))
+            QApplication.clipboard().setText(text)
+        except Exception:
+            pass
+
+    for table in window.findChildren(QTableWidget):
+        sc = QShortcut(QKeySequence.StandardKey.Copy, table)
+        sc.activated.connect(lambda t=table: _copy_selection(t))
+
+
+def _wiring_smoke_test(window):
+    """Verify critical wiring at startup. Catches regressions early.
+    These are bugs that have shown up multiple times during development."""
+    import logging
+    log = logging.getLogger(__name__)
+    issues = []
+
+    # 1. Location signals must be connected (grid stuck on "Searching...")
+    try:
+        if hasattr(window, "_location_found"):
+            sig = window._location_found
+            # Check the signal has at least one connected slot
+            try:
+                # PyQt6 receiver count
+                n = window.receivers(sig)
+                if n == 0:
+                    issues.append(
+                        "_location_found signal has no connected slots - "
+                        "grid search will hang at 'Searching...'")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 2. Settings dialog can be opened (stale-dialog crash)
+    if not hasattr(window, "_open_settings"):
+        issues.append("_open_settings method missing")
+
+    # 3. Critical tabs exist
+    if hasattr(window, "tabs"):
+        n_tabs = window.tabs.count()
+        if n_tabs < 5:
+            issues.append(f"Only {n_tabs} tabs loaded — expected 8+")
+
+    for issue in issues:
+        log.warning(f"STARTUP CHECK: {issue}")
+
+    return len(issues) == 0
+
+
 def main():
+    from core.config import LOG_DIR as _LD
+    try:
+        _set_netlog_path(_LD / "network.log")
+    except Exception:
+        pass
     args = parse_args()
     setup_logging(args.debug)
     # Apply log level from config if not in debug mode
@@ -100,8 +256,32 @@ def main():
         pass
 
     app = QApplication(sys.argv)
+    # Application icon (taskbar, window, alt-tab)
+    try:
+        from PyQt6.QtGui import QIcon
+        from pathlib import Path as _P
+        # Use .ico on Windows (multi-resolution) for best taskbar quality;
+        # fall back to .png on Linux/macOS.
+        _ico = _P(__file__).parent / "assets" / "squelch.ico"
+        _png = _P(__file__).parent / "assets" / "squelch.png"
+        _icon_path = _ico if _ico.exists() else _png
+        if _icon_path.exists():
+            app.setWindowIcon(QIcon(str(_icon_path)))
+    except Exception:
+        pass
     app.setApplicationName("Squelch")
-    app.setApplicationVersion("0.9.0-alpha")
+    app.setApplicationVersion(APP_VERSION)
+
+    # Windows taskbar icon fix: set the AppUserModelID so Windows groups and
+    # shows our icon correctly rather than the generic Python/document icon.
+    # Must be called before any window is shown. (P2 — guarded to Windows only)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                f"dawardy.squelch.{APP_VERSION}")
+        except Exception:
+            pass
 
     from core.config   import Config
     from core.safety   import get_safety
@@ -127,7 +307,10 @@ def main():
 
     from ui.main_window import MainWindow
     window = MainWindow(config, rig, location)
+    _wiring_smoke_test(window)
     window.show()
+    _make_text_selectable(window)
+    _fix_combo_sizing(window)
     window.raise_()
     window.activateWindow()
     log.info("Window ready")

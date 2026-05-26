@@ -28,7 +28,6 @@ Shows roadmap info and what is coming.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame
 )
-from PyQt6.QtCore import Qt
 
 TAB_INFO = {
     "digital": {
@@ -107,14 +106,14 @@ class StubTab(QWidget):
             self._label.split("  ")[-1].strip())
         title = QLabel(f"<b>{title_text}</b>")
         title.setStyleSheet(
-            "color:#3fbe6f;font-size:16px;")
+            "color:#3fbe6f;")
         cl.addWidget(title)
 
         if info.get("desc"):
             desc = QLabel(info["desc"])
             desc.setWordWrap(True)
             desc.setStyleSheet(
-                "color:#888;font-size:12px;")
+                "")
             cl.addWidget(desc)
 
         if info.get("coming"):
@@ -128,7 +127,7 @@ class StubTab(QWidget):
                 f"Coming in {info['coming']}  "
                 f"— check ROADMAP.md for details.")
             coming.setStyleSheet(
-                "color:#555;font-size:13px;"
+                ""
                 "font-style:italic;")
             cl.addWidget(coming)
 
@@ -137,13 +136,13 @@ class StubTab(QWidget):
             needs_lbl = QLabel(
                 "Required software:")
             needs_lbl.setStyleSheet(
-                "color:#666;font-size:13px;"
+                ""
                 "font-weight:bold;margin-top:8px;")
             cl.addWidget(needs_lbl)
             for item in needs:
                 il = QLabel(f"  • {item}")
                 il.setStyleSheet(
-                    "color:#555;font-size:12px;")
+                    "")
                 cl.addWidget(il)
 
         if tab_key and self._cfg:
@@ -151,7 +150,7 @@ class StubTab(QWidget):
                 "Use the launch bar above to "
                 "install or configure required software.")
             hint.setStyleSheet(
-                "color:#446644;font-size:12px;"
+                "color:#446644;"
                 "margin-top:12px;")
             cl.addWidget(hint)
 

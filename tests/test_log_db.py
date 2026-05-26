@@ -3,10 +3,6 @@ from __future__ import annotations
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
 # Squelch tests — core/log_db.py
-# Squelch — Amateur Radio Operations Platform
-# Copyright (C) 2026  github.com/dawardy/squelch
-# Licensed under GNU GPL v3 — see LICENSE
-
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

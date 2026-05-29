@@ -109,8 +109,8 @@ class Config:
                     log.info(
                         "config.json missing — "
                         "restored from config.example.json")
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f"Config migration restore failed: {e}")
             # If still missing, start with empty defaults
             # (first-run dialog will collect callsign/grid)
             if not self._path.exists():
@@ -248,8 +248,8 @@ class Config:
             try:
                 with open(EXAMPLE_PATH) as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f"Load example failed: {e}")
         return {}
 
     def __repr__(self):

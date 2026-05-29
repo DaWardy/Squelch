@@ -139,6 +139,77 @@ def print_av_reminder():
 
 # ── Step 1: Python info ───────────────────────────────────────────────────
 
+def find_best_python() -> str:
+    """Return the best Python executable to use for the venv.
+
+    The user reported that running `python installer.py` with their newest
+    Python (3.14) created a 3.14 venv even though they had 3.12 installed
+    — and 3.14 lacks wheels for PyQtWebEngine, SoapySDR, etc.
+
+    This function actively probes for Python 3.11/3.12/3.13 (in that order
+    of preference, since 3.12 is currently the sweet spot for HAM-radio
+    package wheels) using:
+      • The Windows `py -X.Y` launcher
+      • Direct executables (`python3.12`, `python3.11`, etc.)
+
+    Falls back to `sys.executable` only if nothing better is found.
+    Returns the absolute path of the chosen interpreter.
+    """
+    PREFERRED = ("3.12", "3.11", "3.13")
+    candidates: list[str] = []
+
+    # Windows `py` launcher: `py -3.12 -c "import sys; print(sys.executable)"`
+    if sys.platform == "win32":
+        for ver in PREFERRED:
+            try:
+                r = subprocess.run(
+                    ["py", f"-{ver}", "-c",
+                     "import sys; print(sys.executable)"],
+                    capture_output=True, text=True, timeout=5)
+                if r.returncode == 0:
+                    path = r.stdout.strip()
+                    if path:
+                        candidates.append(path)
+                        info(f"Found Python {ver} via py launcher: {path}")
+            except Exception:
+                pass
+
+    # Direct executables — works on macOS, Linux, and Windows with PATH set
+    for ver in PREFERRED:
+        for name in (f"python{ver}", f"python{ver.replace('.', '')}"):
+            try:
+                r = subprocess.run(
+                    [name, "-c",
+                     "import sys; print(sys.executable)"],
+                    capture_output=True, text=True, timeout=5)
+                if r.returncode == 0:
+                    path = r.stdout.strip()
+                    if path and path not in candidates:
+                        candidates.append(path)
+                        info(f"Found {name}: {path}")
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+
+    if candidates:
+        chosen = candidates[0]
+        ver_info = sys.version_info
+        if (ver_info.major, ver_info.minor) != (3, 12):
+            info(f"Using {chosen} instead of "
+                 f"current interpreter (Python "
+                 f"{ver_info.major}.{ver_info.minor}) — better wheel "
+                 "availability for Squelch's dependencies.")
+        return chosen
+
+    # No preferred Python found — fall back to current interpreter
+    if sys.version_info >= (3, 14):
+        warn(f"No Python 3.11/3.12/3.13 found on system. Falling back to "
+             f"Python {sys.version_info.major}.{sys.version_info.minor}, "
+             "which may lack wheels for some dependencies (PyQtWebEngine, "
+             "SoapySDR). Consider installing Python 3.12 from "
+             "https://www.python.org/downloads/")
+    return sys.executable
+
+
 def check_python():
     hdr("[1/6] Python")
     ver = sys.version_info
@@ -150,7 +221,8 @@ def check_python():
         warn(f"Python {py_major}.{py_minor} is very new.")
         warn("PyQt6, SoapySDR, and other packages may not have wheels yet.")
         warn("Recommended: Python 3.11, 3.12, or 3.13 for best compatibility.")
-        warn("Download: https://www.python.org/downloads/")
+        warn("Installer will probe for an older Python on this system.")
+        warn("Download 3.12: https://www.python.org/downloads/release/python-3120/")
         print()
     elif (py_major, py_minor) < (3, 11):
         warn(f"Python {py_major}.{py_minor} is older than 3.11.")
@@ -167,9 +239,13 @@ def setup_venv():
     if VENV_DIR.exists() and VENV_PYTHON.exists():
         ok("Virtual environment exists.")
         return
-    info("Creating virtual environment...")
+    # Find the best Python on the system rather than blindly using
+    # sys.executable. User reported sys.executable was 3.14 even though
+    # 3.12 was installed.
+    venv_python = find_best_python()
+    info(f"Creating virtual environment with: {venv_python}")
     result = subprocess.run(
-        [sys.executable, "-m", "venv", str(VENV_DIR)],
+        [venv_python, "-m", "venv", str(VENV_DIR)],
         capture_output=True, text=True)
     if result.returncode != 0:
         err(f"Failed to create venv: {result.stderr}")

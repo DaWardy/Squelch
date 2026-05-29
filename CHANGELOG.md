@@ -8,6 +8,92 @@ Changes not yet in a tagged release.
 
 ---
 
+## [0.11.32-alpha] — 2026-05-29
+
+### Light theme — proper palette overhaul
+Replaced the pure-white-and-black light theme that the user described as
+needing to "calm down" with a coherent calmer palette inspired by GitHub
+Light and Atom One Light:
+- Backgrounds: warm off-whites (#fafbfc / #f1f3f5 / #e7ebef) instead of
+  pure #ffffff — easier on the eyes, doesn't feel harsh.
+- Text: dark blue-gray (#1f2328) instead of pure black — better contrast
+  ratio without the visual fatigue of true black on true white.
+- Accent green: muted (#1f7a3f) rather than the dark theme's bright
+  #3fbe6f — looks intentional on light backgrounds rather than fluorescent.
+- Borders: soft (#d0d7de) instead of harsh contrasty edges.
+
+The substitution pass (_apply_theme_fixes) was also extended:
+- Covers QTableWidget gridline-color and alternate-background-color
+- Substitutes light-text-on-dark colors that would be invisible on light
+- Sets pyqtgraph's background/foreground globals so the SDR spectrum
+  panel that was solid black in the user's screenshot now matches the
+  surrounding light theme.
+
+### Propagation side-view — better physics + better controls
+- Terrain now shows undulation, not a flat green strip. Deterministic
+  sum-of-sines (seeded by path distance) suggests mountains along the
+  great circle. Honestly labeled as "representative" — we don't have DEM
+  data, but a flat ground misrepresented HF propagation.
+- Banner now shows the full propagation envelope on a second line:
+  LUF (lower) + FOT (Frequency of Optimum Transmission, ≈ 0.85·MUF) +
+  MUF. Operators can see at a glance whether their target band sits in
+  the usable window.
+- New HAM-band filter dropdown next to the Go button — Auto / 160m /
+  80m / 60m / 40m / 30m / 20m / 17m / 15m / 12m / 10m / 6m. Picking a
+  band sets the side-view's TX freq to that band's center, so the user
+  can compare "what if I tried this on 20m vs 10m?" without retuning
+  the rig. "Auto" defers to the rig's actual frequency.
+
+### Fixed — installer used Python 3.14 even when 3.12 was installed
+The installer was using sys.executable (whatever Python ran
+`installer.py`) to create the venv. If the user had Python 3.14 ahead
+of 3.12 on PATH, the venv got 3.14 — and 3.14 lacks wheels for
+PyQtWebEngine and SoapySDR. New find_best_python() actively probes for
+Python 3.12 / 3.11 / 3.13 (in that preference order) via the Windows
+`py` launcher and direct `python3.X` executables, and uses the first
+match found. Falls back to sys.executable with a warning if nothing
+better is available. Tells the user which interpreter it chose.
+
+---
+
+## [0.11.31-alpha] — 2026-05-29
+
+### Added — RTL-TCP detection in the SDR device list
+When SoapySDR finds 0 devices but rtl_tcp is running locally on
+127.0.0.1:1234, the device dropdown now offers "RTL-TCP server" as a
+selectable device. Common case: an RTL-SDR dongle already claimed by an
+rtl_tcp server. Previously the Device combo stayed stuck on "Scanning…"
+with no way out. Click Connect on the RTL-TCP entry and it streams
+samples through the existing RTLTCPDevice client.
+
+### Added — Stations heard, pinned on the Map tab
+Every FT8 decode now pipes through MapTab.add_heard_station(), which
+resolves the station's grid square to lat/lon and pins it on the
+fallback world map as a green dot with the callsign labeled. The pin
+layer is generic — any source (FT8 today; PSKReporter, Winlink gateways,
+Local RF repeaters next) can call add_heard_station() and it appears.
+Updates are throttled (every 2 s) so a busy decode burst doesn't
+repaint the map per signal.
+
+### Fixed — SDR drivers tab cramped & checkboxes invisible in dark theme
+Settings → SDR Hardware tab now has:
+- 6px vertical breathing room around each driver row
+- 18×18 checkboxes with explicit white border + bright green fill when
+  checked (the default Qt dark checkbox was near-invisible)
+- Visible thin separator between rows
+- "✓ Select All" / "✗ Clear" buttons with prominent padded styling,
+  110/90 px wide so they're never partially hidden by layout
+- Word-wrap on the driver description lines
+
+### Changed — Local RF status messaging
+- Search button shows "Fetching…" (was "Searching…")
+- Status panel now names the actual data source being queried:
+  RepeaterBook (with token), RadioID.net (digital, free), or an
+  honest "no source — see error" when none is available
+- No more "Downloading from HearHam.com" since hearham is gone (v0.11.30)
+
+---
+
 ## [0.11.30-alpha] — 2026-05-29
 
 ### Fixed — path-to (Band Conditions) never showed results

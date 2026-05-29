@@ -367,6 +367,55 @@ class MapTab(QWidget):
                     5000,   # Batch updates every 5 seconds
                     self._refresh_aprs)
 
+    def add_heard_station(self, callsign: str, grid: str = "",
+                          lat: float = 0.0, lon: float = 0.0,
+                          source: str = "decode",
+                          freq_mhz: float = 0.0,
+                          snr_db: float = 0.0):
+        """Pin a station heard from any source (FT8 decode, PSKReporter
+        spot, Winlink gateway, Local RF repeater, etc.). Idempotent —
+        calling with the same callsign updates rather than duplicates."""
+        # Resolve grid to lat/lon if needed
+        if (not lat and not lon) and grid:
+            try:
+                from core.location import _grid_to_latlon
+                lat, lon = _grid_to_latlon(grid.upper())
+            except Exception:
+                return
+        if not lat and not lon:
+            return     # nothing to plot
+        if not hasattr(self, '_heard_stations'):
+            self._heard_stations = {}
+        import time
+        self._heard_stations[callsign.upper()] = {
+            "callsign": callsign.upper(),
+            "grid":     grid.upper(),
+            "lat":      lat,
+            "lon":      lon,
+            "source":   source,
+            "freq_mhz": freq_mhz,
+            "snr_db":   snr_db,
+            "ts":       time.time(),
+        }
+        # Throttled refresh — same pattern as APRS
+        if not getattr(self, "_heard_refresh_pending", False):
+            self._heard_refresh_pending = True
+            QTimer.singleShot(2000, self._refresh_heard)
+
+    def _refresh_heard(self):
+        """Apply pending heard-station updates to the active map view."""
+        self._heard_refresh_pending = False
+        try:
+            if hasattr(self, "_fallback_map") and self._fallback_map:
+                self._fallback_map.set_heard_stations(
+                    getattr(self, "_heard_stations", {}))
+                self._fallback_map.update()
+            else:
+                # WebEngine path — refresh via the existing refresh hook
+                self._refresh_map()
+        except Exception:
+            pass
+
     # ── Fallback map (no WebEngine) ──────────────────────────────────────
 
     def _refresh_fallback_map(self):

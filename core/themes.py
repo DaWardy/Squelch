@@ -74,26 +74,32 @@ DARK = Theme(
 )
 
 LIGHT = Theme(
+    # Calmer light theme inspired by GitHub Light & Atom One Light. The
+    # previous palette used pure white #ffffff backgrounds which made the
+    # interface feel harsh; the user described it as needing to "calm down."
+    # This version uses warm off-whites and a muted dark blue-gray for text,
+    # softer borders, and a gentler accent green that doesn't fight the
+    # background.
     name            = "Light",
-    bg_primary      = "#f5f5f5",
-    bg_secondary    = "#ffffff",
-    bg_tertiary     = "#eeeeee",
-    bg_alt          = "#f9f9f9",
-    fg_primary      = "#1a1a1a",
-    fg_secondary    = "#555555",
-    fg_muted        = "#aaaaaa",
-    accent          = "#1a7a3f",
-    accent_alt      = "#1a5aaa",
-    border          = "#cccccc",
-    border_focus    = "#1a7a3f",
-    tx_color        = "#cc2222",
-    warn_color      = "#cc8800",
-    error_color     = "#cc2222",
-    tab_bg          = "#e0e0e0",
-    tab_selected_bg = "#ffffff",
-    header_bg       = "#e8e8e8",
-    meter_bg        = "#dddddd",
-    tooltip_bg      = "#ffffcc",
+    bg_primary      = "#fafbfc",   # main bg — very light gray, not pure white
+    bg_secondary    = "#f1f3f5",   # panel bg — subtle depression
+    bg_tertiary     = "#e7ebef",   # input bg — slightly deeper
+    bg_alt          = "#eef1f4",   # alt rows
+    fg_primary      = "#1f2328",   # text — dark blue-gray, not pure black
+    fg_secondary    = "#57606a",   # muted text
+    fg_muted        = "#8c959f",   # very muted
+    accent          = "#1f7a3f",   # green — muted from the dark theme's #3fbe6f
+    accent_alt      = "#0969da",   # GitHub-style blue for links/secondary
+    border          = "#d0d7de",   # soft borders
+    border_focus    = "#1f7a3f",
+    tx_color        = "#cf222e",   # error/TX red
+    warn_color      = "#9a6700",   # warm amber
+    error_color     = "#cf222e",
+    tab_bg          = "#e7ebef",
+    tab_selected_bg = "#fafbfc",
+    header_bg       = "#e7ebef",
+    meter_bg        = "#d8dce0",
+    tooltip_bg      = "#fff8c5",   # soft yellow
 )
 
 HIGH_CONTRAST = Theme(

@@ -108,6 +108,27 @@ class WorldMapWidget(QWidget):
         self._dx_spots = spots
         self.update()
 
+    def _draw_heard(self, p, w: int, h: int):
+        """Draw stations heard from FT8/decodes/etc as green dots."""
+        for sta in getattr(self, '_heard_stations', {}).values():
+            lat = sta.get('lat', 0.0); lon = sta.get('lon', 0.0)
+            if not lat and not lon: continue
+            x, y = self._latlon_to_xy(lat, lon, w, h)
+            # Bright green dot for heard stations — distinct from APRS
+            # (orange diamonds) and DX cluster (pink dots).
+            p.setPen(QPen(QColor('#3fbe6f'), 2))
+            p.setBrush(QBrush(QColor('#1a7a3f')))
+            p.drawEllipse(int(x)-5, int(y)-5, 10, 10)
+            # Callsign label
+            p.setPen(QPen(QColor('#7fdf9f'), 1))
+            p.setFont(QFont('Courier New', 8))
+            p.drawText(int(x)+8, int(y)+4, sta.get('callsign', '')[:8])
+
+    def set_heard_stations(self, stations_dict: dict):
+        """Update the heard-stations pin layer."""
+        self._heard_stations = stations_dict
+        self.update()
+
     def set_satellite_positions(self, sats: list):
         """Update satellite positions for display."""
         self._satellites = sats
@@ -156,6 +177,7 @@ class WorldMapWidget(QWidget):
             self._draw_satellites(p, w, h)
         self._draw_aprs(p, w, h)
         self._draw_dx_spots(p, w, h)
+        self._draw_heard(p, w, h)
 
         # Status text shown in the _gl_bar QLabel below the canvas
 

@@ -404,12 +404,21 @@ class LocalRFTab(QWidget):
         mode   = "" if mode == "All" else mode
 
         self._search_btn.setEnabled(False)
-        self._search_btn.setText("Searching…")
+        self._search_btn.setText("Fetching…")
         self._no_results.hide()
         self._table.setRowCount(0)
+        # Honest status — hearham is gone, RB needs token, RadioID covers
+        # digital. Tell the user what's actually happening.
+        from network.repeaterbook import _rb_token
+        has_tok = bool(_rb_token())
+        if has_tok:
+            src = "RepeaterBook"
+        elif mode.lower() in ("dmr", "p25", "nxdn", "d-star"):
+            src = "RadioID.net (free, no token)"
+        else:
+            src = "no source — see error for guidance"
         self._status_lbl.setText(
-            f"Downloading repeater data from HearHam.com "
-            f"(may take 15–30s)… then filtering within "
+            f"Fetching from {src}… filtering within "
             f"{self._radius.value():.0f}{distance_suffix(self.cfg)}")
         self._loc_lbl.setText(
             f"Location: {lat:.4f}, {lon:.4f}")

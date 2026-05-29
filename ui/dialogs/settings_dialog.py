@@ -692,21 +692,52 @@ class SettingsDialog(QDialog):
 
         for pkg, label, note in DRIVERS:
             row = QVBoxLayout()
-            row.setSpacing(2)
+            row.setSpacing(4)
+            row.setContentsMargins(0, 6, 0, 6)   # vertical breathing room
             cb = QCheckBox(label)
-            cb.setStyleSheet("font-weight:bold;")
+            # Explicit, visible checkbox styling — the default in some dark
+            # themes is near-invisible. White border + bright fill when
+            # checked makes the state obvious.
+            cb.setStyleSheet(
+                "QCheckBox{font-weight:bold;font-size:13px;"
+                "spacing:8px;padding:2px 0;}"
+                "QCheckBox::indicator{width:18px;height:18px;"
+                "border:2px solid #888;border-radius:3px;"
+                "background:#1a1a1a;}"
+                "QCheckBox::indicator:hover{border-color:#3fbe6f;}"
+                "QCheckBox::indicator:checked{background:#3fbe6f;"
+                "border-color:#3fbe6f;}"
+                "QCheckBox::indicator:disabled{background:#2a2a2a;"
+                "border-color:#444;}")
             self._sdr_checks[pkg] = cb
             row.addWidget(cb)
-            nl = QLabel("    " + note)
-            nl.setStyleSheet("")
+            nl = QLabel("        " + note)
+            nl.setWordWrap(True)
+            nl.setStyleSheet("color:#aaaaaa;font-size:11px;")
             row.addWidget(nl)
             gl.addLayout(row)
+            # Visible separator between rows
+            from PyQt6.QtWidgets import QFrame
+            sep = QFrame()
+            sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setStyleSheet("color:#333;max-height:1px;")
+            gl.addWidget(sep)
 
         sel_row = QHBoxLayout()
-        b_all  = QPushButton("Select All")
-        b_none = QPushButton("Clear")
-        b_all.setFixedWidth(90)
-        b_none.setFixedWidth(70)
+        sel_row.setContentsMargins(0, 6, 0, 0)
+        b_all  = QPushButton("✓ Select All")
+        b_none = QPushButton("✗ Clear")
+        # Prominent enough to be obvious; user reported "Select All" was
+        # partially hidden in the previous layout.
+        sel_btn_style = (
+            "QPushButton{padding:6px 14px;font-weight:bold;"
+            "border:1px solid #555;border-radius:3px;"
+            "background:#2a2a2a;color:#ddd;}"
+            "QPushButton:hover{background:#3a3a3a;border-color:#3fbe6f;}")
+        b_all.setStyleSheet(sel_btn_style)
+        b_none.setStyleSheet(sel_btn_style)
+        b_all.setMinimumWidth(110)
+        b_none.setMinimumWidth(90)
         b_all.clicked.connect(
             lambda: [c.setChecked(True)
                      for c in self._sdr_checks.values()])

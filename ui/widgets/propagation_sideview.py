@@ -123,29 +123,59 @@ class PropagationSideView(QWidget):
         # Scale so a typical HF path's bulge fits in ~10% of the plot
         bulge_px = min(H * 0.10, sagitta / 50.0 * H * 0.10)
 
-        # ── Draw Earth surface (curved ground) ────────────────────────
+        # ── Draw Earth surface with terrain undulation ────────────────
+        # Generate a deterministic "representative" elevation profile
+        # along the great circle. We don't have real terrain data so we
+        # use a small sum-of-sines based on the path distance, seeded by
+        # int(path) so the same path gives the same mountains. The result
+        # *suggests* mountains without claiming to be DEM-accurate.
+        import math
+        terrain_pts = []
+        n_samples = 60
+        max_terrain_px = max(8, int(H * 0.06))   # max peak height
+        seed = int(path) % 997
+        for i in range(n_samples + 1):
+            t = i / n_samples
+            # Three offset sines for variety; phase-shifted by seed
+            elev = (
+                0.55 * math.sin(t * 7.3 + seed * 0.13) +
+                0.30 * math.sin(t * 19.1 + seed * 0.27) +
+                0.15 * math.sin(t * 41.7 + seed * 0.41))
+            # Force endpoints to baseline so they meet TX/RX masts cleanly
+            taper = min(1.0, 4 * t * (1 - t))
+            elev *= taper
+            terrain_pts.append(elev)
+
+        # Build ground polygon: combine earth-bulge curve + terrain bumps
         ground_path = QPainterPath()
         ground_path.moveTo(x0, ground)
-        # Quadratic curve dipping toward middle
-        ground_path.quadTo(
-            (x0 + x1) / 2, ground + bulge_px,
-            x1, ground)
+        for i in range(n_samples + 1):
+            t = i / n_samples
+            px = x0 + t * plot_w
+            bulge = bulge_px * 4 * t * (1 - t)   # max at midpoint
+            terrain = terrain_pts[i] * max_terrain_px
+            py = ground + bulge - terrain
+            ground_path.lineTo(px, py)
         ground_path.lineTo(x1, H)
         ground_path.lineTo(x0, H)
         ground_path.closeSubpath()
 
-        ground_grad = QLinearGradient(0, ground, 0, H)
-        ground_grad.setColorAt(0.0, QColor("#3a5028"))
+        ground_grad = QLinearGradient(0, ground - max_terrain_px, 0, H)
+        ground_grad.setColorAt(0.0, QColor("#4a6038"))
+        ground_grad.setColorAt(0.3, QColor("#3a5028"))
         ground_grad.setColorAt(1.0, QColor("#1a2810"))
         p.fillPath(ground_path, QBrush(ground_grad))
 
-        # Surface line
-        p.setPen(QPen(QColor("#4a6030"), 2))
+        # Surface outline (mountains visible against sky)
+        p.setPen(QPen(QColor("#5a7038"), 2))
         surface = QPainterPath()
         surface.moveTo(x0, ground)
-        surface.quadTo(
-            (x0 + x1) / 2, ground + bulge_px,
-            x1, ground)
+        for i in range(n_samples + 1):
+            t = i / n_samples
+            px = x0 + t * plot_w
+            bulge = bulge_px * 4 * t * (1 - t)
+            terrain = terrain_pts[i] * max_terrain_px
+            surface.lineTo(px, ground + bulge - terrain)
         p.drawPath(surface)
 
         # ── Ionosphere F-layer band ───────────────────────────────────
@@ -268,16 +298,26 @@ class PropagationSideView(QWidget):
             msg = ("Set an operating frequency in Rig tab "
                    "to see propagation mode")
 
-        # ── Top-banner labels ─────────────────────────────────────────
+        # ── Top-banner labels (two lines) ─────────────────────────────
         p.setPen(QColor("#cccccc"))
         p.setFont(QFont("", 9))
         title = (f"{self._target or 'Path'}  •  "
                  f"{self._path_km:,.0f} km")
         if self._freq_mhz > 0:
             title += f"  •  TX {self._freq_mhz:.3f} MHz"
-        if self._muf_mhz > 0:
-            title += f"  •  MUF {self._muf_mhz:.1f} MHz"
         p.drawText(x0, top + 12, title)
+
+        # Second line: propagation envelope (LUF / FOT / MUF). FOT
+        # (Frequency of Optimum Transmission) is the practical sweet
+        # spot — conventionally 0.85 × MUF for daytime F2 paths.
+        if self._muf_mhz > 0:
+            fot = 0.85 * self._muf_mhz
+            envelope = (
+                f"LUF {self._luf_mhz:.1f}  •  "
+                f"FOT {fot:.1f}  •  "
+                f"MUF {self._muf_mhz:.1f} MHz")
+            p.setPen(QColor("#9fb8d4"))
+            p.drawText(x0, top + 26, envelope)
 
         # ── Mode message at the bottom ────────────────────────────────
         if msg:

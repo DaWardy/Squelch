@@ -164,6 +164,10 @@ class SDRTab(QWidget):
         self._player    = IQPlayer()
         self._devices:  list[SDRDevice] = []
         self._current:  SDRDevice = None
+        # Lazily-initialized RTL-TCP client (used when SoapySDR returns no
+        # devices but rtl_tcp is running locally — common when the dongle
+        # is already claimed by an rtl_tcp server).
+        self._rtltcp_dev = None
 
         # Spectrum state
         self._center_hz  = 100_000_000
@@ -1120,6 +1124,19 @@ class SDRTab(QWidget):
     def _populate_devices(self, devices: list[SDRDevice]):
         self._devices = devices
         self._dev_combo.clear()
+        # If SoapySDR returned no devices but rtl_tcp is running locally,
+        # expose it as a selectable virtual device. This is the common
+        # case where the user has an RTL-SDR but it's already claimed by
+        # rtl_tcp (so SoapySDR can't see it).
+        if not devices and rtltcp_is_running():
+            self._dev_combo.addItem(
+                self.tr("RTL-TCP server  (127.0.0.1:1234)"))
+            # Sentinel: store None marker so _connect_sdr knows to use rtl_tcp
+            self._devices = [None]
+            self._dev_combo.setCurrentIndex(0)
+            log.info("SDR: SoapySDR found 0 devices, rtl_tcp is running "
+                     "— offered RTL-TCP server as device")
+            return
         if not devices:
             self._dev_combo.addItem(
                 self.tr("No SDR devices found"))
@@ -1900,6 +1917,28 @@ class SDRTab(QWidget):
         dev = self._devices[idx]
         self._connect_btn.setEnabled(False)
         self._connect_btn.setText(self.tr("Connecting…"))
+
+        # Sentinel from _populate_devices: connect to the local rtl_tcp
+        # server instead of opening a SoapySDR device.
+        if dev is None:
+            def _do_rtltcp():
+                ok = False
+                try:
+                    if not self._rtltcp_dev:
+                        self._rtltcp_dev = RTLTCPDevice()
+                    if self._rtltcp_dev.open():
+                        self._rtltcp_dev.on_samples(self._on_samples)
+                        self._rtltcp_dev.start_rx()
+                        ok = True
+                except Exception as e:
+                    log.error(f"RTL-TCP connect failed: {e}")
+                from types import SimpleNamespace
+                fake = SimpleNamespace(
+                    display_name="RTL-TCP @ 127.0.0.1:1234")
+                QTimer.singleShot(0,
+                    lambda o=ok, d=fake: self._on_connected(o, d))
+            threading.Thread(target=_do_rtltcp, daemon=True).start()
+            return
 
         def _do():
             ok = self._manager.open(dev)

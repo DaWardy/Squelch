@@ -1004,6 +1004,22 @@ class ModesTab(QWidget):
 
     def _on_ft8_decode(self, decode: DecodedSignal):
         QTimer.singleShot(0, lambda d=decode: self._add_decode(d))
+        # Also pin the heard station on the Map tab (if we can resolve its
+        # location from the grid). Best-effort — never block decode display.
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, "_tab_map"):
+                map_tab = mw._tab_map.get("map")
+                if map_tab and hasattr(map_tab, "add_heard_station"):
+                    QTimer.singleShot(0, lambda d=decode: (
+                        map_tab.add_heard_station(
+                            callsign=d.callsign,
+                            grid=getattr(d, "grid", ""),
+                            source="FT8",
+                            freq_mhz=getattr(d, "freq_hz", 0) / 1e6,
+                            snr_db=getattr(d, "snr", 0))))
+        except Exception:
+            pass
 
     def _on_seq_state(self, state: AutoSeqState, detail: str = ""):
         QTimer.singleShot(0, lambda s=state: self._apply_state(s))

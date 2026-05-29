@@ -100,36 +100,58 @@ def _apply_theme_fixes(window, theme_name: str):
     from PyQt6.QtWidgets import QWidget
 
     if theme_name == "Light":
-        # Map dark hex → light-theme semantic equivalents
+        # Map dark hex → light-theme semantic equivalents. The palette here
+        # mirrors the LIGHT Theme dataclass in core/themes.py — calmer
+        # off-white instead of pure white to match what the global QSS does.
         SUBS = [
-            # Very dark backgrounds → light grey
+            # Very dark backgrounds (#000000-#14ffff) → light panel
             (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
                          _re.I), "background:{t_bg}"),
-            # Mid-dark backgrounds (#15-#2f) → lighter grey
+            # Mid-dark backgrounds (#15-#2f) → slightly deeper panel
             (_re.compile(r"background\s*:\s*#(?:1[5-9a-fA-F][0-9a-fA-F]{4}"
                          r"|2[0-9a-fA-F]{5})", _re.I), "background:{t_bg2}"),
-            # Dark green tinted backgrounds → light green tint
+            # Dark green tinted backgrounds → soft green tint
             (_re.compile(r"background\s*:\s*#(?:0a1a0a|1a2a1a|1a3a1a|1e2e1e|"
-                         r"0d2a0d|0a2a1a|1a4a1a)", _re.I), "background:{t_acc_bg}"),
+                         r"0d2a0d|0a2a1a|1a4a1a|143a14)", _re.I),
+             "background:{t_acc_bg}"),
             # Dark red tint → light red tint
-            (_re.compile(r"background\s*:\s*#(?:1a0808|2a0808|0a0000)", _re.I),
-             "background:{t_err_bg}"),
-            # Bright accent green on dark → darker accent green
+            (_re.compile(r"background\s*:\s*#(?:1a0808|2a0808|0a0000|3a0808)",
+                         _re.I), "background:{t_err_bg}"),
+            # Bright accent green text → muted dark green
             (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:{t_acc}"),
-            # Dark border colors
-            (_re.compile(r"border(?:-[a-z]+)?\s*:\s*1px solid #(?:1a1a1a|111|222|333)",
-                         _re.I), "border:1px solid {t_border}"),
+            # Console / waterfall text that was bright-green-on-black
+            # — keep it readable on light by darkening
+            (_re.compile(r"color\s*:\s*#(?:7fdf9f|66ff66|44dd44)", _re.I),
+             "color:{t_acc}"),
+            # Dark borders
+            (_re.compile(r"border(?:-[a-z]+)?\s*:\s*1px solid "
+                         r"#(?:1a1a1a|111|222|333|0a0a0a|141414)", _re.I),
+             "border:1px solid {t_border}"),
+            # Light text that was readable on dark but now invisible on light
+            (_re.compile(r"color\s*:\s*#(?:ffffff|f0f0f0|e0e0e0|dddddd|cccccc)",
+                         _re.I), "color:{t_fg}"),
+            # gridline-color used by QTableWidget — was #1a1a1a (dark line on
+            # dark bg, visible). On light bg, that's a hard black line.
+            (_re.compile(r"gridline-color\s*:\s*#(?:0[0-9a-fA-F]{5}|"
+                         r"1[0-9a-fA-F]{5}|2[0-9a-fA-F]{5})", _re.I),
+             "gridline-color:{t_border}"),
+            # alternate-background-color (table zebra stripes)
+            (_re.compile(r"alternate-background-color\s*:\s*#(?:1[0-9a-fA-F]{5}"
+                         r"|0[0-9a-fA-F]{5})", _re.I),
+             "alternate-background-color:{t_bg_alt}"),
         ]
         vals = {
-            "t_bg":      "#f0f0f0",
-            "t_bg2":     "#e4e4e4",
-            "t_acc_bg":  "#e0f0e0",
-            "t_err_bg":  "#fce8e8",
-            "t_acc":     "#1a7a3f",
-            "t_border":  "#cccccc",
+            "t_bg":      "#f1f3f5",     # matches LIGHT.bg_secondary
+            "t_bg2":     "#e7ebef",     # matches LIGHT.bg_tertiary
+            "t_bg_alt":  "#eef1f4",     # matches LIGHT.bg_alt
+            "t_acc_bg":  "#dcefe2",     # soft green tint
+            "t_err_bg":  "#ffebe9",     # soft red tint
+            "t_acc":     "#1f7a3f",     # matches LIGHT.accent
+            "t_border":  "#d0d7de",     # matches LIGHT.border
+            "t_fg":      "#1f2328",     # matches LIGHT.fg_primary
         }
     else:
-        return   # High Contrast uses dark already — skip
+        return   # High Contrast and Dark use dark already — skip
 
     def _fix_widget(w: QWidget):
         try:
@@ -146,6 +168,28 @@ def _apply_theme_fixes(window, theme_name: str):
 
     for w in window.findChildren(QWidget):
         _fix_widget(w)
+
+    # Also fix the pyqtgraph spectrum/waterfall background which uses its own
+    # API rather than QSS. The user saw the SDR spectrum panel as solid black
+    # even in light theme — that's pyqtgraph's default background.
+    try:
+        import pyqtgraph as pg
+        pg.setConfigOption("background", "#fafbfc")
+        pg.setConfigOption("foreground", "#1f2328")
+        # Re-apply to any existing plot widgets
+        from pyqtgraph import PlotWidget, GraphicsLayoutWidget
+        for w in window.findChildren(PlotWidget):
+            try:
+                w.setBackground("#fafbfc")
+            except Exception:
+                pass
+        for w in window.findChildren(GraphicsLayoutWidget):
+            try:
+                w.setBackground("#fafbfc")
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     # Expose as a module-level helper for panels built after startup
     import main as _main

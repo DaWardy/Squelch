@@ -110,12 +110,28 @@ class BandConditionsTab(QWidget):
 
         # Go button — user needs to see a clear "apply" affordance, not
         # just press Enter (which they may not realize works).
-        from PyQt6.QtWidgets import QPushButton
+        from PyQt6.QtWidgets import QPushButton, QComboBox
         self._path_go = QPushButton("Go")
         self._path_go.setMaximumWidth(40)
         self._path_go.setToolTip("Calculate path-specific MUF/distance/bearing")
         self._path_go.clicked.connect(self._on_path_changed)
         hdr.addWidget(self._path_go)
+
+        # HAM-band quick filter — when set, the side-view uses the
+        # band's center frequency as the operator's TX freq, so the user
+        # can see how 80m vs 20m vs 10m behaves on the same path without
+        # tuning the rig. "Auto" defers to the rig's actual freq.
+        self._band_filter = QComboBox()
+        self._band_filter.addItems([
+            "Auto", "160m", "80m", "60m", "40m", "30m", "20m",
+            "17m", "15m", "12m", "10m", "6m"])
+        self._band_filter.setMaximumWidth(70)
+        self._band_filter.setToolTip(
+            "Try a specific HAM band for this path.\n"
+            "Auto uses the rig's current frequency.")
+        self._band_filter.currentTextChanged.connect(
+            lambda *_: self._on_path_changed())
+        hdr.addWidget(self._band_filter)
 
         hdr.addStretch()
 
@@ -731,10 +747,26 @@ class BandConditionsTab(QWidget):
             self._current_path_km = km
             self._update_muf_chart()
             # Update the educational side-view widget too. Operating freq
-            # comes from cfg/rig (if set); LUF from propagation feed.
+            # comes from cfg/rig — UNLESS the user picked a specific band
+            # in the band-filter combo, in which case we use that band's
+            # center freq so they can see "what if I tried this on 20m?"
             try:
-                op_freq = float(self.cfg.get("rig.last_freq_hz", 0)) / 1e6
-                luf     = feed._solar.luf_estimate_mhz if hasattr(
+                # Band center freqs (MHz) — informal mid-band conversational
+                # frequencies most operators think of when picking a band.
+                _BAND_CTR = {
+                    "160m": 1.900,  "80m": 3.750,  "60m": 5.357,
+                    "40m":  7.150,  "30m": 10.125, "20m": 14.150,
+                    "17m":  18.110, "15m": 21.250, "12m": 24.940,
+                    "10m":  28.300, "6m":  50.150,
+                }
+                band = self._band_filter.currentText() \
+                    if hasattr(self, "_band_filter") else "Auto"
+                if band != "Auto" and band in _BAND_CTR:
+                    op_freq = _BAND_CTR[band]
+                else:
+                    op_freq = float(
+                        self.cfg.get("rig.last_freq_hz", 0)) / 1e6
+                luf = feed._solar.luf_estimate_mhz if hasattr(
                     feed._solar, "luf_estimate_mhz") else 3.0
                 self._prop_sideview.update_state(
                     path_km  = km,

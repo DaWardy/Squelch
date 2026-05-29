@@ -20,6 +20,8 @@ both calls so logs and IDs are correct; it does not give legal advice.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+import logging
+log = logging.getLogger(__name__)
 
 # NATO phonetic alphabet for reading a callsign aloud
 _PHONETIC = {
@@ -122,9 +124,10 @@ def operating_callsign(cfg) -> str:
             gc = (cfg.get("guest.callsign", "") or "").strip()
             if gc:
                 return gc.upper()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f"operating_callsign error: {e}")
     try:
         return (cfg.callsign or "").upper()
-    except Exception:
+    except Exception as e:
+        log.debug(f"operating_callsign fallback failed: {e}")
         return ""

@@ -118,105 +118,66 @@ class ProfileManager:
             "profiles": [
                 asdict(p) for p in self._profiles.values()],
             "last_used": (self._current.name
-                          if self._current else "default"),
+                         if self._current else "default"),
         }
-        PROFILES_META.write_text(
-            json.dumps(data, indent=2), encoding='utf-8')
+        try:
+            PROFILES_META.write_text(
+                json.dumps(data, indent=2),
+                encoding='utf-8')
+        except Exception as e:
+            log.error(f"Profile save failed: {e}")
 
-    # ── Profile CRUD ──────────────────────────────────────────────────────
+    # ── Create / Select ───────────────────────────────────────────────────
 
-    def create(self, name: str, display_name: str,
-               callsign: str = "",
-               is_guest_op: bool = False,
-               control_op: str = "") -> Profile:
+    def create(self, name: str, display_name: str = "",
+               callsign: str = "") -> Profile | None:
         """Create a new profile."""
-        # Sanitize name to alphanumeric + underscore
-        safe_name = re.sub(r'[^a-z0-9_]', '_',
-                           name.lower().strip())[:20]
-        if not safe_name:
-            safe_name = "profile"
-
-        # Ensure unique
-        base = safe_name
-        counter = 1
-        while safe_name in self._profiles:
-            safe_name = f"{base}_{counter}"
-            counter += 1
-
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-
-        profile = Profile(
-            name          = safe_name,
-            display_name  = display_name[:50],
-            callsign      = callsign.upper().strip()[:12],
-            is_guest_op   = is_guest_op,
-            control_op    = control_op.upper().strip()[:12],
-            created_at    = now,
-            last_used     = now,
-        )
-
-        # Create directory
-        profile.dir.mkdir(parents=True, exist_ok=True)
-
-        self._profiles[safe_name] = profile
-        self.save()
-        log.info(f"Profile created: {safe_name}")
-        return profile
-
-    def delete(self, name: str):
-        """Delete a profile. Cannot delete the last profile."""
-        if len(self._profiles) <= 1:
-            raise ValueError(
-                "Cannot delete the only profile")
-        if name not in self._profiles:
-            return
-        if (self._current and
-                self._current.name == name):
-            raise ValueError(
-                "Cannot delete the active profile")
-        del self._profiles[name]
-        self.save()
-
-    def rename(self, name: str, new_display: str):
         if name in self._profiles:
-            self._profiles[name].display_name = \
-                new_display[:50]
-            self.save()
+            log.warning(f"Profile {name} already exists")
+            return None
+        name = re.sub(r'[^a-zA-Z0-9_-]', '', name)[:32]
+        if not name:
+            log.error("Profile name invalid")
+            return None
 
-    # ── Selection ─────────────────────────────────────────────────────────
+        p = Profile(
+            name=name,
+            display_name=display_name or name,
+            callsign=callsign.upper() if callsign else "",
+        )
+        p.dir.mkdir(parents=True, exist_ok=True)
+        self._profiles[name] = p
+        self.save()
+        log.info(f"Created profile: {name}")
+        return p
 
     def select(self, name: str) -> Profile | None:
-        """Select a profile as current."""
-        profile = self._profiles.get(name)
-        if not profile:
+        """Switch to a profile by name."""
+        if name not in self._profiles:
+            log.warning(f"Profile {name} not found")
             return None
-        self._current = profile
-        from datetime import datetime, timezone
-        profile.last_used = \
-            datetime.now(timezone.utc).isoformat()
+        self._current = self._profiles[name]
         self.save()
-        return profile
+        log.info(f"Selected profile: {name}")
+        return self._current
 
-    def last_used(self) -> Profile | None:
-        """Return the last used profile."""
-        if not PROFILES_META.exists():
-            return None
-        try:
-            data = json.loads(
-                PROFILES_META.read_text())
-            name = data.get("last_used", "default")
-            return self._profiles.get(name)
-        except Exception:
-            return None
-
-    # ── Migration ─────────────────────────────────────────────────────────
+    def delete(self, name: str) -> bool:
+        """Delete a profile."""
+        if name not in self._profiles:
+            return False
+        if self._current and self._current.name == name:
+            # Switch to default first
+            if "default" in self._profiles:
+                self._current = self._profiles["default"]
+        # Don't delete the dir; keep it for history
+        del self._profiles[name]
+        self.save()
+        log.info(f"Deleted profile: {name}")
+        return True
 
     def _migrate_legacy(self):
-        """
-        Migrate from pre-profile config.json to default profile.
-        Called on first launch with profile support.
-        """
+        """Create default profile from legacy config.json."""
+        log.info("Migrating legacy config to profile system")
         legacy_config = Path("config.json")
         default_dir   = PROFILES_DIR / "default"
         default_dir.mkdir(parents=True, exist_ok=True)
@@ -244,8 +205,8 @@ class ProfileManager:
             cfg_data = json.loads(
                 legacy_config.read_text())
             callsign = cfg_data.get("callsign", "")
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f"Profile migration read legacy config failed: {e}")
 
         default_profile = Profile(
             name         = "default",

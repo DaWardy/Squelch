@@ -511,7 +511,12 @@ class SDRTab(QWidget):
             f"color:{fg};font-weight:bold;")
         gl.addWidget(tl)
 
-        for step_title, detail, url, btn_label in steps:
+        for step in steps:
+            # Steps may have 2-4 elements; pad to (title, detail, url, label)
+            step_title = step[0] if len(step) > 0 else ""
+            detail     = step[1] if len(step) > 1 else None
+            url        = step[2] if len(step) > 2 else None
+            btn_label  = step[3] if len(step) > 3 else None
             rl = QHBoxLayout()
             st = QLabel(f"<b>{step_title}</b>")
             st.setWordWrap(True)
@@ -1075,9 +1080,23 @@ class SDRTab(QWidget):
         self._load_rec_btn = QPushButton(
             self.tr("Load selected"))
         self._load_rec_btn.setFixedHeight(24)
+        self._load_rec_btn.setToolTip(
+            "Load the selected recording from Squelch's recordings folder")
         self._load_rec_btn.clicked.connect(
             self._load_recording)
         ll.addWidget(self._load_rec_btn)
+
+        # File picker for arbitrary files anywhere on disk — recordings
+        # combo only shows files already in Squelch's recordings folder,
+        # so this is the path for everything else (.wav, .iq, etc.).
+        self._browse_rec_btn = QPushButton(
+            self.tr("Browse…"))
+        self._browse_rec_btn.setFixedHeight(24)
+        self._browse_rec_btn.setToolTip(
+            "Open a .wav or .iq file from anywhere on disk")
+        self._browse_rec_btn.clicked.connect(
+            self._browse_recording)
+        ll.addWidget(self._browse_rec_btn)
         lay.addWidget(lib_grp)
 
         lay.addStretch()
@@ -1088,7 +1107,12 @@ class SDRTab(QWidget):
 
     def _enumerate_devices(self):
         def _do():
+            if not HAS_SOAPY:
+                QTimer.singleShot(0, lambda: self._populate_devices([]))
+                return
+            log.info("SDR: enumerating devices via SoapySDR")
             devs = SoapyManager.enumerate()
+            log.info(f"SDR: found {len(devs)} device(s)")
             QTimer.singleShot(0,
                 lambda d=devs: self._populate_devices(d))
         threading.Thread(target=_do, daemon=True).start()
@@ -2208,10 +2232,19 @@ class SDRTab(QWidget):
         else:
             hw = (self._current.display_name
                   if self._current else "")
+            # Enrich SigMF metadata with operator info (C-13, Priya)
+            cs   = self.cfg.callsign or ""
+            grid = self.cfg.grid or ""
+            notes = (f"operator:{cs} grid:{grid}".strip()
+                     if cs or grid else "")
+            lat = self.cfg.get("location.lat", 0.0)
+            lon = self.cfg.get("location.lon", 0.0)
             stem = self._recorder.start(
                 self._center_hz,
                 self._manager._sample_rate,
-                hardware=hw)
+                hardware=hw,
+                notes=notes,
+                lat=lat, lon=lon)
             if stem:
                 self._rec_btn.setText("■ Stop")
                 self._rec_btn.setStyleSheet(
@@ -2255,6 +2288,96 @@ class SDRTab(QWidget):
                 QMessageBox.warning(
                     self, self.tr("Load Failed"),
                     self.tr("Recording file not found."))
+
+
+    def _browse_recording(self):
+        """Open any SigMF / raw IQ file from anywhere on disk."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("Open IQ recording"),
+            "",
+            "All supported (*.sigmf-meta *.sigmf-data *.cf32 *.iq *.bin);;"
+            "SigMF metadata (*.sigmf-meta);;"
+            "SigMF data (*.sigmf-data);;"
+            "Raw complex64 IQ (*.cf32 *.iq *.bin);;"
+            "All files (*)")
+        if not path:
+            return
+        from pathlib import Path as _P
+        from sdr.iq_recorder import Recording
+        p = _P(path)
+        rec: Recording | None = None
+
+        if p.suffix == ".sigmf-meta":
+            rec = Recording.from_meta_file(p)
+        elif p.suffix == ".sigmf-data":
+            # Look for sibling .sigmf-meta
+            meta = p.with_suffix(".sigmf-meta")
+            if meta.exists():
+                rec = Recording.from_meta_file(meta)
+            else:
+                QMessageBox.warning(
+                    self, self.tr("Missing metadata"),
+                    self.tr("This .sigmf-data file has no sibling "
+                            ".sigmf-meta — sample rate and center "
+                            "frequency are unknown."))
+                return
+        elif p.suffix.lower() in (".cf32", ".iq", ".bin"):
+            # Raw complex64 — ask the user for sample rate (the only
+            # thing the player needs that isn't in the filename).
+            sr, ok = QInputDialog.getInt(
+                self, self.tr("Sample rate"),
+                self.tr("Sample rate (Hz) — required for raw IQ files:"),
+                2_400_000, 8_000, 100_000_000, 1)
+            if not ok:
+                return
+            try:
+                size = p.stat().st_size
+                duration = size / 8 / sr   # 8 bytes per complex64 sample
+            except Exception:
+                duration = 0.0
+            rec = Recording(
+                name        = p.stem,
+                data_path   = p,
+                meta_path   = p,        # not used for raw
+                center_hz   = self._center_hz
+                              if hasattr(self, "_center_hz") else 0,
+                sample_rate = sr,
+                datatype    = "cf32_le",
+                duration_s  = duration,
+                file_size   = p.stat().st_size,
+            )
+        else:
+            QMessageBox.information(
+                self, self.tr("Unsupported format"),
+                self.tr(
+                    f"'{p.suffix}' files are not currently supported by "
+                    "the IQ player. Supported formats:\n"
+                    "  • SigMF (.sigmf-meta + .sigmf-data)\n"
+                    "  • Raw complex64 IQ (.cf32, .iq, .bin)\n\n"
+                    "WAV demodulated audio is not IQ data — record via "
+                    "Squelch's Record button or use a SigMF-compliant "
+                    "capture tool."))
+            return
+
+        if not rec:
+            QMessageBox.warning(
+                self, self.tr("Load Failed"),
+                self.tr("Could not read recording metadata."))
+            return
+
+        if not self._player.load(rec):
+            QMessageBox.warning(
+                self, self.tr("Load Failed"),
+                self.tr("Recording file not found or unreadable."))
+            return
+
+        self._player.on_samples(self._on_samples)
+        self._player.on_progress(self._on_play_progress)
+        self._player.on_end(
+            lambda: QTimer.singleShot(0, self._stop_playback))
+        self._set_freq(rec.center_hz)
+        self._rec_status.setText(f"Loaded: {rec.name}")
 
     def _on_play_progress(self, pos_s: float,
                            dur_s: float):

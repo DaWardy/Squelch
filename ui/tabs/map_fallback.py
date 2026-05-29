@@ -157,8 +157,7 @@ class WorldMapWidget(QWidget):
         self._draw_aprs(p, w, h)
         self._draw_dx_spots(p, w, h)
 
-        # Legend / status
-        self._draw_status(p, w, h)
+        # Status text shown in the _gl_bar QLabel below the canvas
 
         p.end()
 
@@ -281,28 +280,9 @@ class WorldMapWidget(QWidget):
                 short += f" {alt:.0f}km"
             p.drawText(int(x)+6, int(y)-2, short)
 
-    def _draw_status(self, p: QPainter,
-                     w: int, h: int):
-        """Draw gray line status text."""
-        if not self._gl_info:
-            return
-        from network.grayline import format_gray_line_status
-        text = format_gray_line_status(self._gl_info)
-        p.setFont(QFont("Courier New", 11))
-        color = ("#3fbe6f" if self._gl_info.is_gray_line
-                 else "#666")
-        p.setPen(QPen(QColor(color)))
-        # Semi-transparent background
-        fm   = p.fontMetrics()
-        tw   = fm.horizontalAdvance(text)
-        th   = fm.height()
-        bx   = w//2 - tw//2 - 8
-        by   = h - th - 12
-        p.setBrush(QBrush(QColor(0, 0, 0, 160)))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(QRectF(bx, by, tw+16, th+8), 4, 4)
-        p.setPen(QPen(QColor(color)))
-        p.drawText(bx+8, by+th, text)
+    def _draw_status(self, p, w, h):
+        """Status text is shown in the QLabel below; not drawn on canvas."""
+        pass
 
     def _draw_landmasses(self, p: QPainter,
                          w: int, h: int):
@@ -397,8 +377,6 @@ class WorldMapWidget(QWidget):
         ]
 
         # Convert lat/lon → pixel and draw each continent polygon
-        from PyQt6.QtCore import QPointF
-        from PyQt6.QtGui import QPolygonF
         for poly_coords in continents:
             pts = QPolygonF([
                 QPointF(

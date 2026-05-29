@@ -55,15 +55,34 @@ def check_undefined() -> list[str]:
 
 def check_tests() -> bool:
     _hdr("3. Test suite")
+    import os
+    env = dict(os.environ)
+    # Force offscreen Qt so the tab + signal smoke tests RUN (not skip)
+    # when PyQt6 is installed. These catch the runtime crashes (signal
+    # arity, tab build) that static checks cannot.
+    env["QT_QPA_PLATFORM"] = "offscreen"
     r = subprocess.run([sys.executable, "-m", "pytest", "-q", "--tb=line"],
-                       cwd=ROOT)
+                       cwd=ROOT, env=env)
     return r.returncode == 0
+
+
+def check_qt_available() -> None:
+    _hdr("3a. Qt smoke-test availability")
+    try:
+        import PyQt6  # noqa
+        print("PyQt6 present — tab + signal smoke tests WILL run")
+    except ImportError:
+        print("WARNING: PyQt6 not installed — tab/signal smoke tests will "
+              "SKIP.\n  Install with: pip install PyQt6\n"
+              "  Without it, runtime crashes (signal arity, tab build) are "
+              "NOT caught.")
 
 
 def main() -> int:
     problems = []
     problems += check_syntax()
     problems += check_undefined()
+    check_qt_available()
     tests_ok = check_tests()
 
     print("\n" + "=" * 50)

@@ -25,7 +25,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install pyflakes --upgrade pip
+          python -m sudo apt-get update && sudo apt-get install -y libportaudio2 libegl1
+          pip install pyflakes --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
@@ -36,7 +37,7 @@ jobs:
 
 
       - name: Run tests
-        run: pytest tests/ -q
+        run: QT_QPA_PLATFORM=offscreen pytest tests/ -q
 
       - name: Syntax check all .py files
         run: |

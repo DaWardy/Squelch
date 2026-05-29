@@ -408,6 +408,14 @@ class ModesTab(QWidget):
         self._clear_btn.setFixedHeight(24)
         self._clear_btn.clicked.connect(self._clear_decodes)
         decode_hdr.addWidget(self._clear_btn)
+
+        export_btn = QPushButton("⬇ Export")
+        export_btn.setFixedHeight(24)
+        export_btn.setToolTip(
+            "Export all decoded signals to CSV or ADIF.\n"
+            "ADIF can be imported into most log programs.")
+        export_btn.clicked.connect(self._export_decodes)
+        decode_hdr.addWidget(export_btn)
         right_layout.addLayout(decode_hdr)
 
         # Decode table
@@ -997,7 +1005,7 @@ class ModesTab(QWidget):
     def _on_ft8_decode(self, decode: DecodedSignal):
         QTimer.singleShot(0, lambda d=decode: self._add_decode(d))
 
-    def _on_seq_state(self, state: AutoSeqState):
+    def _on_seq_state(self, state: AutoSeqState, detail: str = ""):
         QTimer.singleShot(0, lambda s=state: self._apply_state(s))
 
     def _on_ft8_tx(self, message: str):
@@ -1154,6 +1162,86 @@ class ModesTab(QWidget):
                 self.ft8_engine.call_station(decode)
                 self._log_activity(f"Calling: {call}")
                 break
+
+
+    def _export_decodes(self):
+        """Export the current decode table to CSV or ADIF (C-10, Sam/Priya)."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        if self._decode_table.rowCount() == 0:
+            QMessageBox.information(
+                self, "Export Decodes",
+                "No decoded signals to export yet.")
+            return
+
+        path, filt = QFileDialog.getSaveFileName(
+            self, "Export Decoded Signals", "",
+            "CSV (*.csv);;ADIF (*.adif *.adi);;All (*)")
+        if not path:
+            return
+        try:
+            if path.lower().endswith((".adif", ".adi")):
+                self._export_decodes_adif(path)
+            else:
+                self._export_decodes_csv(path)
+            QMessageBox.information(
+                self, "Export Complete",
+                f"Exported {self._decode_table.rowCount()} "
+                f"signals to:\n{path}")
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Export Failed", str(e))
+
+    def _export_decodes_csv(self, path: str):
+        """Write decode table rows as CSV."""
+        import csv
+        from core.sanitize import csv_safe
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(DECODE_HEADERS)
+            for row in range(self._decode_table.rowCount()):
+                w.writerow([
+                    csv_safe(self._decode_table.item(row, col).text()
+                              if self._decode_table.item(row, col) else "")
+                    for col in range(len(DECODE_HEADERS))])
+
+    def _export_decodes_adif(self, path: str):
+        """Write decode table rows as minimal ADIF (callsign + grid + freq)."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        date_s = now.strftime("%Y%m%d")
+        time_s = now.strftime("%H%M%S")
+        band   = self.cfg.get("rig.band", "20m")
+
+        def _field(tag: str, val: str) -> str:
+            return f"<{tag}:{len(val)}>{val}"
+
+        lines = ["<PROGRAMID:7>Squelch", "<ADIF_VER:5>3.1.0", "<EOH>", ""]
+        col = {h: i for i, h in enumerate(DECODE_HEADERS)}
+
+        for row in range(self._decode_table.rowCount()):
+            def cell(h):
+                item = self._decode_table.item(row, col.get(h, 0))
+                return item.text() if item else ""
+
+            cs   = cell("Callsign").strip()
+            grid = cell("Grid").strip()
+            freq = cell("Freq").strip()
+            if not cs:
+                continue
+            rec = " ".join([
+                _field("CALL",    cs),
+                _field("GRIDSQUARE", grid) if grid else "",
+                _field("QSO_DATE", date_s),
+                _field("TIME_ON",  time_s),
+                _field("MODE",     "FT8"),
+                _field("BAND",     band),
+                _field("FREQ",     freq) if freq else "",
+                "<EOR>",
+            ])
+            lines.append(rec)
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     def _filter_decodes(self, text: str):
         """Show/hide rows based on filter text."""

@@ -141,10 +141,15 @@ class AppRow(QWidget):
             return
         self._set_status("…", "#aaaa22")
         try:
+            # rigctld on Windows ignores --version and hangs; use --help
+            # which exits immediately. For all others --version is fine.
+            import os
+            exe_name = os.path.basename(path).lower()
+            probe_arg = "--help" if "rigctld" in exe_name else "--version"
             result = subprocess.run(
-                [path, "--version"],
+                [path, probe_arg],
                 capture_output=True, text=True,
-                timeout=5, shell=False)
+                timeout=3, shell=False)
             out = (result.stdout or
                    result.stderr or "").strip()[:200]
             self._set_status("✅", "#3fbe6f")

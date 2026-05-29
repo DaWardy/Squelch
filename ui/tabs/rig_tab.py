@@ -226,11 +226,11 @@ class RigTab(QWidget):
             btn.setChecked(i == self._step_idx)
             btn.setFixedHeight(20)
             btn.setStyleSheet("""
-                QPushButton{border:1px solid #222;
-                  border-radius:3px;background:#111;padding:0 4px;}
-                QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
-                  border-color:#3fbe6f;}
-                QPushButton:hover{background:#1e2e1e;}
+                QPushButton{border:1px solid palette(mid);
+                  border-radius:3px;padding:0 4px;}
+                QPushButton:checked{background:#1a7a3f;color:#ffffff;
+                  border-color:#1a7a3f;}
+                QPushButton:hover{border-color:palette(highlight);}
             """)
             btn.clicked.connect(
                 lambda _, idx=i, s=hz: self._set_step(idx, s))
@@ -310,7 +310,7 @@ class RigTab(QWidget):
         self.smeter_bar.setTextVisible(False)
         self.smeter_bar.setFixedHeight(10)
         self.smeter_bar.setStyleSheet(
-            "QProgressBar{border:1px solid #222;border-radius:2px;background:#0a0a0a;}"
+            "QProgressBar{border:1px solid palette(mid);border-radius:2px;}"
             "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
             "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
         self.smeter_val = QLabel("S0")
@@ -627,6 +627,22 @@ class RigTab(QWidget):
         self._scan_sql.setSuffix(" dBm")
         self._scan_sql.setFixedWidth(80)
         scan_layout.addWidget(self._scan_sql, 0, 5)
+
+        scan_layout.addWidget(QLabel("Step:"), 1, 2)
+        self._scan_step = QComboBox()
+        self._scan_step.addItems([
+            "100 Hz", "500 Hz", "1 kHz", "2.5 kHz",
+            "5 kHz", "6.25 kHz", "10 kHz", "12.5 kHz",
+            "25 kHz", "50 kHz", "100 kHz"])
+        self._scan_step.setCurrentText("5 kHz")
+        self._scan_step.setToolTip(
+            "Frequency step between scan stops.\n"
+            "Match to channel spacing:\n"
+            "  FM voice: 12.5 or 25 kHz\n"
+            "  HF: 1–5 kHz\n"
+            "  AM broadcast: 10 kHz")
+        self._scan_step.setFixedWidth(90)
+        scan_layout.addWidget(self._scan_step, 1, 3)
 
         scan_btn_row = QHBoxLayout()
         self._scan_start = QPushButton("▶  Start Scan")
@@ -1065,6 +1081,18 @@ class RigTab(QWidget):
         self._scan_lo  = lo
         self._scan_hi  = hi
         self._scan_cur = lo
+        # Read step size from the new combo (e.g. "5 kHz" → 5000 Hz)
+        try:
+            step_txt = self._scan_step.currentText()
+            if "kHz" in step_txt:
+                step_hz = int(float(step_txt.replace(" kHz", "")) * 1_000)
+            elif "Hz" in step_txt:
+                step_hz = int(step_txt.replace(" Hz", ""))
+            else:
+                step_hz = 5_000
+        except Exception:
+            step_hz = 5_000
+        self._scan_step_hz = step_hz
         self._scan_running = True
         interval = int(self._scan_dwell.value() * 1000)
         self._scan_timer.setInterval(interval)
@@ -1085,7 +1113,8 @@ class RigTab(QWidget):
     def _scan_step(self):
         if not self._scan_running:
             return
-        self._scan_cur += self._step_hz
+        step = getattr(self, "_scan_step_hz", self._step_hz)
+        self._scan_cur += step
         if self._scan_cur > self._scan_hi:
             self._scan_cur = self._scan_lo
         self._set_freq(self._scan_cur)

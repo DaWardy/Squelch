@@ -172,11 +172,21 @@ def nearest_repeaters(lat: float, lon: float,
     # token (X-RB-App-Token). We honor both here.
     token = _rb_token()
     if not token:
+        # No RepeaterBook token. For digital modes (DMR/P25/NXDN/D-STAR)
+        # try RadioID.net which is genuinely free and no-token. For analog,
+        # we previously fell back to hearham.com but it now returns HTTP 403
+        # to our requests — so we no longer call it. Raise an actionable
+        # error that the Local RF tab surfaces with token + CHIRP guidance.
+        m = (mode or "").lower().replace("-", "").replace(" ", "")
+        if m and m in _DIGITAL_MODES:
+            log.info(f"No RB token; using RadioID.net for {m.upper()}")
+            return _radioid_nearest(lat, lon, radius_km, mode)
         raise RepeaterBookError(
-            "RepeaterBook now requires an approved API token (as of "
-            "March 2026). Apply for one at "
-            "repeaterbook.com/api/token_request.php, then paste it into "
-            "Settings -> Credentials -> RepeaterBook.",
+            "No working free repeater source for analog. RepeaterBook "
+            "needs an approved API token (free for non-commercial use): "
+            "repeaterbook.com/api/token_request.php. Alternatively, "
+            "import a CHIRP CSV (Local RF tab → Import CHIRP CSV) for "
+            "fully offline data with no token required.",
             needs_token=True)
 
     # Resolve the US state for this lat/lon so we can query the right slice,
@@ -344,3 +354,183 @@ def _state_id_for(lat: float, lon: float) -> str:
         return _US_FIPS.get(name, "")
     except Exception:
         return ""
+# ── HearHam.com free fallback ─────────────────────────────────────────────
+# hearham.com explicitly states "free to use in your application" with a
+# public JSON API (no token required). Used when no RepeaterBook token is
+# configured. Covers 21,700+ repeaters worldwide.
+# API: https://hearham.com/api/repeaters/v1  (returns all, filter locally)
+HEARHAM_API  = "https://hearham.com/api/repeaters/v1"
+HEARHAM_UA   = f"Squelch/{APP_VERSION} (+https://github.com/dawardy/squelch)"
+
+
+def _hearham_nearest(lat: float, lon: float,
+                     radius_km: float = 50.0,
+                     mode: str = "") -> list["Repeater"]:
+    """Fetch repeaters from hearham.com (free, no token) and filter locally.
+
+    hearham.com says explicitly: 'free to use in your application, JSON API
+    available.' No rate-limit notes, but we apply the same 2s politeness gap
+    and record the call in the network activity log."""
+    try:
+        import requests
+    except ImportError:
+        return []
+
+    _rate_limit()
+    try:
+        from core.netlog import record_connection
+        record_connection("hearham.com",
+                          purpose="repeater search (free fallback)",
+                          user_initiated=True)
+    except Exception:
+        pass
+
+    try:
+        resp = requests.get(
+            HEARHAM_API,
+            headers={"User-Agent": HEARHAM_UA},
+            timeout=30)  # bulk download ~21k repeaters needs more time
+        if resp.status_code != 200:
+            log.warning(f"HearHam returned HTTP {resp.status_code}")
+            return []
+        if len(resp.content) > 10_000_000:  # 10 MB cap
+            return []
+        data = resp.json()
+    except Exception as e:
+        log.debug(f"HearHam fetch: {e}")
+        return []
+
+    # hearham JSON fields: frequency, input_freq, offset, tone, call,
+    # name, lat, lon, use, operational, mode, country, state
+    mode_filter = (mode or "").upper()
+    results: list[Repeater] = []
+    for r in (data if isinstance(data, list) else data.get("repeaters", [])):
+        try:
+            rlat = float(r.get("lat") or 0)
+            rlon = float(r.get("lon") or 0)
+            if not rlat and not rlon:
+                continue
+            dist = _haversine(lat, lon, rlat, rlon)
+            if dist > radius_km:
+                continue
+            r_mode = str(r.get("mode") or "FM").upper()
+            if mode_filter and mode_filter != "ALL":
+                if mode_filter not in r_mode:
+                    continue
+            freq_str = str(r.get("frequency") or "")
+            try:
+                freq_mhz = float(freq_str)
+            except ValueError:
+                continue
+            offset_str = str(r.get("offset") or "")
+            results.append(Repeater(
+                callsign    = str(r.get("call", "")).upper()[:12],
+                output_mhz  = freq_mhz,
+                offset_mhz  = float(offset_str) if offset_str else 0.0,
+                tone        = str(r.get("tone") or "")[:12],
+                mode        = r_mode[:12],
+                city        = str(r.get("name") or r.get("state") or "")[:40],
+                state       = str(r.get("state") or "")[:20],
+                distance_km = dist,
+                status      = "Operational"
+                    if r.get("operational") else "Unknown",
+                use_code    = str(r.get("use") or "OPEN")[:20],
+                notes       = "",
+                last_updated= "",
+            ))
+        except Exception:
+            continue
+
+    results.sort(key=lambda r: r.distance_km)
+    log.info(f"HearHam: {len(results)} repeaters within "
+             f"{radius_km:.0f} km of ({lat:.3f},{lon:.3f})")
+    return results
+
+
+
+
+# ── RadioID.net digital repeater fallback ─────────────────────────────────
+# radioid.net: free API for DMR/P25/NXDN/D-STAR (no token required as of 2026).
+# "Be gentle. Excessive requests may be blocked." — we apply the same rate limit.
+# API: https://radioid.net/api/dmr/repeater/?lat=X&lon=Y&range=Z&distance=km
+RADIOID_DMR  = "https://radioid.net/api/dmr/repeater/"
+RADIOID_P25  = "https://radioid.net/api/p25/tg/"
+RADIOID_UA   = f"Squelch/{APP_VERSION} (+https://github.com/dawardy/squelch)"
+_DIGITAL_MODES = frozenset({"dmr", "p25", "nxdn", "dstar", "d-star", "fusion", "ysf"})
+
+
+def _radioid_nearest(lat: float, lon: float,
+                     radius_km: float = 50.0,
+                     mode: str = "dmr") -> list["Repeater"]:
+    """Fetch digital repeaters from radioid.net (free, no token).
+    Covers DMR, P25, NXDN, D-STAR.  Returns Repeater list sorted by distance."""
+    try:
+        import requests
+    except ImportError:
+        return []
+
+    _rate_limit()
+    try:
+        from core.netlog import record_connection
+        record_connection("radioid.net",
+                          purpose=f"digital repeater search ({mode})",
+                          user_initiated=True)
+    except Exception:
+        pass
+
+    m = mode.lower().replace("-", "").replace(" ", "")
+    url = RADIOID_DMR if m in ("dmr", "mototrbo") else (
+          RADIOID_P25 if m in ("p25", "apco25") else RADIOID_DMR)
+
+    try:
+        resp = requests.get(
+            url,
+            params={"lat": round(lat, 4), "lon": round(lon, 4),
+                    "range": min(int(radius_km), 200),
+                    "distance": "km"},
+            headers={"User-Agent": RADIOID_UA},
+            timeout=15)
+        if resp.status_code != 200:
+            log.debug(f"RadioID returned HTTP {resp.status_code}")
+            return []
+        data = resp.json()
+    except Exception as e:
+        log.debug(f"RadioID fetch: {e}")
+        return []
+
+    results: list[Repeater] = []
+    for r in (data if isinstance(data, list)
+              else data.get("results", data.get("repeaters", []))):
+        try:
+            rlat = float(r.get("lat") or r.get("latitude") or 0)
+            rlon = float(r.get("lon") or r.get("longitude") or 0)
+            if not rlat and not rlon:
+                continue
+            dist = _haversine(lat, lon, rlat, rlon)
+            if dist > radius_km:
+                continue
+            freq = float(r.get("frequency") or r.get("output") or 0)
+            if not freq:
+                continue
+            results.append(Repeater(
+                callsign    = str(r.get("callsign", "")).upper()[:12],
+                output_mhz  = freq,
+                offset_mhz  = float(r.get("offset") or 0),
+                tone        = str(r.get("color_code")
+                                  or r.get("tone") or "")[:12],
+                mode        = m.upper()[:12],
+                city        = str(r.get("city") or r.get("location") or "")[:40],
+                state       = str(r.get("state") or r.get("country") or "")[:20],
+                distance_km = dist,
+                status      = "Operational",
+                use_code    = "OPEN",
+                notes       = f"CC:{r.get('color_code','')} "
+                              f"TG:{r.get('id', '')}".strip()[:200],
+                last_updated= "",
+            ))
+        except Exception:
+            continue
+    results.sort(key=lambda r: r.distance_km)
+    log.info(f"RadioID: {len(results)} {m.upper()} repeaters "
+             f"within {radius_km:.0f} km")
+    return results

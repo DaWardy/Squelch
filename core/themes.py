@@ -185,6 +185,14 @@ QTabBar::tab:hover {{
     color: {t.fg_primary};
     background: {t.bg_tertiary};
 }}
+QFrame {{
+    background: {t.bg_primary};
+    color: {t.fg_primary};
+}}
+QFrame[frameShape="4"],
+QFrame[frameShape="5"] {{
+    color: {t.border};
+}}
 QGroupBox {{
     border: 1px solid {t.border};
     border-radius: 4px;

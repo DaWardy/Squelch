@@ -145,6 +145,18 @@ class LocalRFTab(QWidget):
         self._search_btn.clicked.connect(self._do_search)
         lay.addWidget(self._search_btn)
 
+        # CHIRP CSV import — operator's own data, no token, no scraping.
+        # The most reliable path: drop a Proximity Query export from CHIRP.
+        self._import_btn = QPushButton("📂 Import CHIRP CSV")
+        self._import_btn.setFixedWidth(180)
+        self._import_btn.setToolTip(
+            "Import a CHIRP-format repeater list (.csv).\n"
+            "In CHIRP: Radio → Query Source → RepeaterBook → "
+            "Proximity Query, then File → Export to .csv.\n"
+            "No API token or RepeaterBook account required.")
+        self._import_btn.clicked.connect(self._do_import_chirp)
+        lay.addWidget(self._import_btn)
+
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
             "")
@@ -396,7 +408,9 @@ class LocalRFTab(QWidget):
         self._no_results.hide()
         self._table.setRowCount(0)
         self._status_lbl.setText(
-            f"Searching within {self._radius.value():.0f}{distance_suffix(self.cfg)}…")
+            f"Downloading repeater data from HearHam.com "
+            f"(may take 15–30s)… then filtering within "
+            f"{self._radius.value():.0f}{distance_suffix(self.cfg)}")
         self._loc_lbl.setText(
             f"Location: {lat:.4f}, {lon:.4f}")
 
@@ -414,22 +428,37 @@ class LocalRFTab(QWidget):
                 self._search_btn.setEnabled(True)
                 self._search_btn.setText("🔍 Search")
                 self._status_lbl.setText(
-                    "Search timed out — RepeaterBook may be slow or "
-                    "unreachable. Try again.")
-        QTimer.singleShot(20000, _watchdog)
+                    "Search timed out. HearHam.com downloads the full "
+                    "repeater list (~21k entries) which can take "
+                    "15-30s on a slow connection. Try again.")
+        QTimer.singleShot(40000, _watchdog)  # 40s for hearham bulk download
 
 
     def _on_search_error(self, message: str, needs_token: bool):
-        """Show RepeaterBook errors (esp. missing API token) with guidance."""
+        """Show search errors with honest guidance about data-source state."""
         from PyQt6.QtCore import QTimer
         def _show():
             self._search_pending = False
             self._search_btn.setEnabled(True)
             self._search_btn.setText("\U0001F50D Search")
-            self._status_lbl.setText(
-                "RepeaterBook needs an API token" if needs_token
-                else "Search error")
-            self._no_results.setText(message)
+            # If hearham 403'd (the free fallback now blocks our requests),
+            # tell the user the truth and point them at the token path.
+            if "403" in message or "hearham" in message.lower():
+                self._status_lbl.setText("No free data source available")
+                self._no_results.setText(
+                    "Local RF currently has no working free data source.\n\n"
+                    "• RepeaterBook: requires an approved API token (free for "
+                    "non-commercial use). Apply at:\n"
+                    "  repeaterbook.com/api/token_request.php\n"
+                    "  Then paste the token in Settings → APIs.\n\n"
+                    "• hearham.com (previously the free fallback): now "
+                    "returns HTTP 403 to our requests, so the free path is "
+                    "currently unavailable.\n\n"
+                    "We are actively looking for another no-token source.")
+            else:
+                self._status_lbl.setText(
+                    "No repeaters found" if needs_token else "Search error")
+                self._no_results.setText(message)
             self._no_results.show()
         QTimer.singleShot(0, _show)
 
@@ -437,6 +466,41 @@ class LocalRFTab(QWidget):
         self._search_pending = False
         QTimer.singleShot(0,
             lambda r=repeaters: self._populate(r))
+
+    def _do_import_chirp(self):
+        """Import a CHIRP-format CSV — no token, no scraping, fully offline."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import CHIRP CSV",
+            "",
+            "CHIRP CSV (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            from network.chirp_import import parse_chirp_csv
+            reps = parse_chirp_csv(path)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Import failed",
+                f"Could not read CHIRP CSV:\n\n{e}\n\n"
+                "Expected a generic CHIRP-format CSV with the standard "
+                "headers (Location, Name, Frequency, Duplex, Offset, Tone…). "
+                "In CHIRP: File → Export to .csv after a Proximity Query.")
+            return
+        if not reps:
+            QMessageBox.information(
+                self, "Import",
+                "The CSV had no valid repeater rows.")
+            return
+        # CHIRP CSV has no lat/lon, so distance-from-me is unknown.
+        # Hide the distance column or sort by frequency instead. The
+        # _populate path already tolerates distance_km == 0 (won't sort
+        # by distance when all zeros).
+        self._no_results.hide()
+        self._status_lbl.setText(
+            f"Imported {len(reps)} repeaters from CHIRP CSV "
+            f"({path.split('/')[-1].split(chr(92))[-1]})")
+        self._populate(reps)
 
     def _populate(self, repeaters: list[Repeater]):
         self._repeaters = repeaters

@@ -391,11 +391,17 @@ class SettingsDialog(QDialog):
             "As of March 2026 RepeaterBook requires an approved API token. "
             "Apply (free for non-commercial use) at "
             "repeaterbook.com/api/token_request.php, then paste the token "
-            "here. Without it, Local RF cannot fetch repeaters.")
+            "here. Without it, Local RF can still be populated by importing a "
+            "CHIRP CSV export (Local RF tab → Import CHIRP CSV).")
         rb_note.setWordWrap(True)
         f.addRow("", rb_note)
 
-        return w
+        # Return the SCROLL AREA, not the inner widget. Returning the inner
+        # widget let the QScrollArea (its parent) get garbage-collected when
+        # this function returned, which deleted the inner widget's C++ object
+        # too — causing "wrapped C/C++ object of type QWidget has been
+        # deleted" when addTab() ran. (Settings crash, finally fixed.)
+        return scroll
 
     # ── Tab: Appearance ───────────────────────────────────────
 
@@ -1036,8 +1042,13 @@ class SettingsDialog(QDialog):
 
         cfg.save()
 
-        # Apply live changes
-        self._apply_live()
+        # Apply live changes — deferred via QTimer so the OK click can
+        # return immediately and the freeze (from setStyleSheet on every
+        # widget in the app) happens AFTER the dialog closes. Otherwise
+        # the user sees the dialog stay open and unresponsive for 1-2s
+        # while the global stylesheet is rebuilt.
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._apply_live)
 
     def _apply_live(self):
         """Apply theme and font immediately — called on Apply/OK."""
@@ -1068,6 +1079,29 @@ class SettingsDialog(QDialog):
             f = QFont()
             f.setPointSize(fs)
             app.setFont(f)
+            # Re-polish every widget so the new stylesheet/font actually
+            # takes effect. Without this, widgets that had inline styles
+            # don't repaint with the new global theme — which is the user
+            # report of "theme change appears to not apply."
+            for w in app.allWidgets():
+                try:
+                    if sip.isdeleted(w):
+                        continue
+                    st = w.style()
+                    st.unpolish(w)
+                    st.polish(w)
+                    w.update()
+                except Exception:
+                    pass
+            # Also re-run the dark-color substitution pass that fixes
+            # hardcoded inline styles for the light theme.
+            try:
+                import main as _main
+                for tlw in app.topLevelWidgets():
+                    if not sip.isdeleted(tlw):
+                        _main._apply_theme_fixes(tlw, theme)
+            except Exception:
+                pass
         except Exception as e:
             log.debug(f"Live apply: {e}")
 

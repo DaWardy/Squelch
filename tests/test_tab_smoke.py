@@ -32,25 +32,46 @@ def app():
 def test_main_window_builds(app):
     """The whole window — every tab — must build without raising."""
     from core.config import Config
+    from core.rig import RigController
+    from core.location import LocationManager
     from ui.main_window import MainWindow
     cfg = Config()
-    win = MainWindow(cfg, rig=None, location=None)
+    rig = RigController(cfg)
+    location = LocationManager(cfg)
+    win = MainWindow(cfg, rig, location)
     assert win is not None
-    # Every tab widget should exist and have built its content
     assert win.tabs.count() > 0
+    # Assert that NO tab failed to load (each should be a real widget,
+    # not the error-stub). This catches signal/slot arg mismatches and
+    # any exception raised during a tab's construction.
+    from ui.main_window import TABS
+    failed = []
+    for key, label, _ in TABS:
+        w = win._tab_map.get(key)
+        if w is None:
+            failed.append(f"{key} (None)")
+        elif w.objectName() == "tab_load_error":
+            failed.append(f"{key} (error stub — exception during build)")
+    assert not failed, f"Tabs failed to build: {failed}"
     win.close()
 
 
 def test_each_tab_builds_individually(app):
     """Build each tab in isolation so a failure names the exact tab."""
     from core.config import Config
+    from core.rig import RigController
+    from core.location import LocationManager
     from ui.main_window import MainWindow, TABS
     cfg = Config()
-    win = MainWindow(cfg, rig=None, location=None)
+    rig = RigController(cfg)
+    location = LocationManager(cfg)
+    win = MainWindow(cfg, rig, location)
     failures = []
     for key, label, _ in TABS:
         w = win._tab_map.get(key)
         if w is None:
             failures.append(f"{key}: tab not created")
+        elif w.objectName() == "tab_load_error":
+            failures.append(f"{key}: exception during build (error stub)")
     win.close()
     assert not failures, "Tabs failed to build:\n" + "\n".join(failures)

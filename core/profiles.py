@@ -249,7 +249,7 @@ class ProfileManager:
 
         default_profile = Profile(
             name         = "default",
-            display_name = callsign or "Default Station",
+            display_name = callsign or "Set Your Callsign",
             callsign     = callsign,
         )
         self._profiles["default"] = default_profile

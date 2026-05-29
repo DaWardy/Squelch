@@ -75,7 +75,18 @@ class DSDPlusManager:
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     def start(self) -> bool:
-        """Launch DSD+ subprocess."""
+        """Launch DSD+ subprocess.
+
+        DSD+ on Windows expects an interactive console for setup and audio
+        device selection. The previous code passed Linux-`dsd`-style flags
+        (`-i name -o name`) which DSD+ does not accept, and it captured
+        stdout via PIPE which made DSD+ either misbehave or hang.
+
+        Now we launch DSD+ with no synthetic arguments (user-supplied extra
+        args optional via config), in its own console window on Windows.
+        Audio device selection happens inside DSD+ itself or via the user's
+        own DSDPlus.cfg / .bat.
+        """
         path = self.cfg.get("paths.dsdplus", "")
         if not path or not Path(path).exists():
             log.warning(
@@ -84,28 +95,37 @@ class DSDPlusManager:
             return False
 
         try:
-            # DSD+ command line for scanner input mode
-            cmd = [
-                path,
-                "-i", self._get_input_device(),
-                "-o", self._get_output_device(),
-                "-n",  # no-repeat mode
-            ]
-            self._proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                shell=False)  # nosec B603
+            # Optional extra args the user can configure (e.g. "-n" or a
+            # custom wave-device index). Default is empty — just the exe.
+            extra = (self.cfg.get("dsdplus.extra_args", "") or "").split()
+            cmd = [path] + extra
+
+            kw = dict(
+                cwd=str(Path(path).parent),    # DSD+ writes logs alongside
+                                                # its exe; use its own dir
+                shell=False)                   # nosec B603
+
+            # On Windows, give DSD+ its own console window. Without this,
+            # DSD+ either shares Squelch's console (none, for GUI) or
+            # silently fails. CREATE_NEW_CONSOLE is the Windows flag for
+            # "give me a real console of my own."
+            import sys as _sys
+            if _sys.platform == "win32":
+                kw["creationflags"] = (
+                    subprocess.CREATE_NEW_CONSOLE
+                    if hasattr(subprocess, "CREATE_NEW_CONSOLE")
+                    else 0x00000010)
+
+            self._proc = subprocess.Popen(cmd, **kw)
 
             self._running = True
+            # Watcher thread — polls for exit, doesn't try to read stdout
             self._thread  = threading.Thread(
-                target=self._read_loop,
+                target=self._watch_loop,
                 daemon=True, name="DSDPlus")
             self._thread.start()
 
-            log.info(f"DSD+ started: {path}")
+            log.info(f"DSD+ started: {path} (PID {self._proc.pid})")
             self._notify_status("running")
             return True
 
@@ -113,6 +133,19 @@ class DSDPlusManager:
             log.error(f"DSD+ start failed: {e}")
             self._notify_status("error")
             return False
+
+    def _watch_loop(self):
+        """Poll DSD+ — set status when it exits. Don't read stdout (the
+        old code piped it which caused DSD+ to misbehave on Windows)."""
+        import time
+        while self._running and self._proc:
+            if self._proc.poll() is not None:
+                # Process exited
+                self._running = False
+                self._notify_status("stopped")
+                log.info(f"DSD+ exited with code {self._proc.returncode}")
+                return
+            time.sleep(0.5)
 
     def stop(self):
         self._running = False

@@ -34,13 +34,120 @@ from typing import Optional, Callable
 
 log = logging.getLogger(__name__)
 
+def _try_conda_soapy() -> bool:
+    """SoapySDR is often installed in the conda base environment while
+    Squelch runs in a separate venv that can't see it. This function
+    searches common conda locations and injects the right site-packages
+    into sys.path so the import works. Returns True if SoapySDR is found
+    after the path injection (or was already importable)."""
+    import sys, importlib
+    # Already importable — nothing to do
+    if importlib.util.find_spec("SoapySDR") is not None:
+        return True
+
+    import os
+    from pathlib import Path as _P
+
+    # Candidate conda site-packages locations (Windows + Linux/Mac)
+    home = _P.home()
+    candidates = [
+        # Windows — miniforge/miniconda under user home
+        home / "miniforge3"  / "Lib"  / "site-packages",
+        home / "miniconda3"  / "Lib"  / "site-packages",
+        home / "anaconda3"   / "Lib"  / "site-packages",
+        home / "miniforge3"  / "lib"  / "python3.11" / "site-packages",
+        home / "miniforge3"  / "lib"  / "python3.12" / "site-packages",
+        home / "miniforge3"  / "lib"  / "python3.13" / "site-packages",
+        home / "miniconda3"  / "lib"  / "python3.11" / "site-packages",
+        home / "miniconda3"  / "lib"  / "python3.12" / "site-packages",
+        # Windows — drive root
+        _P("C:/miniforge3/Lib/site-packages"),
+        _P("C:/miniconda3/Lib/site-packages"),
+        # Linux/Mac system paths
+        _P("/opt/conda/lib/python3.11/site-packages"),
+        _P("/opt/conda/lib/python3.12/site-packages"),
+        _P("/usr/lib/python3/dist-packages"),
+    ]
+
+    # Also probe the CONDA_PREFIX environment variable if set
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        cp = _P(conda_prefix)
+        for sub in ["Lib/site-packages",
+                    "lib/python3.11/site-packages",
+                    "lib/python3.12/site-packages",
+                    "lib/python3.13/site-packages"]:
+            candidates.insert(0, cp / sub)
+
+    for sp in candidates:
+        if sp.exists() and (sp / "SoapySDR.py").exists() or \
+                sp.exists() and any(sp.glob("SoapySDR*.so")) or \
+                sp.exists() and any(sp.glob("SoapySDR*.pyd")):
+            if str(sp) not in sys.path:
+                sys.path.insert(0, str(sp))
+                log.info(f"SoapySDR: found in conda at {sp}, added to path")
+
+            # SoapySDR needs SOAPY_SDR_ROOT so device plugins load correctly
+            # when running from a venv instead of the conda environment.
+            conda_root = sp.parent.parent
+            soapy_roots = [
+                sp / "SoapySDR",
+                conda_root / "Library" / "lib" / "SoapySDR",
+                conda_root / "lib" / "SoapySDR",
+                conda_root / "Library" / "bin",
+            ]
+            if "SOAPY_SDR_ROOT" not in os.environ:
+                for root in soapy_roots:
+                    if root.exists():
+                        os.environ["SOAPY_SDR_ROOT"] = str(root)
+                        log.info(f"SoapySDR: SOAPY_SDR_ROOT -> {root}")
+                        break
+
+            # Windows: SoapySDR DLLs live in conda/Library/bin.
+            # That dir is in PATH when conda is active, but NOT when
+            # running from a venv. Add it explicitly so the DLLs load.
+            if sys.platform == "win32":
+                win_dll_dirs = [
+                    conda_root / "Library" / "bin",
+                    conda_root / "Library" / "mingw-w64" / "bin",
+                    sp,  # site-packages itself (some builds put DLLs here)
+                ]
+                current_path = os.environ.get("PATH", "")
+                additions = []
+                for d in win_dll_dirs:
+                    if d.exists() and str(d) not in current_path:
+                        additions.append(str(d))
+                if additions:
+                    os.environ["PATH"] = (
+                        os.pathsep.join(additions)
+                        + os.pathsep + current_path)
+                    log.info(
+                        f"SoapySDR: added to PATH: "
+                        f"{os.pathsep.join(additions)}")
+
+            return importlib.util.find_spec("SoapySDR") is not None
+
+    return False
+
+
 try:
     import SoapySDR
     from SoapySDR import SOAPY_SDR_RX, SOAPY_SDR_TX, SOAPY_SDR_CF32
     HAS_SOAPY = True
 except ImportError:
-    HAS_SOAPY = False
-    log.info("SoapySDR not installed — SDR tab will show setup guide")
+    # Not in venv — try conda environment before giving up
+    if _try_conda_soapy():
+        try:
+            import SoapySDR
+            from SoapySDR import SOAPY_SDR_RX, SOAPY_SDR_TX, SOAPY_SDR_CF32
+            HAS_SOAPY = True
+            log.info("SoapySDR loaded from conda environment")
+        except ImportError:
+            HAS_SOAPY = False
+    else:
+        HAS_SOAPY = False
+    if not HAS_SOAPY:
+        log.info("SoapySDR not found — SDR tab will show setup guide")
 
 
 # Hardware capability profiles
@@ -288,9 +395,13 @@ class SoapyManager:
         if not HAS_SOAPY:
             return False
         try:
-            self._device = SoapySDR.Device(
-                dict(driver=device.driver,
-                     serial=device.serial))
+            # Build device args — omit serial if empty, since an empty
+            # serial string can cause SoapySDR to fail matching (notably
+            # for single UHD B200/B210 units that report no serial).
+            dev_args = {"driver": device.driver}
+            if device.serial:
+                dev_args["serial"] = device.serial
+            self._device = SoapySDR.Device(dev_args)
             self.current_device = device
 
             # Configure RX
@@ -298,6 +409,14 @@ class SoapyManager:
                 SOAPY_SDR_RX, 0, self._sample_rate)
             self._device.setFrequency(
                 SOAPY_SDR_RX, 0, self._center_hz)
+            # Disable hardware AGC so the gain slider actually controls gain.
+            # RTL-SDR in particular defaults to AGC, which makes the manual
+            # gain setting appear to do nothing. Not all drivers support
+            # this, so guard it.
+            try:
+                self._device.setGainMode(SOAPY_SDR_RX, 0, False)
+            except Exception:
+                pass
             self._device.setGain(
                 SOAPY_SDR_RX, 0, self._gain)
             if self._ppm != 0:
@@ -395,8 +514,10 @@ class SoapyManager:
 
     def _rx_loop(self):
         """Continuous RX sample delivery loop."""
+        import time
         buf_size = 16384
         buf = np.zeros(buf_size, dtype=np.complex64)
+        consecutive_errors = 0
         while self._running and self._device:
             try:
                 sr = self._device.readStream(
@@ -404,6 +525,7 @@ class SoapyManager:
                     [buf], buf_size,
                     timeoutUs=100_000)
                 if sr.ret > 0 and self._on_samples:
+                    consecutive_errors = 0
                     samples = buf[:sr.ret].copy()
                     try:
                         self._on_samples(
@@ -412,9 +534,21 @@ class SoapyManager:
                             self._center_hz)
                     except Exception as e:
                         log.debug(f"Sample cb: {e}")
+                elif sr.ret < 0:
+                    # Negative return = SoapySDR error code (e.g. timeout,
+                    # overflow). Brief backoff so we don't spin the CPU or
+                    # flood the log if the stream stalls.
+                    consecutive_errors += 1
+                    if consecutive_errors > 50:
+                        log.warning(
+                            "SDR RX stream stalled (50 consecutive "
+                            "errors) — stopping receive loop")
+                        break
+                    time.sleep(0.01)
             except Exception as e:
                 if self._running:
                     log.debug(f"RX loop: {e}")
+                    time.sleep(0.05)   # backoff on exception
 
     # ── TX (for capable hardware) ─────────────────────────────────────────
 

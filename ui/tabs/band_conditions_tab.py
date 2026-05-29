@@ -28,10 +28,11 @@ import logging
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QGroupBox, QFrame, QPushButton,
+    QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QProgressBar, QTableWidget, QTableWidgetItem,
     QHeaderView, QSplitter, QSizePolicy, QScrollArea
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QRectF
 from PyQt6.QtGui import QColor, QBrush, QFont
 
 from network.propagation import PropagationFeed, get_prop_feed, SolarData, BandCondition
@@ -41,6 +42,9 @@ log = logging.getLogger(__name__)
 
 
 class BandConditionsTab(QWidget):
+    # Worker thread → main thread: path-to result delivery
+    _path_resolved = pyqtSignal(float, float, str, bool, str)
+
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.cfg   = config
@@ -79,6 +83,40 @@ class BandConditionsTab(QWidget):
         self._summary_lbl.setStyleSheet(
             "font-weight:bold;color:#3fbe6f;")
         hdr.addWidget(self._summary_lbl)
+
+        self._muf_lbl = QLabel("")
+        self._muf_lbl.setStyleSheet(
+            "color:#888888; font-size:10px;")
+        self._muf_lbl.setToolTip(
+            "Estimated Maximum Usable Frequency for a ~3000 km F2 path "
+            "based on current SFI. Updates with solar data.")
+        hdr.addWidget(self._muf_lbl)
+
+        # ── Path-to target for per-path MUF (VOACAP-style) ────────────
+        from PyQt6.QtWidgets import QLineEdit
+        path_lbl = QLabel("Path to:")
+        path_lbl.setStyleSheet("color:#888888; font-size:10px;")
+        hdr.addWidget(path_lbl)
+        self._path_edit = QLineEdit()
+        self._path_edit.setPlaceholderText("grid / call / city")
+        self._path_edit.setMaximumWidth(130)
+        self._path_edit.setToolTip(
+            "Enter a Maidenhead grid (e.g. JO01), callsign, or city for "
+            "path-specific MUF / band predictions.\n"
+            "Leave blank for the default 3000 km F2 estimate.")
+        self._path_edit.setStyleSheet("font-size:10px;")
+        self._path_edit.returnPressed.connect(self._on_path_changed)
+        hdr.addWidget(self._path_edit)
+
+        # Go button — user needs to see a clear "apply" affordance, not
+        # just press Enter (which they may not realize works).
+        from PyQt6.QtWidgets import QPushButton
+        self._path_go = QPushButton("Go")
+        self._path_go.setMaximumWidth(40)
+        self._path_go.setToolTip("Calculate path-specific MUF/distance/bearing")
+        self._path_go.clicked.connect(self._on_path_changed)
+        hdr.addWidget(self._path_go)
+
         hdr.addStretch()
 
         refresh_btn = QPushButton(self.tr("↺ Refresh"))
@@ -218,7 +256,38 @@ class BandConditionsTab(QWidget):
 
         rl2.addWidget(bands_grp)
 
-        # PSKReporter spots panel
+        # ── Hourly MUF chart (VOACAP-style reliability) ───────────────────
+        hourly_grp = QGroupBox(self.tr("Hourly MUF Estimate (UTC)"))
+        hl = QVBoxLayout(hourly_grp)
+        hl.setContentsMargins(4, 4, 4, 4)
+
+        self._muf_chart = QGraphicsView()
+        self._muf_chart.setFixedHeight(90)
+        self._muf_chart.setFrameShape(QFrame.Shape.NoFrame)
+        self._muf_chart.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._muf_chart.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._muf_chart.setToolTip(
+            "Estimated MUF across 24 hours UTC.\n"
+            "Based on solar flux and ionospheric day/night model.\n"
+            "Bars show which bands are likely open each hour.")
+        hl.addWidget(self._muf_chart)
+        rl2.addWidget(hourly_grp)
+
+        # ── Propagation side-view (educational cross-section) ──────
+        from ui.widgets.propagation_sideview import PropagationSideView
+        sv_grp = QGroupBox(self.tr("Path side-view (educational)"))
+        sv_grp.setToolTip(
+            "Side-view of the great-circle path between you and the "
+            "target. Shows whether the current frequency will groundwave, "
+            "go skywave (1- or 2-hop), do NVIS, get absorbed below LUF, "
+            "or punch through the ionosphere above MUF.")
+        svl = QVBoxLayout(sv_grp)
+        svl.setContentsMargins(4, 4, 4, 4)
+        self._prop_sideview = PropagationSideView()
+        svl.addWidget(self._prop_sideview)
+        rl2.addWidget(sv_grp)
         spots_grp = QGroupBox(
             self.tr("PSKReporter — Hearing You"))
         spl = QVBoxLayout(spots_grp)
@@ -315,7 +384,16 @@ class BandConditionsTab(QWidget):
     def _apply_solar(self, solar: SolarData):
         """Update all solar index displays."""
         # Summary
+        self._solar_data = solar
         self._summary_lbl.setText(solar.conditions_summary)
+        # Show MUF estimate when available
+        try:
+            muf = getattr(solar, "muf_estimate_mhz", 0)
+            if muf > 0:
+                self._muf_lbl.setText(
+                    f"  Est. MUF: {muf:.1f} MHz (3000km F2)")
+        except Exception:
+            pass
 
         # Color summary by conditions
         if solar.storm_level >= 2:
@@ -379,6 +457,10 @@ class BandConditionsTab(QWidget):
 
         # Band conditions
         self._refresh_band_display()
+        try:
+            self._update_muf_chart()
+        except Exception:
+            pass
 
     def _refresh_band_display(self):
         conditions = self._feed.band_conditions
@@ -433,6 +515,237 @@ class BandConditionsTab(QWidget):
             item.setTextAlignment(
                 Qt.AlignmentFlag.AlignCenter)
             self._spots_table.setItem(row, col, item)
+
+
+
+    def _update_muf_chart(self):
+        """Draw a 24-bar hourly MUF chart using the current solar data.
+
+        Each bar represents one UTC hour. Bar height = estimated MUF
+        for a 3000 km F2 path at that hour. Color bands show which ham
+        bands are likely open (green=HF open, amber=low bands only,
+        red=MUF below 7 MHz).
+        """
+        try:
+            solar = self._solar_data
+            if solar is None or solar.sfi <= 0:
+                return
+        except AttributeError:
+            return
+
+        import math
+        try:
+            from PyQt6.QtGui import QPen, QBrush, QColor, QPainter
+            scene = QGraphicsScene()
+            self._muf_chart.setScene(scene)
+            w = max(self._muf_chart.width() - 4, 240)
+            h = max(self._muf_chart.height() - 8, 60)
+
+            sfi = max(70.0, float(solar.sfi or 70))
+            path_km = getattr(self, '_current_path_km', 3000.0) or 3000.0
+            path_factor = max(1.5, min(4.5, path_km / 1000.0 + 1.2))
+            kp = float(solar.k_index or 0)
+            geo_factor = max(0.3, 1.0 - 0.08 * kp)
+
+            fof2_day   = math.sqrt(sfi / 25.0) * 4.0
+            fof2_night = fof2_day * 0.55
+
+            bar_w = w / 24.0
+            max_muf = 35.0  # scale ceiling (MHz)
+
+            # Band threshold lines
+            for mhz, label, color in [
+                (28.0, "10m", "#3fbe6f"),
+                (21.0, "15m", "#55cc88"),
+                (14.0, "20m", "#88bb44"),
+                (7.0,  "40m", "#aaaa22"),
+            ]:
+                y = h - (mhz / max_muf) * h
+                line = scene.addLine(
+                    0, y, w, y,
+                    QPen(QColor(color), 0.5,
+                         __import__('PyQt6.QtCore',
+                             fromlist=['Qt']).Qt.PenStyle.DotLine))
+                txt = scene.addSimpleText(label)
+                txt.setPos(2, y - 11)
+                txt.setBrush(QBrush(QColor(color)))
+                font = txt.font(); font.setPointSize(7); txt.setFont(font)
+
+            for hr in range(24):
+                day_f = 0.5 + 0.5 * math.sin(
+                    math.radians((hr - 6) * 15))
+                fof2 = fof2_night + (fof2_day - fof2_night) * day_f
+                muf  = fof2 * geo_factor * path_factor
+                muf  = min(muf, max_muf)
+
+                bh   = (muf / max_muf) * h
+                x    = hr * bar_w
+
+                # Color by band opened
+                if muf >= 28:
+                    col = QColor("#1a7a3f")
+                elif muf >= 21:
+                    col = QColor("#3a7a1a")
+                elif muf >= 14:
+                    col = QColor("#7a6a1a")
+                elif muf >= 7:
+                    col = QColor("#7a3a1a")
+                else:
+                    col = QColor("#5a1a1a")
+
+                rect = scene.addRect(
+                    QRectF(x + 1, h - bh, bar_w - 2, bh),
+                    QPen(col.lighter(120), 0.5),
+                    QBrush(col))
+
+            # UTC hour labels (every 6h)
+            for hr in (0, 6, 12, 18):
+                txt = scene.addSimpleText(f"{hr:02d}Z")
+                txt.setPos(hr * bar_w + 1, h + 1)
+                font = txt.font(); font.setPointSize(6); txt.setFont(font)
+                txt.setBrush(QBrush(QColor("#666666")))
+
+            scene.setSceneRect(0, 0, w, h + 14)
+            self._muf_chart.fitInView(
+                scene.sceneRect(),
+                __import__('PyQt6.QtCore',
+                    fromlist=['Qt']).Qt.AspectRatioMode.IgnoreAspectRatio)
+        except Exception as e:
+            log.debug(f"MUF chart: {e}")
+
+    def _on_path_changed(self):
+        """Recalculate band conditions for a specific path target."""
+        target = self._path_edit.text().strip()
+        if not target:
+            # Revert to default 3000 km model
+            try:
+                from network.propagation import get_prop_feed
+                get_prop_feed().set_path_km(0)
+                self._refresh_display()
+                self._muf_lbl.setText("")
+            except Exception:
+                pass
+            return
+
+        # Immediate feedback — the user said "no enter button" / "doesn't
+        # update". The geocode round-trip can take a couple of seconds, so
+        # paint a status RIGHT NOW so they know input was accepted.
+        self._muf_lbl.setText(f"  Resolving '{target}'…")
+
+        # Resolve target grid/call/city/ZIP to lat/lon
+        import threading
+        def _resolve():
+            from core.location import _grid_to_latlon, geocode_place
+            import re as _re
+            err_reason = ""
+            km = 0.0
+            bearing = 0.0
+            ok = False
+            try:
+                # Grid square: e.g. JO01, FN20rr — 2 letters + 2 digits
+                if _re.match(r'^[A-Ra-r]{2}[0-9]{2}', target):
+                    tlat, tlon = _grid_to_latlon(target.upper())
+                else:
+                    # ZIP/city/state/anything Nominatim understands.
+                    # If looks like a bare US ZIP (5 digits), help Nominatim.
+                    q = target
+                    if _re.match(r'^\d{5}$', target):
+                        q = f"{target}, USA"
+                    try:
+                        tlat, tlon = geocode_place(q)
+                    except Exception as e:
+                        err_reason = (
+                            "Geocoder unreachable (check internet)"
+                            if "resolve" in str(e).lower() or
+                               "Max retries" in str(e)
+                            else f"Could not find '{target}'")
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            f"Path-to geocode failed for '{target}': {e}")
+                        raise
+                # My location
+                mlat = self.cfg.get("location.lat", 0.0)
+                mlon = self.cfg.get("location.lon", 0.0)
+                if not mlat and not mlon:
+                    mlat, mlon = _grid_to_latlon(
+                        self.cfg.get("location.grid_square", "FN20") or "FN20")
+                # Great-circle distance + bearing
+                import math
+                R = 6371.0
+                p1, p2 = math.radians(mlat), math.radians(tlat)
+                dp = math.radians(tlat - mlat)
+                dl = math.radians(tlon - mlon)
+                a = (math.sin(dp/2)**2 +
+                     math.cos(p1) * math.cos(p2) *
+                     math.sin(dl/2)**2)
+                km = R * 2 * math.asin(min(1.0, math.sqrt(a)))
+                # Initial bearing (great-circle), 0=N 90=E
+                y = math.sin(dl) * math.cos(p2)
+                x = (math.cos(p1) * math.sin(p2)
+                     - math.sin(p1) * math.cos(p2) * math.cos(dl))
+                bearing = (math.degrees(math.atan2(y, x)) + 360) % 360
+                ok = True
+            except Exception:
+                if not err_reason:
+                    err_reason = f"Could not resolve '{target}'"
+            # pyqtSignal crosses thread boundaries safely; QTimer.singleShot
+            # from a non-Qt-event-loop thread fails to fire silently.
+            self._path_resolved.emit(km, bearing, target, ok, err_reason)
+        try:
+            self._path_resolved.disconnect()
+        except TypeError:
+            pass
+        self._path_resolved.connect(self._apply_path_km)
+        threading.Thread(target=_resolve, daemon=True).start()
+
+    def _apply_path_km(self, km: float, bearing: float = 0.0,
+                       target: str = "", ok: bool = True,
+                       err_reason: str = ""):
+        """Apply resolved path distance to propagation model and show
+        distance + compass bearing in the header. On failure, show why."""
+        # Set status FIRST — before anything that could throw and let
+        # an outer except swallow the user-visible feedback.
+        if not ok or km <= 0:
+            self._muf_lbl.setText(
+                f"  ⚠ {err_reason or f'Could not resolve {target!r}'}")
+            return
+        try:
+            from network.propagation import get_prop_feed
+            feed = get_prop_feed()
+            feed.set_path_km(km)
+            self._refresh_display()
+            # Compass-point label for the bearing
+            cardinals = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                         "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+            cp = cardinals[int((bearing + 11.25) / 22.5) % 16]
+            # Honor metric/imperial pref
+            try:
+                from core.units import format_distance
+                dist_str = format_distance(km, self.cfg, decimals=0)
+            except Exception:
+                dist_str = f"{km:.0f} km"
+            self._muf_lbl.setText(
+                f"  → {target}: {dist_str}  "
+                f"bearing {bearing:.0f}° ({cp})  "
+                f"Est. MUF: {feed._solar.muf_estimate_mhz:.1f} MHz")
+            self._current_path_km = km
+            self._update_muf_chart()
+            # Update the educational side-view widget too. Operating freq
+            # comes from cfg/rig (if set); LUF from propagation feed.
+            try:
+                op_freq = float(self.cfg.get("rig.last_freq_hz", 0)) / 1e6
+                luf     = feed._solar.luf_estimate_mhz if hasattr(
+                    feed._solar, "luf_estimate_mhz") else 3.0
+                self._prop_sideview.update_state(
+                    path_km  = km,
+                    muf_mhz  = feed._solar.muf_estimate_mhz,
+                    luf_mhz  = luf,
+                    freq_mhz = op_freq,
+                    target   = target)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _manual_refresh(self):
         self._feed._fetch_all()

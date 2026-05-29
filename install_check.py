@@ -147,8 +147,8 @@ def check_hamlib():
     path = shutil.which("rigctld")
     if path:
         try:
-            r = subprocess.run(["rigctld", "--version"],
-                               capture_output=True, text=True, timeout=5)
+            r = subprocess.run(["rigctld", "--help"],
+                               capture_output=True, text=True, timeout=3)
             ver = (r.stdout + r.stderr).strip().split("\n")[0]
             ok(f"rigctld found: {ver}")
             return True

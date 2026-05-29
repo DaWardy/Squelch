@@ -34,6 +34,21 @@ from typing import Optional, Callable
 log = logging.getLogger(__name__)
 
 
+def _log_file_path() -> str:
+    """Return the absolute path of the active log file, for error dialogs."""
+    try:
+        for h in logging.getLogger().handlers:
+            if isinstance(h, logging.FileHandler):
+                return h.baseFilename
+    except Exception:
+        pass
+    try:
+        from core.config import LOG_DIR
+        return str(LOG_DIR / "squelch.log")
+    except Exception:
+        return "squelch.log"
+
+
 class AppState(Enum):
     IDLE        = "Idle"
     RX          = "Receiving"
@@ -289,12 +304,33 @@ class SafetyManager:
                 msg = QMessageBox()
                 msg.setWindowTitle("Squelch — Unexpected Error")
                 msg.setIcon(QMessageBox.Icon.Critical)
-                msg.setText(
+                err_text = (
                     f"Unexpected error: {exc_type.__name__}: {exc_value}\n\n"
                     "PTT has been released.\n"
-                    "See logs/squelch.log for details.\n\n"
+                    f"Diagnostic log: {_log_file_path()}\n\n"
                     "Report at: github.com/dawardy/squelch/issues")
-                msg.exec()
+                msg.setText(err_text)
+                # Make the text selectable so the user can copy it for bug
+                # reports, and add a Copy button that puts the full error
+                # (with traceback) on the clipboard.
+                try:
+                    from PyQt6.QtCore import Qt as _Qt
+                    msg.setTextInteractionFlags(
+                        _Qt.TextInteractionFlag.TextSelectableByMouse |
+                        _Qt.TextInteractionFlag.TextSelectableByKeyboard)
+                    import traceback as _tb
+                    full = err_text + "\n\n--- Traceback ---\n" + "".join(
+                        _tb.format_exception(
+                            exc_type, exc_value, exc_tb))
+                    copy_btn = msg.addButton(
+                        "Copy error", QMessageBox.ButtonRole.ActionRole)
+                    msg.addButton(QMessageBox.StandardButton.Ok)
+                    msg.exec()
+                    if msg.clickedButton() == copy_btn:
+                        from PyQt6.QtWidgets import QApplication as _QA
+                        _QA.clipboard().setText(full)
+                except Exception:
+                    msg.exec()
         except Exception:
             print(f"\nFATAL: {exc_type.__name__}: {exc_value}",
                   file=sys.stderr)

@@ -96,7 +96,8 @@ class WinlinkTab(QWidget):
         root.addWidget(self._build_status_bar())
 
         # Main content tabs
-        tabs = QTabWidget()
+        self._tabs = QTabWidget()
+        tabs = self._tabs
         tabs.addTab(self._build_compose_tab(),  "✉  Compose")
         tabs.addTab(self._build_vara_tab(),     "📡  VARA Status")
         tabs.addTab(self._build_gateway_tab(),  "🗼  Gateways")
@@ -816,17 +817,6 @@ class WinlinkTab(QWidget):
                 f"[Preview error: {e}]")
 
 
-    def _current_tmpl_fn(self):
-        """Return the currently selected template's compose function."""
-        idx = getattr(self, '_tmpl_combo', None)
-        if idx is None:
-            return None
-        try:
-            return self._tmpl_fns[idx.currentIndex()]
-        except (AttributeError, IndexError):
-            return None
-
-
     # ── Missing methods added (QA gate caught these) ──────────────────────
 
     def _connect_hf(self):
@@ -926,7 +916,7 @@ class WinlinkTab(QWidget):
         except Exception as e:
             self._set_status(f"Gateway list error: {e}", "#ee4444")
 
-    def _on_vara_state(self, state: str):
+    def _on_vara_state(self, state: str, label: str = ""):
         """Called when VARA modem reports a state change."""
         self._set_status(state)
         connected = state.lower() in ('connected', 'linked')

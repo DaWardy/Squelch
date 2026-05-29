@@ -44,15 +44,27 @@ os.chdir(Path(__file__).parent)
 def setup_logging(debug: bool = False):
     # Ensure log directory exists before FileHandler tries to open it
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    Path("logs").mkdir(exist_ok=True)
     level = logging.DEBUG if debug else logging.INFO
     fmt   = "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s"
+
+    handlers = [logging.StreamHandler(sys.stdout)]
+    log_path = LOG_DIR / "squelch.log"
+    try:
+        handlers.append(
+            logging.FileHandler(str(log_path), encoding="utf-8"))
+    except Exception as e:
+        print(f"WARNING: could not open log file {log_path}: {e}",
+              file=sys.stderr)
+
+    # force=True is CRITICAL: basicConfig is a no-op if the root logger
+    # already has handlers (e.g. something logged during import). Without
+    # this the FileHandler was never attached and nothing was written.
     logging.basicConfig(
-        level=level, format=fmt,
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(str(LOG_DIR / "squelch.log"), encoding="utf-8"),
-        ])
+        level=level, format=fmt, handlers=handlers, force=True)
+
+    # Record where logs actually go so it can be surfaced in the UI.
+    logging.getLogger().info(f"Diagnostic log: {log_path}")
+    return log_path
 
 
 def parse_args():
@@ -68,6 +80,76 @@ def parse_args():
     return p.parse_args()
 
 
+
+
+def _apply_theme_fixes(window, theme_name: str):
+    """Post-load pass that corrects widgets with hardcoded dark inline stylesheets.
+
+    Widget-level setStyleSheet() overrides the QApplication stylesheet, so
+    light/high-contrast themes get dark backgrounds from the inline styles.
+    We walk every widget, detect dark hex colors via regex, and substitute
+    with the active theme's semantic colors.
+
+    This also re-applies via a helper so newly-created panels (e.g. SDR
+    device panels built on connect) can call _reapply_theme(widget) directly.
+    """
+    if theme_name not in ("Light", "High Contrast"):
+        return
+
+    import re as _re
+    from PyQt6.QtWidgets import QWidget
+
+    if theme_name == "Light":
+        # Map dark hex → light-theme semantic equivalents
+        SUBS = [
+            # Very dark backgrounds → light grey
+            (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
+                         _re.I), "background:{t_bg}"),
+            # Mid-dark backgrounds (#15-#2f) → lighter grey
+            (_re.compile(r"background\s*:\s*#(?:1[5-9a-fA-F][0-9a-fA-F]{4}"
+                         r"|2[0-9a-fA-F]{5})", _re.I), "background:{t_bg2}"),
+            # Dark green tinted backgrounds → light green tint
+            (_re.compile(r"background\s*:\s*#(?:0a1a0a|1a2a1a|1a3a1a|1e2e1e|"
+                         r"0d2a0d|0a2a1a|1a4a1a)", _re.I), "background:{t_acc_bg}"),
+            # Dark red tint → light red tint
+            (_re.compile(r"background\s*:\s*#(?:1a0808|2a0808|0a0000)", _re.I),
+             "background:{t_err_bg}"),
+            # Bright accent green on dark → darker accent green
+            (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:{t_acc}"),
+            # Dark border colors
+            (_re.compile(r"border(?:-[a-z]+)?\s*:\s*1px solid #(?:1a1a1a|111|222|333)",
+                         _re.I), "border:1px solid {t_border}"),
+        ]
+        vals = {
+            "t_bg":      "#f0f0f0",
+            "t_bg2":     "#e4e4e4",
+            "t_acc_bg":  "#e0f0e0",
+            "t_err_bg":  "#fce8e8",
+            "t_acc":     "#1a7a3f",
+            "t_border":  "#cccccc",
+        }
+    else:
+        return   # High Contrast uses dark already — skip
+
+    def _fix_widget(w: QWidget):
+        try:
+            ss = w.styleSheet()
+            if not ss:
+                return
+            fixed = ss
+            for pat, repl in SUBS:
+                fixed = pat.sub(repl.format(**vals), fixed)
+            if fixed != ss:
+                w.setStyleSheet(fixed)
+        except Exception:
+            pass
+
+    for w in window.findChildren(QWidget):
+        _fix_widget(w)
+
+    # Expose as a module-level helper for panels built after startup
+    import main as _main
+    _main._reapply_theme_to = lambda w: _fix_widget(w)
 
 def _fix_combo_sizing(window):
     """Make every dropdown size to its content so labels aren't clipped.
@@ -311,6 +393,7 @@ def main():
     window.show()
     _make_text_selectable(window)
     _fix_combo_sizing(window)
+    _apply_theme_fixes(window, config.get("ui.theme", "Dark"))
     window.raise_()
     window.activateWindow()
     log.info("Window ready")

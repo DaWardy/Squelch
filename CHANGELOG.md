@@ -8,6 +8,475 @@ Changes not yet in a tagged release.
 
 ---
 
+## [0.11.30-alpha] — 2026-05-29
+
+### Fixed — path-to (Band Conditions) never showed results
+Two bugs compounded:
+1. The worker thread used QTimer.singleShot(0, ...) to deliver the result
+   back to the UI. From a non-Qt-event-loop thread, that timer is bound
+   to the worker thread and silently never fires. Replaced with a proper
+   pyqtSignal that crosses thread boundaries safely.
+2. The result handler had its error-display setText() inside a try/except
+   that wrapped the whole function, so when an inner call threw the
+   error label was never set.
+- Pressing Go (or Enter) now immediately shows "Resolving 'X'…" so the
+  user sees input was accepted (user explicitly requested this).
+- On geocoder failure (no internet, bad ZIP, junk text) the label now
+  shows "⚠ Could not find 'X'" or "⚠ Geocoder unreachable" instead of
+  just sitting blank.
+
+### Fixed — Settings dialog freeze on OK
+Clicking OK after a theme/font change kept the dialog open and
+unresponsive for 1-2s while the global stylesheet rebuilt. The OK click
+now schedules _apply_live() via QTimer.singleShot(0, ...) so the dialog
+closes immediately and the brief restyle happens after.
+
+### Fixed — theme changes didn't visually take effect
+After app.setStyleSheet(), widgets with inline styles don't repaint
+unless explicitly re-polished. _apply_live now walks every widget and
+calls style().unpolish/polish + update(), then runs the dark→light
+substitution pass on every top-level window. Themes and font-size
+changes now apply without needing a Squelch restart.
+
+### Removed — hearham.com (it 403s us)
+- Local RF no longer calls hearham.com on analog searches. It was
+  documented as "blocked" in v0.11.27 but still made the call. Now
+  raises an actionable RepeaterBookError that the UI surfaces with
+  guidance to apply for a free RB token OR use the CHIRP CSV import.
+- Settings → APIs no longer mentions hearham as a fallback. Now points
+  to the CHIRP CSV import path that actually works.
+- Digital modes still try RadioID.net (genuinely free, no token).
+
+---
+
+## [0.11.29-alpha] — 2026-05-29
+
+### Added — Propagation side-view (educational cross-section)
+The Band Conditions tab now has an educational side-view widget that
+visualizes the great-circle path between you and the Path-to target:
+- Curved Earth surface (real earth-bulge sagitta over the path)
+- Ionospheric F-layer band at ~300 km altitude
+- TX and RX station markers with antenna masts
+- The actual propagation path drawn according to the current frequency:
+  - Groundwave (yellow, surface-hugging) for short-path VHF/UHF
+  - NVIS (cyan, near-vertical V) for short-path low-HF
+  - Skywave (cyan, 1- or 2-hop F-layer refraction) for DX paths
+  - Escape-to-space (red dashed) when freq > MUF
+  - D-layer absorbed (orange dotted) when freq < LUF
+- Top-banner labels: target, distance, TX freq, MUF
+- Bottom mode-message in the matching color
+- 7 unit tests cover the mode classifier (above MUF, below LUF, NVIS,
+  skywave, groundwave, blank state, paint without crash).
+
+This is an EDUCATIONAL approximation, not VOACAP. It uses simple geometry
+and the current MUF/LUF estimates from network.propagation. The goal: an
+operator can SEE why a frequency will or won't work on a given path —
+something a static panel can't convey.
+
+### Added — SDR "Browse…" button next to "Load selected"
+The "Load selected" button only loads from Squelch's own recordings
+folder. Added "Browse…" next to it that opens a QFileDialog for arbitrary
+files anywhere on disk. Supports:
+- SigMF (.sigmf-meta or .sigmf-data) with auto-sibling lookup
+- Raw complex64 IQ (.cf32, .iq, .bin) with sample-rate prompt
+- Honest "WAV is not IQ" message for the common confusion case
+
+### Fixed — DSD+ launch errors
+DSD+ on Windows was failing because Squelch passed `-i name -o name -n`
+flags. Those are Linux-`dsd` arguments; DSD+ doesn't accept them and
+errors on unknown flags. Squelch also captured stdout via PIPE, which on
+Windows can make DSD+ misbehave or hang.
+
+Fix: launch DSD+ with no synthetic args (only user-configured `dsdplus.
+extra_args` if set), in its own console window via CREATE_NEW_CONSOLE,
+and don't capture stdout. Spawns from the DSD+ exe's own directory so its
+.cfg / .log files land where it expects. DSD+ now launches the same way
+as a manual double-click.
+
+(Live decode-event capture via stdout was the previous PIPE's purpose;
+that path is now noted as TODO via log-file tailing instead.)
+
+### Test suite: 445 passing (was 438)
+
+---
+
+## [0.11.28-alpha] — 2026-05-29
+
+### Added — CHIRP CSV import for Local RF (no token, no scraping)
+The Local RF tab now has an "📂 Import CHIRP CSV" button alongside the
+search. Operators who already use CHIRP for radio programming can drop
+the same Proximity Query exports straight into Squelch — no API token,
+no network calls, fully offline.
+
+- New network/chirp_import.py parses the standard CHIRP CSV format
+  (Location, Name, Frequency, Duplex, Offset, Tone, rToneFreq, cToneFreq,
+  DtcsCode, DtcsPolarity, Mode, …) into Squelch's Repeater records.
+- Handles all the real-world variants: simplex, ±duplex, split-mode TX
+  freq, CTCSS (Tone / TSQL), DTCS with polarity (e.g. "D156N"), CHIRP's
+  DV → D-STAR mapping, blank/malformed rows skipped, and UTF-8 BOM that
+  Excel exports leave on saves.
+- 8 unit tests against realistic CHIRP CSV samples. Test suite now 438.
+- Why this matters: RepeaterBook requires a per-developer token since
+  March 2026 (CHIRP has a long-standing blessed partnership), and
+  hearham.com 403s our requests. CHIRP CSV is the data CHIRP itself
+  pulls through its authorized integration — when you export it, the
+  operator owns and shares their own data, which is fully consistent
+  with both sources' terms.
+
+### Added — Help: Local RF data sources article
+Explains all three data paths (CHIRP CSV, RepeaterBook with token,
+hearham status) and how to do the CHIRP Proximity Query → Export → drop
+into Squelch workflow.
+
+---
+
+## [0.11.27-alpha] — 2026-05-28
+
+### Fixed (crash, finally identified)
+- Settings dialog: _tab_apis() created a QScrollArea (`scroll`) and put its
+  content widget `w` inside it, but returned `w`. When the function exited,
+  `scroll` was garbage-collected and Qt deleted both — so addTab() got a
+  deleted widget. "wrapped C/C++ object of type QWidget has been deleted"
+  was the user's recurring Settings crash for several releases. Now returns
+  `scroll`. Same bug audited across all tab builders.
+- SDR tab: _setup_path() unpacked step tuples as 4-element, but the first
+  step in each install path is a 2-tuple (header text + None). Now unpacks
+  tolerantly so 2/3/4-element step tuples all work.
+- Smoke test improved to detect tab-load error stubs (objectName
+  "tab_load_error") rather than only None — the SDR crash above was
+  passing the old smoke test despite leaving the tab broken.
+
+### Fixed (usability)
+- Popped-out tabs (undock) no longer destroy the widget when the floating
+  window's close button is clicked. The widget is now re-parented back to
+  the main tab bar at its original index. Previously, closing the float
+  window deleted the tab and even toggling View couldn't bring it back.
+- Floating tab title bar now has explicit styling (dark title with visible
+  close/float buttons) so the close button is no longer near-white in
+  Light theme.
+- Font size: _set_font_size() now also calls QApplication.setFont() with a
+  proper QFont pointSize. QSS font-size is overridden by hundreds of
+  inline widget stylesheets, so the QApplication-level font is the only
+  reliable way to cascade size changes app-wide.
+- Light theme: verified end-to-end (sandbox build with PyQt6 headless) —
+  the regex-based _apply_theme_fixes() correctly substitutes the
+  hardcoded dark hex values in inline stylesheets (mode tabs go from
+  #141414 to #f0f0f0). If still seeing breakage, please update.
+
+### Changed (terminology — disambiguate from QSO logbook)
+- Help menu: "Open Log Folder" → "Open Diagnostic Logs"
+- Error dialog: "Log file:" → "Diagnostic log:"
+- Startup line: "Logging to:" → "Diagnostic log:"
+- The QSO logbook (Log tab, ADIF, log_db) keeps its name — "log" there is
+  correct ham terminology for contacts.
+
+### Added (band conditions — VOACAP-style path)
+- Path-to field now has a visible "Go" button next to it. Pressing Enter
+  still works; the button makes the affordance obvious (user report: "no
+  enter button" / "doesn't update").
+- Distance display now also shows the great-circle bearing in degrees and
+  the compass cardinal point (e.g. "→ JO01: 5,800 km bearing 47° (NE)").
+- Distance honors the metric/imperial preference (uses core.units).
+- Bare US ZIPs (5 digits) are now appended with ", USA" before geocoding,
+  which Nominatim resolves reliably.
+
+### Documented (no working free repeater data source right now)
+- HearHam.com — the "free to use in your application" fallback added in
+  v0.11.17 — now returns HTTP 403 to our requests. Confirmed in sandbox.
+  Local RF detects this and shows an honest error explaining that
+  RepeaterBook needs a token and the free fallback is currently blocked.
+  Still actively looking for another no-token source (radioid.net for
+  DMR/P25/NXDN/D-STAR is a candidate for next sprint).
+
+---
+
+## [0.11.26-alpha] — 2026-05-28
+
+### Fixed — logs were never being written (root cause found)
+Two compounding bugs meant logs/squelch.log was never populated, which is
+why error details could not be captured:
+- logging.basicConfig() is a no-op when the root logger already has handlers.
+  Something logged during import (before setup_logging ran), so the
+  FileHandler was never attached. Added force=True so logging is always
+  (re)configured and the file handler always attaches.
+- The error dialog said "See logs/squelch.log" (implying the app folder) but
+  logs actually go to the per-user config dir (%APPDATA%\Squelch\logs on
+  Windows, ~/.config/squelch/logs on Linux). The dialog now shows the real
+  absolute path of the active log file.
+- FileHandler creation is now wrapped so a failure prints a clear warning
+  instead of silently killing logging.
+- The active log path is logged on startup ("Logging to: …").
+
+### Added
+- Help → Open Log Folder: opens the directory containing squelch.log in the
+  system file manager (Explorer/Finder/xdg-open), so logs are easy to find.
+- The Unexpected-error dialog already (v0.11.25) supports selectable text and
+  a Copy-error button; combined with the real path it now gives everything
+  needed for a bug report even when the log file location was unknown.
+
+---
+
+## [0.11.25-alpha] — 2026-05-28
+
+### QA/QC — smoke tests now ACTUALLY RUN (root cause of recurring crashes)
+The tab smoke test had been silently SKIPPING because PyQt6 wasn't in the
+test environment, so runtime crashes sailed through. Fixed for real:
+- PyQt6 + pyqtgraph + libportaudio added to requirements-dev and CI; CI now
+  runs the suite under QT_QPA_PLATFORM=offscreen.
+- qa_check.py now sets offscreen Qt and warns loudly if PyQt6 is missing
+  (so smoke tests would skip).
+- tests/test_tab_smoke.py builds MainWindow with a real rig+location and
+  asserts every tab loads (no error-stub).
+- NEW tests/test_signal_smoke.py fires the state callbacks and the
+  TX-without-setup paths — catching arity crashes that only happen when a
+  signal emits, which static checks cannot see.
+Result: 429 tests, 0 skipped (was 423 with 1 skip).
+
+### Fixed (crashes the user hit — now caught by the new smoke tests)
+- ModesTab._on_seq_state() arity crash: the FT8 engine called its state
+  callback with both 1 and 2 args. Standardized _set_state to always pass
+  (state, detail) and the slot to accept the optional detail. This was the
+  "pressed TX in FT8 without a rig → crash" path.
+- WinlinkTab._on_vara_state() arity crash: slot now accepts the (state,
+  label) form it's actually called with.
+- Winlink "pressed TX with nothing set up → crash": verified _send_message
+  and _connect_hf degrade gracefully (smoke-tested).
+
+### Fixed (usability)
+- Unexpected-error dialog text is now selectable, and has a "Copy error"
+  button that puts the full message + traceback on the clipboard — so bug
+  reports can include the actual error.
+- Help: two articles (IC-7100 Detailed Setup, RTL-SDR Quick Start) had their
+  title and body merged into one field, so the entire guide showed as a
+  giant sidebar topic header. Restructured to proper (title, category, body)
+  — the guide is now the article body, not the header. Audited all 24
+  articles; all are now well-formed.
+- Default profile name is now "Set Your Callsign" (was "Default Station"),
+  prompting the operator to configure their own rather than leaving a
+  placeholder callsign in published data.
+
+---
+
+## [0.11.24-alpha] — 2026-05-28
+
+### SDR hardware-readiness hardening (pre-hardware-test)
+- Device args now omit an empty serial string. A single UHD B200/B210 often
+  reports no serial, and passing serial="" could cause SoapySDR to fail
+  matching. Now only driver (+ serial when present) is passed.
+- RX loop now backs off on stream errors (negative readStream returns and
+  exceptions) instead of tight-spinning the CPU and flooding the log; if the
+  stream stalls for 50 consecutive reads the loop stops cleanly.
+- Hardware AGC is now disabled on open via setGainMode(False) (guarded). This
+  fixes the common RTL-SDR case where the manual gain slider appeared to do
+  nothing because AGC was overriding it.
+- (Confirmed) device open already runs on a background thread, so the B200/
+  B210 FPGA firmware load on first connect will not freeze the UI.
+
+---
+
+## [0.11.23-alpha] — 2026-05-28
+
+### Fixed
+- Map tab: gray line status text appeared twice (once drawn on the canvas
+  by WorldMapWidget._draw_status(), once in the QLabel below). Removed the
+  canvas version; the QLabel is the single authoritative display.
+
+### C-10 — Export decoded signals (Sam/Priya)
+- "⬇ Export" button added to the FT8/digital decode table header.
+- Exports to CSV (all columns) or ADIF (callsign, grid, freq, mode, date).
+- ADIF output is importable into any log program (N1MM, Log4OM, WSJT-X, etc).
+- csv_safe() applied to all CSV fields (S6 — formula injection protection).
+
+### C-13 — SigMF metadata enrichment (Priya)
+- IQ captures now include operator callsign, grid square, and lat/lon in
+  the SigMF .sigmf-meta JSON sidecar (squelch:notes, core:latitude,
+  core:longitude). Useful for reproducible RF research and TSCM reports.
+- SigMF implementation was already complete; this sprint added the
+  operator-location fields.
+
+### Help — RTL-SDR + Miniforge quickstart
+- New article "RTL-SDR Quick Start (miniforge/conda)" in the SDR section.
+  Covers exactly NR6U's setup: Zadig driver, conda install command, verify
+  command, troubleshooting if device shows [] after install, and the
+  SDRplay RSP2Pro/RSP1A install order (API first, then soapysdr-module-sdrplay).
+
+---
+
+## [0.11.22-alpha] — 2026-05-28
+
+### SDR — Windows DLL PATH injection
+- When SoapySDR is loaded via the conda bridge on Windows, Squelch now adds
+  the conda Library/bin directory to os.environ["PATH"]. This is where the
+  SoapySDR DLLs (including the driver plugins) live. Without this the Python
+  bindings loaded but DLL dependencies failed silently, preventing device
+  enumeration even when SOAPY_SDR_ROOT was set correctly.
+
+### Local RF — RadioID.net digital repeater source
+- Digital mode queries (DMR, P25, NXDN, D-STAR) are now routed to
+  radioid.net instead of hearham.com. RadioID is purpose-built for digital
+  repeaters with colour codes, talkgroup IDs, and digital-specific metadata.
+  No token required (as of 2026). Analog / "All" queries still use
+  hearham.com.
+- nearest_repeaters() routing: no token + digital mode → RadioID.net;
+  no token + analog/all → hearham.com; with token → RepeaterBook.
+
+### UI — Pop-out sections (stretch goal delivered)
+- The pop-out feature (double-click any tab to detach it into a floating
+  window) already existed but was completely hidden. Made it discoverable:
+  - Right-click any tab → context menu with "Pop out", "Hide", and
+    layout lock/unlock controls.
+  - Hint text explains drag-to-reorder (already worked, just undocumented).
+  - "Hide" removes a tab from the bar; restore from View → Show/Hide Tabs.
+  - Pop-out creates a QDockWidget that can be re-docked by dragging back
+    to the main window's tab bar. Tab returns to its original position
+    when the floating window is closed.
+
+---
+
+## [0.11.21-alpha] — 2026-05-28
+
+### SDR — SOAPY_SDR_ROOT injection
+- When SoapySDR is loaded via the conda bridge, Squelch now also sets
+  SOAPY_SDR_ROOT so the device plugin DLLs/SOs (SoapyRTLSDR.pyd etc.)
+  are discoverable from the venv. Without this, the Python bindings
+  loaded but SoapySDR.Device.enumerate() returned empty because it
+  couldn't find the driver plugins.
+- Added diagnostic log lines at enumerate start/end so logs/squelch.log
+  shows "SDR: found N device(s)" — confirming whether the bridge worked.
+
+### Band Conditions — Hourly MUF chart
+- New 24-bar chart below the band conditions grid showing estimated MUF
+  for each UTC hour. Bar height = estimated MUF for the configured path
+  (default 3000 km F2). Color coding: dark green = 10m open, mid-green
+  = 15m, amber = 20m/17m, red = low bands only.
+- Dotted reference lines at 7/14/21/28 MHz with band labels.
+- Chart updates automatically when solar data arrives or when a new
+  path target is entered in the "Path to:" field.
+- Makes the propagation data actionable: you can see at a glance which
+  UTC hours will have which bands open for a planned contact.
+
+---
+
+## [0.11.20-alpha] — 2026-05-28
+
+### Light theme — major fix
+- Rebuilt _apply_theme_fixes() with comprehensive regex-based substitution
+  covering ALL widget types (not just QPushButton). Dark hex patterns in
+  inline stylesheets are now replaced for QGroupBox, QFrame, QTableWidget,
+  QProgressBar, QTextEdit, QLabel, and all other QWidgets.
+- Added QFrame to the global theme stylesheet (it was completely missing,
+  causing visible dark frames on light backgrounds).
+- Mode buttons (rig_tab) and step-tuning buttons now use palette() colors
+  instead of hardcoded dark hex values — they render correctly in all themes.
+- FT8 decode table (modes_tab) now uses palette(base) and palette(button)
+  instead of #111 and #1a1a1a.
+- Log tab header now uses palette(button) instead of #111.
+- S-meter progress bar now uses palette(mid) border instead of hardcoded dark.
+
+### Help tab — duplicate "Rig Control" section fixed
+- Articles were not sorted by category, so the Rig Control section header
+  appeared twice (once for the early articles, once for the late ones).
+  _populate_list() now sorts articles by category before rendering — each
+  section header appears exactly once. The search results are also sorted.
+- Expanded IC-7100 Setup article with full step-by-step guide (CP210x driver,
+  CI-V baud rate, Linux dialout group, troubleshooting).
+
+---
+
+## [0.11.19-alpha] — 2026-05-27
+
+### Fixed
+- Map: removed duplicate local PyQt6 imports inside _draw_landmasses that
+  shadowed the module-level imports. The drawing loop now cleanly uses the
+  already-imported QPointF and QPolygonF.
+- Local RF hearham.com timeout: the bulk download of 21,700+ repeaters
+  needs more than the 10s default. Extended hearham request timeout to 30s,
+  watchdog to 40s, and updated the status message to explain the delay.
+
+### Added — VOACAP path analysis (Band Conditions tab)
+- "Path to:" field in the Band Conditions header. Enter a Maidenhead grid
+  (e.g. JO01), callsign, or city/ZIP and press Enter. Squelch resolves the
+  target to lat/lon, computes the great-circle path distance, and updates
+  the MUF estimate and band condition table for that specific path.
+- PropagationFeed.set_path_km(): path distance drives the MUF path factor
+  (short paths use E-layer geometry ~1.5×, 3000 km F2 ~3.0×, long paths
+  up to 4.5×). Leaving the field blank reverts to the default 3000 km model.
+- This completes the VOACAP foundation sprint: physics model + per-path
+  analysis without requiring an external VOACAP binary or API.
+
+---
+
+## [0.11.18-alpha] — 2026-05-27
+
+### Fixed
+- Settings "wrapped C/C++ object of type QWidget has been deleted" — the
+  old dialog was being destroyed asynchronously via deleteLater() while the
+  new one was already building. Now: if settings is already open, raises it
+  to the front instead of rebuilding; on close, calls processEvents() to
+  flush the deletion before constructing the new dialog. Also prevents
+  double-open from Ctrl+, held down.
+
+### Improved — Propagation / Band Conditions (VOACAP foundation)
+- Replaced the crude SFI-threshold band conditions model with a proper
+  ionospheric physics model:
+  - foF2 estimation using the ARRL/CCIR sqrt(SFI/25)×4 approximation
+    (validated against ionosonde data — gives ~8 MHz at SFI=100, ~11 MHz
+    at SFI=200, physically reasonable across the solar cycle).
+  - MUF for a 3000 km F2 path: MUF = foF2 × 3.0.
+  - Time-of-day variation: sinusoidal day/night foF2 transition based on
+    current UTC hour.
+  - Geomagnetic depression: K-index reduces foF2 (K5 → −40%, K9 → −72%).
+  - Low-band auroral absorption flag for K >= 4.
+  - Estimated MUF shown in the Band Conditions tab header.
+  This is the foundation for path-specific VOACAP circuit analysis
+  (planned: target QTH input → per-path reliability curves).
+
+### Added
+- SolarData.muf_estimate_mhz field stores the computed MUF for display
+  and future path-analysis features.
+- BandCondition.muf_hz now carries per-band MUF hint from the model.
+
+---
+
+## [0.11.17-alpha] — 2026-05-27
+
+### Fixed (crashes)
+- WinlinkTab._tabs AttributeError — local `tabs` variable now assigned to
+  `self._tabs` so all references resolve.
+- WinlinkTab template insertion crash — `_current_tmpl_fn` existed as both
+  an instance attribute and a method, causing a name collision. Removed the
+  duplicate method; instance attribute set by _on_tmpl_select is used.
+- rigctld --version timeout — Windows rigctld ignores --version and hangs.
+  Paths dialog and install_check now probe with --help (exits immediately)
+  with a 3s timeout instead of 5s.
+- Callsign top-bar edit now also saves to the active Profile record so that
+  switching profiles does not overwrite what the user typed inline.
+
+### Changed
+- Light theme: added _apply_theme_fixes() post-load pass that substitutes
+  hardcoded dark hex values (#111, #0a0a0a, #1a3a1a…) in inline widget
+  stylesheets when Light theme is active, fixing black-on-black buttons.
+
+### Added
+- SDR conda/venv bridge: when `import SoapySDR` fails in the venv, Squelch
+  now searches common conda/miniforge locations (including CONDA_PREFIX env
+  var) and injects the right site-packages into sys.path transparently. RTL-SDR
+  installed via `conda install soapysdr-module-rtlsdr` in the conda base env
+  will now be found without any extra steps. Help docs updated with the
+  bridge explanation and manual fallback pip command.
+- Scan step size: the scanner panel now has a Step combo box (100 Hz –
+  100 kHz) with tooltip guidance for FM vs HF channel spacing. Defaults to
+  5 kHz. The selected step drives the scan frequency increment.
+- Local RF free data source: hearham.com (explicitly "free to use in your
+  application", 21,700+ repeaters, no token) is now used as the default
+  when no RepeaterBook token is configured. RepeaterBook remains the primary
+  source when a token is available. The search-error message no longer
+  demands a token since results now work without one.
+- RadioID.net noted as a future addition for DMR/P25/NXDN/D-STAR digital
+  repeater data (no token required per their docs).
+
+---
+
 ## [0.11.16-alpha] — 2026-05-26
 
 ### QA/QC gate strengthened (root cause of recurring crashes)

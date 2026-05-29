@@ -605,11 +605,11 @@ class FT8Engine:
             return decode.callsign in self._priority_calls
         return True
 
-    def _set_state(self, state: AutoSeqState):
+    def _set_state(self, state: AutoSeqState, detail: str = ""):
         self._state = state
         log.debug(f"Auto-seq: {state.value}")
         if self._on_state:
-            self._on_state(state)
+            self._on_state(state, detail)
 
     # ── Callback registration ─────────────────────────────────────────────
 

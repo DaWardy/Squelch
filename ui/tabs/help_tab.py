@@ -727,6 +727,58 @@ No settings to change — Squelch prefers SoapySDR when available.
     Or enable AGC: rtl_tcp.exe -g 0 -E agc
 """),
 
+    ("RTL-SDR Quick Start (miniforge/conda)", "SDR",
+     """## RTL-SDR + Miniforge — Quickest Path to SDR on Windows
+
+This is the simplest way to get your RTL-SDR Blog dongle working in Squelch
+on Windows without installing PothosSDR or building anything from source.
+
+## What you need
+- RTL-SDR Blog V3/V4 dongle (or any RTL2832U-based dongle)
+- Miniforge3 already installed (which you have if you're using this installer)
+
+## Step 1 — Install the Zadig USB driver
+Zadig replaces the default Windows USB driver so SoapySDR can claim the device.
+
+  1. Download Zadig: https://zadig.akeo.ie  (open source, safe)
+  2. Plug in your RTL-SDR.
+  3. Run Zadig → Options → List All Devices.
+  4. Select "Bulk-In, Interface (Interface 0)" or "RTL2838UHIDIR".
+  5. Driver: WinUSB (or libusbK). Click "Install Driver".
+
+You only need to do this once per computer.
+
+## Step 2 — Install the SoapySDR RTL-SDR module
+In a Miniforge/Anaconda Prompt:
+
+  conda install -c conda-forge soapysdr soapysdr-module-rtlsdr
+
+Wait for it to finish. Verify with:
+
+  python -c "import SoapySDR; print(SoapySDR.Device.enumerate())"
+
+You should see something like: [{'driver': 'rtlsdr', 'label': 'Generic RTL2832U ...'}]
+If you see [], the driver isn't loaded — run Zadig again and confirm WinUSB is selected.
+
+## Step 3 — Launch Squelch
+Squelch automatically finds SoapySDR in your conda environment (no manual
+setup needed as of v0.11.17). Open the SDR tab and click Connect.
+
+If the device doesn't appear:
+  1. Check logs/squelch.log — search for "SDR: found" to see the enumerate result.
+  2. Run: python -c "import SoapySDR; print(SoapySDR.Device.enumerate())" in
+     the Squelch venv (not conda) to isolate the issue.
+  3. If SoapySDR loads but shows [] there, try:
+     venv/Scripts/pip install soapysdr  (Windows)
+     (installs it directly into the venv as a fallback)
+
+## SDRplay RSP2Pro / RSP1A / RSPdx
+Install the SDRplay API FIRST from sdrplay.com/softwarehome, then:
+
+  conda install -c conda-forge soapysdr soapysdr-module-sdrplay
+
+The order matters — SoapySDR must detect the SDRplay API during install.
+""", ),
     ("SDR Setup", "SDR",
      """# SDR Setup Guide
 
@@ -1016,6 +1068,38 @@ FT-817/818 can run from internal battery (~5Wh NiMH)
 For portable/SOTA operation this is ideal.
 """),
 
+    ("IC-7100 Detailed Setup", "Rig Control",
+     """## Icom IC-7100 — Squelch Setup
+
+The IC-7100 connects via USB (it presents as a virtual COM port). No USB-to-serial
+adapter is needed.
+
+## Step 1 — Install USB driver (Windows)
+Install the Silicon Labs CP210x driver from:
+  https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+
+After installing, check Device Manager — you should see:
+  Ports (COM & LPT) → Silicon Labs CP210x USB to UART Bridge (COMx)
+
+Note the COM port number.
+
+## Step 2 — Configure Squelch
+1. Open Settings (Ctrl+,) → Rig tab.
+2. Rig model: select ICOM IC-7100.
+3. Port: select the COM port from Step 1.
+4. Baud rate: 19200 (IC-7100 default; match your radio's CI-V baud setting).
+5. Click Connect.
+
+## Step 3 — Check the radio
+On the IC-7100, verify CI-V baud rate:
+  Menu → Connectors → CI-V Baud Rate → 19200 (or Auto).
+  Menu → Connectors → CI-V USB → On.
+
+## Troubleshooting
+- "rigctld not found": install Hamlib and run python installer.py.
+- "Permission denied": on Linux, run: sudo usermod -aG dialout $USER then reboot.
+- "Timeout": try baud 9600 and match on the radio.
+"""),
     ("Generic CAT Setup Guide", "Rig Control",
      """# Generic CAT Control Setup
 
@@ -1242,6 +1326,50 @@ Measures geomagnetic disturbances (0-9 scale).
   Regional:     40m evening, 80m night
   Local/State:  2m FM, 70cm
 """),
+    ("Local RF — Where the data comes from", "Local RF",
+     """## Local RF — Repeater data sources
+
+Squelch's Local RF tab can populate its repeater table from three sources,
+in order of preference:
+
+### 1. CHIRP CSV import  (recommended, no setup)
+The fastest, fully-offline path. If you already use CHIRP to program
+your radio, you already have the data.
+
+In CHIRP:
+  1. Radio → Query Source → RepeaterBook → Proximity Query
+  2. Enter your ZIP/grid and radius
+  3. File → Export → save as .csv
+
+In Squelch:
+  4. Local RF tab → "📂 Import CHIRP CSV"
+  5. Pick the file you just exported
+
+No API key, no token, no network calls. The data is CHIRP's standard
+radio-independent CSV format — works with exports from any source CHIRP
+supports (RepeaterBook, RadioReference, DMR-MARC, etc.).
+
+### 2. RepeaterBook with an approved API token
+RepeaterBook now requires per-developer API tokens (as of March 2026).
+Squelch is GPL non-commercial and tokens are free for non-commercial use.
+
+Apply: repeaterbook.com/api/token_request.php
+Paste the token: Settings → APIs → RepeaterBook → API token
+
+Once configured, the "🔍 Search" button uses the official RepeaterBook
+export API and filters by distance from your location.
+
+### 3. (currently unavailable) hearham.com
+hearham.com was added as a free fallback. As of this build their API
+returns HTTP 403 to our requests, so it is currently non-functional.
+
+### Why no scraping?
+RepeaterBook's policy explicitly forbids secondary API use, bulk
+extraction, or building another directory from their data. We respect
+that. CHIRP is a blessed partner with their own approval — when you
+export from CHIRP, that's CHIRP's authorized data delivered through you,
+your file, your own software. Perfectly clean.
+"""),
 ]
 
 # Build search index
@@ -1337,8 +1465,10 @@ class HelpTab(QWidget):
 
     def _populate_list(self, articles):
         self._list.clear()
+        # Sort by category so each section header appears exactly once
+        sorted_arts = sorted(articles, key=lambda a: (a[1], a[0]))
         current_cat = None
-        for title, cat, _ in articles:
+        for title, cat, _ in sorted_arts:
             if cat != current_cat:
                 # Category header
                 header = QListWidgetItem(f"── {cat} ──")

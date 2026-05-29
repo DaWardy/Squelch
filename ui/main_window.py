@@ -280,6 +280,12 @@ class MainWindow(QMainWindow):
         self.tabs.customContextMenuRequested.connect(
             self._tab_context_menu)
         self.tabs.tabBarDoubleClicked.connect(self._undock_tab)
+        # Right-click on a tab → context menu (makes pop-out discoverable)
+        self.tabs.tabBar().setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tabs.tabBar().customContextMenuRequested.connect(
+            self._tab_context_menu)
+
         self.tabs.currentChanged.connect(self._update_spectrum_action)
         vbox.addWidget(self.tabs)
 
@@ -306,6 +312,54 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+
+    def _tab_context_menu(self, pos):
+        """Right-click on a tab bar item → pop-out / hide / reorder hint."""
+        from PyQt6.QtWidgets import QMenu
+        bar = self.tabs.tabBar()
+        idx = bar.tabAt(pos)
+        menu = QMenu(self)
+
+        if idx >= 0:
+            label = self.tabs.tabText(idx)
+            popout_act = menu.addAction(
+                f"⧉  Pop out  '{label}'  (or double-click tab)")
+            popout_act.triggered.connect(
+                lambda: self._undock_tab(idx))
+
+            menu.addSeparator()
+            hide_act = menu.addAction(f"✕  Hide  '{label}'")
+            hide_act.triggered.connect(
+                lambda: self._hide_tab(idx))
+
+        menu.addSeparator()
+        hint = menu.addAction(
+            "↔  Drag tabs to reorder  (unlock in View → Layout)")
+        hint.setEnabled(False)
+
+        locked = self.cfg.get("ui.layout_locked", False)
+        lock_act = menu.addAction(
+            "🔒 Lock layout" if not locked else "🔓 Unlock layout")
+        lock_act.triggered.connect(
+            lambda: self._toggle_ui_lock(not locked))
+
+        menu.exec(bar.mapToGlobal(pos))
+
+    def _hide_tab(self, index: int):
+        """Hide a tab from the tab bar (re-enable from View → Tabs)."""
+        if index < 0 or index >= self.tabs.count():
+            return
+        label = self.tabs.tabText(index)
+        widget = self.tabs.widget(index)
+        key = next((k for k, w in self._tab_map.items()
+                    if w is widget), None)
+        if key:
+            self.cfg.set(f"ui.tab_visible.{key}", False)
+            self.cfg.save()
+        self.tabs.setTabVisible(index, False)
+        self.statusBar().showMessage(
+            f"'{label}' hidden — restore from View → Tabs", 4000)
+
     def _undock_tab(self, index: int):
         """Pop a tab out into a floating window. Double-click tab bar to trigger."""
         if index < 0:
@@ -319,33 +373,69 @@ class MainWindow(QMainWindow):
         key = next((k for k, w in self._tab_map.items()
                     if w is widget), None)
 
-        # Create a floating window
-        win = QDockWidget(label, self)
+        main_window = self
+
+        def _redock():
+            """Put the widget back into the tab bar at its original position."""
+            if self.tabs.indexOf(widget) >= 0:
+                return   # already docked
+            original_idx = next(
+                (i for i, (k, _, _) in enumerate(TABS) if k == key),
+                self.tabs.count())
+            self.tabs.insertTab(
+                min(original_idx, self.tabs.count()), widget, label)
+            self.tabs.setCurrentWidget(widget)
+
+        # QDockWidget subclass that re-docks (instead of destroying the
+        # widget) when its close button is pressed. Without this, closing a
+        # popped-out window destroyed the tab's widget and the tab could not
+        # be brought back even via the View menu (user report).
+        class _FloatingTab(QDockWidget):
+            def closeEvent(self_inner, event):
+                # Detach the widget so it isn't destroyed with the dock, then
+                # re-dock it into the tab bar.
+                self_inner.setWidget(None)
+                widget.setParent(main_window)
+                _redock()
+                try:
+                    main_window._floating_windows.remove(self_inner)
+                except (ValueError, AttributeError):
+                    pass
+                event.accept()
+
+        win = _FloatingTab(label, self)
         win.setWidget(widget)
         win.setFloating(True)
         win.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetMovable |
             QDockWidget.DockWidgetFeature.DockWidgetFloatable |
             QDockWidget.DockWidgetFeature.DockWidgetClosable)
+        # Force a visible close/float button regardless of theme. The default
+        # icon was rendering near-white-on-white in Light theme (user report).
+        win.setStyleSheet("""
+            QDockWidget::title {
+                background: #2a2a2a;
+                color: #f0f0f0;
+                padding: 4px 8px;
+                font-weight: bold;
+            }
+            QDockWidget::close-button, QDockWidget::float-button {
+                background: #4a4a4a;
+                border: 1px solid #888;
+                border-radius: 2px;
+                padding: 1px;
+                icon-size: 12px;
+            }
+            QDockWidget::close-button:hover, QDockWidget::float-button:hover {
+                background: #a04040;
+            }
+        """)
         win.resize(900, 650)
         win.show()
 
-        # When re-docked or closed, put tab back
-        def _on_close():
-            if key and key in self._tab_map:
-                idx = self.tabs.indexOf(widget)
-                if idx < 0:
-                    # Re-add it
-                    original_idx = next(
-                        (i for i, (k, _, _) in enumerate(TABS)
-                         if k == key), self.tabs.count())
-                    self.tabs.insertTab(
-                        min(original_idx, self.tabs.count()),
-                        widget, label)
-
-        win.dockLocationChanged.connect(lambda _: _on_close())
+        # Re-dock when dragged back onto the main window too
         win.topLevelChanged.connect(
-            lambda floating: (not floating) and _on_close())
+            lambda floating: (not floating) and _redock())
 
         # Track floating windows
         if not hasattr(self, '_floating_windows'):
@@ -356,7 +446,7 @@ class MainWindow(QMainWindow):
         self.tabs.removeTab(index)
         if key:
             self.statusBar().showMessage(
-                f"{label} undocked — double-click its title bar "
+                f"{label} undocked — close it or drag it back "
                 "to re-dock", 4000)
 
     def _make_tab(self, key: str, label: str) -> QWidget:
@@ -413,6 +503,7 @@ class MainWindow(QMainWindow):
             traceback.print_exc()
             # Always return something visible
             err_w = QWidget()
+            err_w.setObjectName("tab_load_error")   # smoke tests detect this
             err_l = QVBoxLayout(err_w)
             err_l.setContentsMargins(30, 30, 30, 30)
             t = QLabel(f"Tab failed to load: {key}")
@@ -655,6 +746,13 @@ class MainWindow(QMainWindow):
         open_help.triggered.connect(self._open_help)
         hm.addAction(open_help)
 
+        open_logs = QAction(
+            self.tr("Open Diagnostic Logs"), self)
+        open_logs.setToolTip("Open the folder containing the software diagnostic log "
+            "(not the QSO logbook)")
+        open_logs.triggered.connect(self._open_log_folder)
+        hm.addAction(open_logs)
+
         hm.addSeparator()
 
         about_a = QAction(self.tr("About Squelch"), self)
@@ -785,9 +883,25 @@ class MainWindow(QMainWindow):
     # ── Callsign / Grid edits ─────────────────────────────────────────────
 
     def _on_callsign_edit(self, val: str):
+        """Save inline callsign edit to cfg AND the active profile so a
+        profile switch does not overwrite what the user just typed."""
         self.cfg.callsign = val
         self.cfg.save()
-        log.info(f"Callsign: {val}")
+        # Also update the profile record so switch_to() doesn't overwrite
+        try:
+            from core.profiles import ProfileManager
+            pm = ProfileManager()
+            if pm.current():
+                pm.current().callsign = val
+                pm.save()
+        except Exception:
+            pass
+        # Keep the label in sync (belt + braces — _commit already calls setText)
+        try:
+            self._cs_lbl.setText(val)
+        except Exception:
+            pass
+        log.info(f"Callsign updated to: {val}")
 
     def _on_location_found(self, grid: str, display: str,
                             lat: float, lon: float):
@@ -979,6 +1093,20 @@ class MainWindow(QMainWindow):
         size = max(8, min(20, size))
         theme = self.cfg.get("ui.theme", "Dark")
         self.setStyleSheet(get_stylesheet(theme, size))
+        # QSS font-size is overridden by inline widget stylesheets, so also
+        # set the application default font — this cascades to every widget
+        # that doesn't explicitly set its own font, making the size setting
+        # actually take effect app-wide.
+        try:
+            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtGui import QFont
+            app = QApplication.instance()
+            if app:
+                f = app.font()
+                f.setPointSize(size)
+                app.setFont(f)
+        except Exception:
+            pass
         self.cfg.set("ui.font_size", size)
         self.cfg.save()
 
@@ -1046,6 +1174,26 @@ class MainWindow(QMainWindow):
         icon = "🔒" if locked else "🔓"
         self._lock_action.setText(
             f"{icon} {'Lock' if not locked else 'Unlock'} UI Layout")
+
+    def _open_log_folder(self):
+        """Open the folder containing squelch.log in the system file manager."""
+        import sys, subprocess
+        from core.config import LOG_DIR
+        try:
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            path = str(LOG_DIR)
+            if sys.platform == "win32":
+                import os
+                os.startfile(path)            # noqa: only exists on Windows
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Log Folder",
+                f"Logs are stored at:\n{LOG_DIR}\n\n({e})")
 
     def _open_help(self):
         """Jump to Help tab — F1."""
@@ -1515,31 +1663,38 @@ class MainWindow(QMainWindow):
         """Open full settings editor (Ctrl+,).
         Destroys any previous dialog before creating a new one to avoid
         'wrapped C/C++ object deleted' from stale widget references."""
-        try:
-            from ui.dialogs.settings_dialog import SettingsDialog
+        # If a dialog is already visible, just bring it to the front.
+        old_dlg = getattr(self, '_settings_dlg', None)
+        if old_dlg is not None:
             try:
                 from PyQt6 import sip
             except ImportError:
                 import sip
-            # Guard: ensure main window is still alive
-            if sip.isdeleted(self):
-                return
-            # ─── DO NOT REMOVE: stale-dialog destruction ────────────────
-            # Without this, opening Settings a 2nd time after closing
-            # the first crashes with "wrapped C/C++ object of type
-            # SettingsDialog has been deleted". The previous dialog's
-            # C++ object got GC'd but Python still held a reference.
-            old_dlg = getattr(self, '_settings_dlg', None)
-            if old_dlg is not None:
-                try:
-                    if not sip.isdeleted(old_dlg):
-                        old_dlg.hide()
-                        old_dlg.deleteLater()
-                except Exception:
-                    pass
-                self._settings_dlg = None
-            # ────────────────────────────────────────────────────────────
-            # Store reference — prevents garbage collection while open
+            try:
+                if not sip.isdeleted(old_dlg) and old_dlg.isVisible():
+                    old_dlg.raise_()
+                    old_dlg.activateWindow()
+                    return
+            except Exception:
+                pass
+            # Cleanly destroy the old dialog's C++ side first.
+            try:
+                if not sip.isdeleted(old_dlg):
+                    old_dlg.hide()
+                    old_dlg.close()
+                    old_dlg.deleteLater()
+            except Exception:
+                pass
+            self._settings_dlg = None
+            # Process pending events so deleteLater() completes before
+            # we build a new dialog — prevents "QWidget has been deleted".
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
+
+        try:
+            from ui.dialogs.settings_dialog import SettingsDialog
+            # Parent to None (top-level) rather than self to avoid
+            # parent-child deletion cascade issues.
             self._settings_dlg = SettingsDialog(self.cfg, parent=self)
             dlg = self._settings_dlg
         except Exception as e:

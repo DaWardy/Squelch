@@ -125,7 +125,9 @@ class IQRecorder:
 
     def start(self, center_hz: int, sample_rate: int,
               hardware: str = "",
-              notes: str = "") -> str:
+              notes: str = "",
+              lat: float = 0.0,
+              lon: float = 0.0) -> str:
         """Start recording. Returns filename stem."""
         if self._recording:
             return ""
@@ -149,6 +151,8 @@ class IQRecorder:
                 "core:hw":          hardware,
                 "core:version":     IQ_SIGMF_VERSION,
                 "squelch:notes":    notes,
+                "core:latitude":    lat if lat else None,
+                "core:longitude":   lon if lon else None,
             },
             "captures": [{
                 "core:sample_start": 0,

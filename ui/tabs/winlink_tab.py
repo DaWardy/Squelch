@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QTextEdit,
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
@@ -58,7 +59,10 @@ def _vsep():
     return f
 
 
-class WinlinkTab(QWidget):
+class WinlinkTab(SquelchPanel, QWidget):
+    panel_id    = "winlink"
+    panel_title = "Winlink"
+
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)
         self.cfg    = config

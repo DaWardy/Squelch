@@ -249,3 +249,53 @@ def _utc_str(timestamp: float) -> str:
         timestamp,
         tz=datetime.timezone.utc)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ── Inbound query — who is hearing my transmissions ───────────────────────
+
+def fetch_hearing_me(callsign: str,
+                     seconds: int = 900) -> list[dict]:
+    """Query PSKReporter for stations that recently received our signal.
+
+    Returns a list of dicts with keys: callsign, grid, freq_hz, mode, snr, ts
+    Source: retrieve.pskreporter.info (public, no key, ~15-min resolution)
+
+    Typical use: called from the Map tab on a 5-minute timer to pin
+    spots on the "heard stations" layer as ORANGE triangles (distinct
+    from green "stations we heard" dots).
+    """
+    import xml.etree.ElementTree as ET
+    import requests
+    import logging
+    log = logging.getLogger(__name__)
+    url = "https://retrieve.pskreporter.info/query"
+    params = {
+        "senderCallsign":  callsign.upper(),
+        "flowStartSeconds": str(-abs(seconds)),
+        "fCallsign":        "1",
+    }
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        if r.status_code != 200:
+            log.debug(f"PSKReporter query HTTP {r.status_code}")
+            return []
+        root = ET.fromstring(r.text)
+        ns = {"p": "http://pskreporter.info/pskr"}
+        spots = []
+        for rx in root.findall(".//p:receptionReport", ns):
+            try:
+                spots.append({
+                    "callsign": rx.get("receiverCallsign", ""),
+                    "grid":     rx.get("receiverLocator",  ""),
+                    "freq_hz":  int(rx.get("frequency", 0)),
+                    "mode":     rx.get("mode", ""),
+                    "snr":      float(rx.get("sNR", 0)),
+                    "ts":       int(rx.get("flowStartSeconds", 0)),
+                })
+            except Exception:
+                continue
+        log.info(f"PSKReporter: {len(spots)} stations heard {callsign}")
+        return spots
+    except Exception as e:
+        log.debug(f"PSKReporter fetch_hearing_me: {e}")
+        return []

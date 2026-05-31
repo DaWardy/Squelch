@@ -184,19 +184,15 @@ class RigController:
         self._running = False
         try:
             self._set_ptt_raw(False)
-        except Exception as e:
-            log.debug(f"_set_ptt_raw during disconnect failed: {e}")
+        except Exception:
+            pass
         if self._sock:
-            try:
-                self._sock.close()
-            except Exception as e:
-                log.debug(f"Socket close failed: {e}")
+            try: self._sock.close()
+            except Exception: pass
             self._sock = None
         if self._proc:
-            try:
-                self._proc.terminate()
-            except Exception as e:
-                log.debug(f"Process terminate failed: {e}")
+            try: self._proc.terminate()
+            except Exception: pass
             self._proc = None
         self.state.status = RigStatus.DISCONNECTED
         self._notify()
@@ -276,8 +272,8 @@ class RigController:
         finally:
             try:
                 self._cmd("V VFOA")
-            except Exception as e:
-                log.debug(f"Restore VFOA failed: {e}")
+            except Exception:
+                pass
 
     def set_vfo_b_freq(self, freq_hz: int):
         """Set VFO B to freq_hz without disturbing VFO A tuning."""
@@ -287,8 +283,8 @@ class RigController:
         finally:
             try:
                 self._cmd("V VFOA")
-            except Exception as e:
-                log.debug(f"Restore VFOA failed: {e}")
+            except Exception:
+                pass
 
     # ── CW Keyer ──────────────────────────────────────────────────────────
 

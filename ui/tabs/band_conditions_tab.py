@@ -25,6 +25,7 @@ PSKReporter and WSPRnet spot feeds.
 """
 
 import logging
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QGroupBox, QFrame, QPushButton,
@@ -41,7 +42,10 @@ from network.grayline import gray_line_info, format_gray_line_status
 log = logging.getLogger(__name__)
 
 
-class BandConditionsTab(QWidget):
+class BandConditionsTab(SquelchPanel, QWidget):
+    panel_id    = "band_conditions"
+    panel_title = "Band Cond."
+
     # Worker thread → main thread: path-to result delivery
     _path_resolved = pyqtSignal(float, float, str, bool, str)
 
@@ -70,6 +74,25 @@ class BandConditionsTab(QWidget):
         self._timer.start()
 
     # ── Build UI ──────────────────────────────────────────────────────────
+
+
+    def save_state(self) -> dict:
+        try:
+            return {
+                "path_target":  self._path_edit.text(),
+                "terrain_mode": getattr(self._prop_sideview, "_terrain_mode", "off"),
+            }
+        except Exception:
+            return {}
+
+    def restore_state(self, state: dict) -> None:
+        try:
+            if state.get("path_target"):
+                self._path_edit.setText(state["path_target"])
+            if state.get("terrain_mode"):
+                self._prop_sideview.set_terrain_mode(state["terrain_mode"])
+        except Exception:
+            pass
 
     def _build(self):
         root = QVBoxLayout(self)
@@ -132,6 +155,22 @@ class BandConditionsTab(QWidget):
         self._band_filter.currentTextChanged.connect(
             lambda *_: self._on_path_changed())
         hdr.addWidget(self._band_filter)
+
+        from PyQt6.QtWidgets import QDoubleSpinBox as _QDSB
+        self._eirp_spin = _QDSB()
+        self._eirp_spin.setRange(-30.0, 60.0)
+        self._eirp_spin.setSingleStep(1.0)
+        self._eirp_spin.setSuffix(" dBW")
+        self._eirp_spin.setValue(self.cfg.get("propagation.eirp_dbw", 10.0))
+        self._eirp_spin.setMaximumWidth(90)
+        self._eirp_spin.setToolTip(
+            "EIRP (Effective Isotropic Radiated Power)\n"
+            "Used to estimate path loss vs distance.\n"
+            "100W + 0dBi dipole ≈ 20 dBW\n"
+            "100W + 3dBd Yagi ≈ 23 dBW")
+        self._eirp_spin.valueChanged.connect(self._on_eirp_changed)
+        hdr.addWidget(QLabel("EIRP:"))
+        hdr.addWidget(self._eirp_spin)
 
         hdr.addStretch()
 
@@ -301,6 +340,41 @@ class BandConditionsTab(QWidget):
             "or punch through the ionosphere above MUF.")
         svl = QVBoxLayout(sv_grp)
         svl.setContentsMargins(4, 4, 4, 4)
+        svl.setSpacing(4)
+
+        # Terrain mode controls
+        from PyQt6.QtWidgets import (QPushButton as _PB,
+            QComboBox as _CB, QLabel as _QL)
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(6)
+        ctrl_row.addWidget(_QL("Terrain:"))
+        self._terrain_combo = _CB()
+        self._terrain_combo.addItems(["Off", "Online (SRTM)", "Offline (cached)"])
+        self._terrain_combo.setMaximumWidth(145)
+        self._terrain_combo.setToolTip(
+            "Off     — no terrain data (fast, deterministic noise).\n"
+            "Online  — fetches real SRTM 30m elevation from OpenTopoData.\n"
+            "           Free, no key. Requires internet. ~1s per path.\n"
+            "Offline — reads locally cached SRTM tiles (download below).\n"
+            "           Works without internet after first download.")
+        self._terrain_combo.currentTextChanged.connect(
+            self._on_terrain_mode_changed)
+        ctrl_row.addWidget(self._terrain_combo)
+
+        self._terrain_dl_btn = _PB("Download tiles")
+        self._terrain_dl_btn.setMaximumWidth(120)
+        self._terrain_dl_btn.setToolTip(
+            "Download SRTM elevation tiles for the current path to enable\n"
+            "offline terrain rendering. ~5-15 tiles, ~0.4 MB each.\n"
+            "Source: Amazon open terrain data (NASA SRTM, public domain).")
+        self._terrain_dl_btn.clicked.connect(self._download_terrain_tiles)
+        ctrl_row.addWidget(self._terrain_dl_btn)
+
+        self._terrain_status = QLabel("")
+        self._terrain_status.setStyleSheet("color:#888;font-size:10px;")
+        ctrl_row.addWidget(self._terrain_status, 1)
+        svl.addLayout(ctrl_row)
+
         self._prop_sideview = PropagationSideView()
         svl.addWidget(self._prop_sideview)
         rl2.addWidget(sv_grp)
@@ -704,8 +778,12 @@ class BandConditionsTab(QWidget):
             except Exception:
                 if not err_reason:
                     err_reason = f"Could not resolve '{target}'"
-            # pyqtSignal crosses thread boundaries safely; QTimer.singleShot
-            # from a non-Qt-event-loop thread fails to fire silently.
+            # Store resolved coordinates for terrain fetch.
+            self.__terrain_tx_lat = mlat if 'mlat' in vars() else 0.0
+            self.__terrain_tx_lon = mlon if 'mlon' in vars() else 0.0
+            self.__terrain_rx_lat = tlat if 'tlat' in vars() else 0.0
+            self.__terrain_rx_lon = tlon if 'tlon' in vars() else 0.0
+            # pyqtSignal crosses thread boundaries safely
             self._path_resolved.emit(km, bearing, target, ok, err_reason)
         try:
             self._path_resolved.disconnect()
@@ -713,6 +791,73 @@ class BandConditionsTab(QWidget):
             pass
         self._path_resolved.connect(self._apply_path_km)
         threading.Thread(target=_resolve, daemon=True).start()
+
+
+
+    def _on_eirp_changed(self, val: float):
+        self.cfg.set("propagation.eirp_dbw", val)
+        self.cfg.save()
+        if hasattr(self, "_prop_sideview"):
+            self._prop_sideview.set_eirp_dbw(val)
+
+    def _on_terrain_mode_changed(self, text: str):
+        """Propagate terrain mode selection to the side-view widget."""
+        mode_map = {
+            "Off":             "off",
+            "Online (SRTM)":  "online",
+            "Offline (cached)":"offline",
+        }
+        mode = mode_map.get(text, "off")
+        self.cfg.set("terrain.mode", mode)
+        self.cfg.save()
+        self._prop_sideview.set_terrain_mode(mode)
+        # Update download button state
+        if hasattr(self, "_terrain_dl_btn"):
+            self._terrain_dl_btn.setEnabled(mode == "offline")
+
+    def _download_terrain_tiles(self):
+        """Download SRTM tiles for the current path in a background thread."""
+        tx_lat = self._prop_sideview._tx_lat
+        tx_lon = self._prop_sideview._tx_lon
+        rx_lat = self._prop_sideview._rx_lat
+        rx_lon = self._prop_sideview._rx_lon
+        if not tx_lat and not tx_lon:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "No path set",
+                "Enter a target in the Path-to field first so Squelch "
+                "knows which tiles to download.")
+            return
+        from core.terrain import (gc_profile, tiles_needed,
+                                   estimated_download_mb, download_tiles)
+        pts = gc_profile(tx_lat, tx_lon, rx_lat, rx_lon, 60)
+        mb  = estimated_download_mb(tx_lat, tx_lon, rx_lat, rx_lon, 60)
+        n   = len(tiles_needed(pts))
+        if mb < 0.1:
+            self._terrain_status.setText("All tiles already cached.")
+            return
+        self._terrain_dl_btn.setEnabled(False)
+        self._terrain_status.setText(
+            f"Downloading {n} tile(s) (~{mb:.1f} MB)…")
+        import threading
+        def _fetch():
+            from PyQt6.QtCore import QTimer
+            done_box = [0]
+            def _prog(done, total):
+                done_box[0] = done
+                QTimer.singleShot(0, lambda d=done, t=total:
+                    self._terrain_status.setText(
+                        f"Downloading tile {d}/{t}…"))
+            ok, total = download_tiles(pts, progress_cb=_prog)
+            def _done():
+                self._terrain_dl_btn.setEnabled(True)
+                self._terrain_status.setText(
+                    f"Done — {ok}/{total} tiles cached.")
+                # Re-fetch terrain now that tiles exist
+                self._prop_sideview.set_terrain_mode("offline")
+            QTimer.singleShot(0, _done)
+        threading.Thread(target=_fetch, daemon=True,
+                         name="TileDownload").start()
 
     def _apply_path_km(self, km: float, bearing: float = 0.0,
                        target: str = "", ok: bool = True,
@@ -773,7 +918,11 @@ class BandConditionsTab(QWidget):
                     muf_mhz  = feed._solar.muf_estimate_mhz,
                     luf_mhz  = luf,
                     freq_mhz = op_freq,
-                    target   = target)
+                    target   = target,
+                    tx_lat   = getattr(self, "_BandConditionsTab__terrain_tx_lat", 0.0),
+                    tx_lon   = getattr(self, "_BandConditionsTab__terrain_tx_lon", 0.0),
+                    rx_lat   = getattr(self, "_BandConditionsTab__terrain_rx_lat", 0.0),
+                    rx_lon   = getattr(self, "_BandConditionsTab__terrain_rx_lon", 0.0))
             except Exception:
                 pass
         except Exception:

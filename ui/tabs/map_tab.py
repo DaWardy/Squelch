@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame,
@@ -44,7 +45,10 @@ except ImportError:
 MAP_REFRESH_S = 60
 
 
-class MapTab(QWidget):
+class MapTab(SquelchPanel, QWidget):
+    panel_id    = "map"
+    panel_title = "Map"
+
     """
     Full-featured map tab with Leaflet.
     Falls back to a setup guide if QtWebEngine not installed.
@@ -60,6 +64,10 @@ class MapTab(QWidget):
         self._aprs_stations  = []
         self._satellites     = []
         self._build()
+        # PSK timer started lazily when callsign is configured
+        from PyQt6.QtCore import QTimer as _QT
+        _QT.singleShot(15000, self._start_psk_timer)
+        self._start_psk_timer()
 
     # ── Build ─────────────────────────────────────────────────
 
@@ -540,9 +548,68 @@ class MapTab(QWidget):
             QTimer.singleShot(200, self._refresh_fallback_map)
 
 
+    # ── PSKReporter "who heard me" layer ──────────────────────────────────
+
+    def _start_psk_timer(self):
+        """5-minute refresh of PSKReporter hearing-me pins."""
+        cs = (self.cfg.callsign if hasattr(self.cfg, 'callsign')
+              else self.cfg.get('station.callsign', ''))
+        if not cs or cs == 'NOCALL':
+            return   # no callsign — nothing to query
+        from PyQt6.QtCore import QTimer
+        self._psk_timer = QTimer(self)
+        self._psk_timer.setInterval(5 * 60 * 1000)
+        self._psk_timer.timeout.connect(self._refresh_psk_hearing)
+        self._psk_timer.start()
+        QTimer.singleShot(10000, self._refresh_psk_hearing)
+
+    def _refresh_psk_hearing(self):
+        """Fetch PSKReporter spots in background thread."""
+        callsign = (self.cfg.callsign if hasattr(self.cfg, 'callsign')
+                    else self.cfg.get("station.callsign", ""))
+        if not callsign or callsign in ("NOCALL", ""):
+            return
+        import threading
+        from PyQt6.QtCore import pyqtSignal, QObject
+
+        class _W(QObject):
+            done = pyqtSignal(list)
+
+        w = _W()
+        w.done.connect(self._on_psk_spots)
+
+        def _run():
+            try:
+                from network.pskreporter import fetch_hearing_me
+                spots = fetch_hearing_me(callsign, seconds=1800)
+            except Exception:
+                spots = []
+            w.done.emit(spots)
+
+        threading.Thread(target=_run, daemon=True, name="PSKFetch").start()
+
+    def _on_psk_spots(self, spots: list):
+        """Update hearing-me layer from PSKReporter results."""
+        import time
+        self._hearing_me = {}
+        for s in spots:
+            call = s.get("callsign", "")
+            if not call:
+                continue
+            self._hearing_me[call] = {
+                "callsign": call, "grid": s.get("grid", ""),
+                "freq_hz": s.get("freq_hz", 0), "mode": s.get("mode", ""),
+                "snr": s.get("snr", 0), "lat": 0.0, "lon": 0.0,
+                "ts": time.time(),
+            }
+        if hasattr(self, "_fallback_map") and self._fallback_map:
+            self._fallback_map.set_hearing_me(self._hearing_me)
+
+
 def _vsep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
     f.setStyleSheet("color:#1e1e1e;")
     f.setFixedWidth(1)
     return f
+

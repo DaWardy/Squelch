@@ -21,6 +21,7 @@ import sys
 import logging
 from datetime import datetime, timezone
 
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QLabel, QGroupBox, QFrame, QPushButton,
@@ -103,7 +104,10 @@ PROTOCOL_INFO = {
 }
 
 
-class DigitalTab(QWidget):
+class DigitalTab(SquelchPanel, QWidget):
+    panel_id    = "digital"
+    panel_title = "Digital"
+
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)
         self.cfg   = config
@@ -156,6 +160,120 @@ class DigitalTab(QWidget):
 
         splitter.setSizes([700, 300])
         root.addWidget(splitter, 1)
+
+
+    def _build_tx_panel(self) -> "QFrame":
+        """HRD-style digital TX text box."""
+        from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QPlainTextEdit,
+                                      QPushButton, QLabel, QComboBox)
+        bar = QFrame()
+        bar.setFrameShape(QFrame.Shape.StyledPanel)
+        bar.setStyleSheet(
+            "QFrame{background:#0d1a0d;border-top:1px solid #1a3a1a;"
+            "border-bottom:1px solid #1a3a1a;}")
+        hl = QHBoxLayout(bar)
+        hl.setContentsMargins(6, 4, 6, 4)
+        hl.setSpacing(6)
+
+        lbl = QLabel("TX:")
+        lbl.setStyleSheet("color:#3fbe6f;font-weight:bold;min-width:24px;")
+        hl.addWidget(lbl)
+
+        self._tx_text = QPlainTextEdit()
+        self._tx_text.setMaximumHeight(52)
+        self._tx_text.setPlaceholderText(
+            "Type message to transmit  (Enter = Send,  Shift+Enter = newline)")
+        self._tx_text.setStyleSheet(
+            "QPlainTextEdit{background:#071207;color:#e0ffe0;"
+            "border:1px solid #2a4a2a;border-radius:3px;"
+            "font-family:'Courier New';font-size:11px;padding:2px;}")
+        self._tx_text.installEventFilter(self)
+        hl.addWidget(self._tx_text, 1)
+
+        self._tx_mode = QComboBox()
+        self._tx_mode.addItems(["Auto", "fldigi", "DSD+", "JS8Call"])
+        self._tx_mode.setMaximumWidth(90)
+        self._tx_mode.setToolTip("Route TX to: Auto=active decoder, fldigi, JS8Call")
+        hl.addWidget(self._tx_mode)
+
+        send_btn = QPushButton("Send")
+        send_btn.setMinimumWidth(70)
+        send_btn.setStyleSheet(
+            "QPushButton{background:#1a4a1a;color:#3fbe6f;"
+            "border:1px solid #3fbe6f;border-radius:3px;padding:4px 10px;}"
+            "QPushButton:hover{background:#2a6a2a;}")
+        send_btn.clicked.connect(self._send_tx_text)
+        hl.addWidget(send_btn)
+
+        clr_btn = QPushButton("X")
+        clr_btn.setMaximumWidth(28)
+        clr_btn.setToolTip("Clear TX buffer")
+        clr_btn.setStyleSheet(
+            "QPushButton{background:#2a1010;color:#cc4444;"
+            "border:1px solid #663333;border-radius:3px;}")
+        clr_btn.clicked.connect(self._tx_text.clear)
+        hl.addWidget(clr_btn)
+
+        self._tx_status = QLabel("Ready")
+        self._tx_status.setStyleSheet("color:#666;font-size:10px;min-width:80px;")
+        hl.addWidget(self._tx_status)
+        return bar
+
+    def eventFilter(self, obj, event):
+        """Enter in TX box sends; Shift+Enter inserts newline."""
+        from PyQt6.QtCore import QEvent, Qt
+        if (obj is getattr(self, "_tx_text", None) and
+                event.type() == QEvent.Type.KeyPress):
+            if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and
+                    not (event.modifiers() &
+                         Qt.KeyboardModifier.ShiftModifier)):
+                self._send_tx_text()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _send_tx_text(self):
+        """Route TX box text to the active decoder bridge."""
+        text = getattr(self, "_tx_text", None)
+        if text is None:
+            return
+        txt = text.toPlainText().strip()
+        if not txt:
+            return
+        # Respect Demo Mode
+        try:
+            from core.safety import get_app_state
+            st = get_app_state()
+            if st and getattr(st, "demo_mode", False):
+                self._tx_status.setText("Blocked - Demo Mode")
+                return
+        except Exception:
+            pass
+        mode = self._tx_mode.currentText()
+        sent = False
+        if mode in ("Auto", "fldigi"):
+            try:
+                from modes.fldigi_bridge import FldigiBridge
+                bridge = FldigiBridge.instance()
+                if bridge and bridge.connected:
+                    bridge.send_text(txt)
+                    sent = True
+            except Exception:
+                pass
+        if not sent and mode in ("Auto", "JS8Call"):
+            try:
+                import socket, json as _json
+                with socket.create_connection(("127.0.0.1", 2237), timeout=2) as s:
+                    s.sendall((_json.dumps({
+                        "type": "TX.SEND_MESSAGE", "value": txt,
+                        "params": {}}) + "\n").encode())
+                    sent = True
+            except Exception:
+                pass
+        if sent:
+            self._tx_status.setText(f"Sent {len(txt)} chars")
+            self._tx_text.clear()
+        else:
+            self._tx_status.setText("No active TX bridge")
 
     def _build_status_bar(self) -> QFrame:
         bar = QFrame()

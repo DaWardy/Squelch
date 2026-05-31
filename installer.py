@@ -255,69 +255,23 @@ def setup_venv():
 
 # ── Step 3: Packages ──────────────────────────────────────────────────────
 
-def install_packages(offline: bool = False, cache_only: bool = False):
-    hdr("[3/6] Python Packages")
-
-    import sys as _sys
-    if _sys.version_info >= (3, 14):
-        warn("Python 3.14 detected — pre-release version!")
-        warn("PyQtWebEngine lacks a Python 3.14 wheel.")
-        warn("The map tab will show a setup guide instead.")
-        warn("All other features will work normally.")
-        warn("For map support: install Python 3.12")
-        warn("from https://www.python.org/downloads/")
-        warn("For full functionality: install Python 3.12")
-        warn("from https://www.python.org/downloads/")
-        sep()
-
-    if not REQ_FILE.exists():
-        warn("requirements.txt not found — skipping.")
-        return
-
-    pip = str(VENV_PIP)
-
-    # Upgrade pip quietly first
-    subprocess.run(
-        [pip, "install", "--upgrade", "pip", "--quiet"],
-        capture_output=True)
-
-    if cache_only:
-        # Just download to cache, don't install
-        info(f"Downloading packages to {OFFLINE_DIR}...")
-        OFFLINE_DIR.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(
-            [pip, "download", "-r", str(REQ_FILE),
-             "-d", str(OFFLINE_DIR), "--quiet"],
-            capture_output=True, text=True)
-        if result.returncode == 0:
-            count = len(list(OFFLINE_DIR.glob("*.whl"))) + \
-                    len(list(OFFLINE_DIR.glob("*.tar.gz")))
-            ok(f"Cached {count} packages in offline_packages/")
-        else:
-            warn(f"Some packages failed to cache: {result.stderr[:200]}")
-        return
-
-    # Build pip command
-    # Build a filtered requirements file without PyQtWebEngine
+def _install_packages_bulk(pip: str, offline: bool) -> bool:
+    """First attempt: install all packages at once. Returns True on success."""
     import tempfile, os
     req_lines = [
         l for l in REQ_FILE.read_text().splitlines()
         if not l.strip().startswith("PyQtWebEngine")
-        and not (l.strip().startswith("#") and
-                 "PyQtWebEngine" in l)]
-    import os
+        and not (l.strip().startswith("#") and "PyQtWebEngine" in l)]
     _fd, _tmp = tempfile.mkstemp(suffix=".txt")
     os.close(_fd)
-    tmp_req = Path(_tmp)  # nosec B306 - mkstemp is safe
+    tmp_req = Path(_tmp)
     tmp_req.write_text("\n".join(req_lines))
-    cmd = [pip, "install", "-r", str(tmp_req), *_pip_quiet_flag()]
 
+    cmd = [pip, "install", "-r", str(tmp_req), *_pip_quiet_flag()]
     if offline and OFFLINE_DIR.exists():
-        cmd += ["--no-index",
-                "--find-links", str(OFFLINE_DIR)]
+        cmd += ["--no-index", "--find-links", str(OFFLINE_DIR)]
         info("Installing from offline cache...")
     elif OFFLINE_DIR.exists():
-        # Try offline first, fall back to internet
         cmd += ["--find-links", str(OFFLINE_DIR)]
         info("Installing packages (using cache if available)...")
     else:
@@ -332,175 +286,141 @@ def install_packages(offline: bool = False, cache_only: bool = False):
 
     if result.returncode != 0 and offline:
         warn("Offline install incomplete. Trying internet...")
-        cmd_online = [pip, "install", "-r", str(REQ_FILE), *_pip_quiet_flag()]
         result = subprocess.run(
-            cmd_online, capture_output=_pip_capture(), text=True)
+            [pip, "install", "-r", str(REQ_FILE), *_pip_quiet_flag()],
+            capture_output=_pip_capture(), text=True)
 
     if result.returncode == 0:
         ok("Packages installed.")
-    else:
-        warn("Some packages failed — installing individually...")
-        # Show the actual error (stderr is None in verbose mode — already shown)
-        if result.stderr:
-            for line in result.stderr.splitlines()[:5]:
-                if line.strip():
-                    info(f"  pip: {line.strip()[:80]}")
+        return True
 
-        # Install each package individually with verbose output
-        import sys as _sys
-        py_ver = (_sys.version_info.major,
-                  _sys.version_info.minor)
+    warn("Some packages failed — installing individually...")
+    if result.stderr:
+        for line in result.stderr.splitlines()[:5]:
+            if line.strip():
+                info(f"  pip: {line.strip()[:80]}")
+    return False
 
-        # Packages known to lack Python 3.14 wheels
-        # Note: numpy/scipy/pyqtgraph DO work on 3.14 now
-        PY314_SKIP = {
-            "PyQtWebEngine",  # no 3.14 wheel yet
-        }
 
-        packages = [
-            p.strip() for p in
-            REQ_FILE.read_text().splitlines()
-            if p.strip() and
-               not p.strip().startswith("#") and
-               not p.strip().startswith("//") and
-               not p.strip().startswith("PyQtWebEngine")]
+def _install_packages_individual(pip: str):
+    """Fallback: install each package individually, skipping non-critical."""
+    import sys as _sys
+    py_ver = (_sys.version_info.major, _sys.version_info.minor)
+    PY314_SKIP = {"PyQtWebEngine"}
+    NON_CRITICAL = {
+        "PyQtWebEngine", "scipy", "pyqtgraph", "sounddevice",
+        "soundfile", "soapysdr", "PyQtWebEngine>=6.4.0"}
 
-        failed = []
-        skipped = []
-        for pkg in packages:
-            # Handle platform markers
-            if "; sys_platform" in pkg:
-                import platform as _plat
-                marker = pkg.split(";")[1].strip()
-                if "win32" in marker and                    _plat.system() != "Windows":
-                    continue
-                pkg = pkg.split(";")[0].strip()
+    packages = [
+        p.strip() for p in REQ_FILE.read_text().splitlines()
+        if p.strip() and not p.strip().startswith(("#", "//"))
+        and not p.strip().startswith("PyQtWebEngine")]
 
-            name = pkg.split(">=")[0].split("==")[0]                      .split("[")[0].strip()
-
-            # Skip known Python 3.14 incompatible packages
-            if py_ver >= (3, 14) and                name in PY314_SKIP:
-                warn(f"  {name} — skipped "
-                     f"(no Python 3.14 wheel yet)")
-                skipped.append(name)
+    failed, skipped = [], []
+    for pkg in packages:
+        if "; sys_platform" in pkg:
+            import platform as _plat
+            marker = pkg.split(";")[1].strip()
+            if "win32" in marker and _plat.system() != "Windows":
                 continue
+            pkg = pkg.split(";")[0].strip()
+        name = pkg.split(">=")[0].split("==")[0].split("[")[0].strip()
+        if py_ver >= (3, 14) and name in PY314_SKIP:
+            warn(f"  {name} — skipped (no Python 3.14 wheel)")
+            skipped.append(name)
+            continue
+        r = subprocess.run(
+            [pip, "install", pkg, "--quiet", "--no-cache-dir"],
+            capture_output=True, text=True)
+        (ok if r.returncode == 0 else warn)(
+            f"  {name}" if r.returncode == 0 else f"  {name} — FAILED")
+        if r.returncode != 0:
+            failed.append(name)
 
-            r = subprocess.run(
-                [pip, "install", pkg,
-                 "--quiet", "--no-cache-dir"],
-                capture_output=True, text=True)
-            if r.returncode == 0:
-                ok(f"  {name}")
-            else:
-                warn(f"  {name} — FAILED")
-                failed.append(name)
+    if skipped:
+        info(f"Skipped (Python 3.14+): {', '.join(skipped)}")
+    if failed:
+        real = [p for p in failed if p not in NON_CRITICAL]
+        optional = [p for p in failed if p in NON_CRITICAL]
+        if real:
+            warn(f"Failed (critical): {', '.join(real)}")
+        if optional:
+            info(f"Not installed (optional, app still works): {', '.join(optional)}")
 
-        if skipped:
-            info(f"Skipped on Python 3.14: "
-                 f"{', '.join(skipped)}")
-            info("Install Python 3.12 for full "
-                 "feature support.")
 
-        if failed:
-            non_critical = {
-                "PyQtWebEngine", "scipy", "pyqtgraph",
-                "sounddevice", "soundfile", "soapysdr",
-                "PyQtWebEngine>=6.4.0"}
-            real_failures = [
-                p for p in failed
-                if p not in non_critical]
-            if real_failures:
-                warn(f"Failed (critical): "
-                     f"{', '.join(real_failures)}")
-            optional_failures = [
-                p for p in failed
-                if p in non_critical]
-            if optional_failures:
-                info(f"Not installed (optional): "
-                     f"{', '.join(optional_failures)}")
-                info("App will run without these.")
-
-    # Verify key packages - force reinstall PyQt6 if missing
-    # First check: can we import at all?
-    # On Windows, "No Qt platform plugin could be initialized" is common
-    # even when PyQt6 installs — it means pyqt6-qt6 data package is missing.
-    pyqt_result = subprocess.run(
-        [str(VENV_PYTHON), "-c",
-         "from PyQt6.QtCore import QT_VERSION_STR"],
+def _verify_pyqt6(pip: str):
+    """Verify PyQt6 works; attempt matched-version reinstall if not."""
+    check = subprocess.run(
+        [str(VENV_PYTHON), "-c", "from PyQt6.QtCore import QT_VERSION_STR"],
         capture_output=True, text=True)
-    if pyqt_result.returncode != 0:
-        warn("PyQt6 not working — attempting matched-version reinstall...")
-        # The most common Windows failure is mismatched PyQt6 component
-        # versions: "DLL load failed ... specified procedure not found"
-        # means PyQt6 (bindings) and PyQt6-Qt6 (Qt libs) disagree.
-        # Fix: uninstall all three, reinstall as a matched 6.6.1 set.
-        subprocess.run(
-            [pip, "uninstall", "-y",
-             "PyQt6", "PyQt6-Qt6", "PyQt6-sip"],
-            capture_output=True, text=True)
-        reinstall = subprocess.run(
-            [pip, "install", "--no-cache-dir",
-             "PyQt6==6.6.1", "PyQt6-Qt6==6.6.1", "PyQt6-sip==13.6.0"],
-            capture_output=_pip_capture(), text=True)
-        # Show actual pip error so user knows what went wrong
-        if reinstall.returncode != 0:
-            pip_err = (reinstall.stderr or reinstall.stdout or "").strip() if not VERBOSE else ""
-            if pip_err:
-                for line in pip_err.splitlines()[-6:]:
-                    info(f"  pip: {line}")
-        # Verify again
-        pyqt_result2 = subprocess.run(
-            [str(VENV_PYTHON), "-c",
-             "from PyQt6.QtCore import QT_VERSION_STR;"
-             "print('PyQt6 Qt/' + QT_VERSION_STR)"],
-            capture_output=True, text=True)
-        if pyqt_result2.returncode == 0:
-            ok(f"PyQt6 {pyqt_result2.stdout.strip()}")
-        else:
-            # Show the actual import error too
-            import_err = pyqt_result2.stderr.strip()
-            if import_err:
-                for line in import_err.splitlines()[-4:]:
-                    info(f"  import: {line}")
-            # Try installing the Qt6 data package separately
-            # (common fix when PyQt6 wheel installs but Qt DLLs are missing)
-            info("Trying separate pyqt6-qt6 install...")
-            subprocess.run(
-                [pip, "install", "pyqt6-qt6", "--no-cache-dir", "--quiet"],
-                capture_output=True)
-            pyqt_result3 = subprocess.run(
-                [str(VENV_PYTHON), "-c",
-                 "from PyQt6.QtCore import QT_VERSION_STR;"
-                 "print('PyQt6 Qt/' + QT_VERSION_STR)"],
-                capture_output=True, text=True)
-            if pyqt_result3.returncode == 0:
-                ok(f"PyQt6 fixed: {pyqt_result3.stdout.strip()}")
-            else:
-                err("PyQt6 install failed — Squelch cannot run without it")
-                info("")
-                info("Manual fix (matched-version set, copy-paste this):")
-                info("  venv\\Scripts\\pip uninstall -y PyQt6 PyQt6-Qt6 PyQt6-sip")
-                info("  venv\\Scripts\\pip install --no-cache-dir \\")
-                info("    PyQt6==6.6.1 PyQt6-Qt6==6.6.1 PyQt6-sip==13.6.0")
-                info("")
-                info("If that still fails, try Python 3.11.3:")
-                info("  https://www.python.org/downloads/release/python-3113/")
-                info("")
-                info("Continuing installer — fix PyQt6 before launching Squelch.")
-    else:
-        subprocess.run(
-            [str(VENV_PYTHON), "-c",
-             "from PyQt6.QtCore import QT_VERSION_STR;"
-             "print('  [OK]   PyQt6 Qt/' + QT_VERSION_STR)"],
-            capture_output=True, text=True)
+    if check.returncode == 0:
         ok("PyQt6 detected")
+        return
+    warn("PyQt6 not working — attempting matched-version reinstall...")
+    subprocess.run(
+        [pip, "uninstall", "-y", "PyQt6", "PyQt6-Qt6", "PyQt6-sip"],
+        capture_output=True)
+    subprocess.run(
+        [pip, "install", "--no-cache-dir",
+         "PyQt6==6.6.1", "PyQt6-Qt6==6.6.1", "PyQt6-sip==13.6.0"],
+        capture_output=_pip_capture())
+    check2 = subprocess.run(
+        [str(VENV_PYTHON), "-c",
+         "from PyQt6.QtCore import QT_VERSION_STR; print('Qt/' + QT_VERSION_STR)"],
+        capture_output=True, text=True)
+    if check2.returncode == 0:
+        ok(f"PyQt6 fixed — {check2.stdout.strip()}")
+        return
+    # Last resort: install pyqt6-qt6 separately
+    info("Trying separate pyqt6-qt6 install...")
+    subprocess.run([pip, "install", "pyqt6-qt6", "--no-cache-dir", "--quiet"],
+                   capture_output=True)
+    check3 = subprocess.run(
+        [str(VENV_PYTHON), "-c", "from PyQt6.QtCore import QT_VERSION_STR"],
+        capture_output=True, text=True)
+    if check3.returncode == 0:
+        ok("PyQt6 fixed")
+    else:
+        err("PyQt6 install failed — Squelch cannot run without it")
+        info("Manual fix:")
+        info("  venv\\Scripts\\pip uninstall -y PyQt6 PyQt6-Qt6 PyQt6-sip")
+        info("  venv\\Scripts\\pip install --no-cache-dir PyQt6==6.6.1 PyQt6-Qt6==6.6.1 PyQt6-sip==13.6.0")
 
-    _verify_package("numpy")
-    _verify_package("pyqtgraph")
-    _verify_package("sounddevice")
-    _verify_package("keyring")
 
-    # Cache for future offline use if not already cached
+def install_packages(offline: bool = False, cache_only: bool = False):
+    hdr("[3/6] Python Packages")
+
+    import sys as _sys
+    if _sys.version_info >= (3, 14):
+        warn("Python 3.14 — PyQtWebEngine has no wheel yet; map tab will be limited.")
+        sep()
+
+    if not REQ_FILE.exists():
+        warn("requirements.txt not found — skipping.")
+        return
+
+    pip = str(VENV_PIP)
+    subprocess.run([pip, "install", "--upgrade", "pip", "--quiet"],
+                   capture_output=True)
+
+    if cache_only:
+        info(f"Downloading packages to {OFFLINE_DIR}...")
+        OFFLINE_DIR.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run(
+            [pip, "download", "-r", str(REQ_FILE),
+             "-d", str(OFFLINE_DIR), "--quiet"],
+            capture_output=True, text=True)
+        count = len(list(OFFLINE_DIR.glob("*.whl")))
+        (ok if r.returncode == 0 else warn)(f"Cached {count} packages")
+        return
+
+    if not _install_packages_bulk(pip, offline):
+        _install_packages_individual(pip)
+
+    _verify_pyqt6(pip)
+    for pkg in ("numpy", "pyqtgraph", "sounddevice", "keyring"):
+        _verify_package(pkg)
+
     if not offline and not OFFLINE_DIR.exists():
         info("Caching packages for offline use...")
         OFFLINE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1342,7 +1262,6 @@ def main():
         launch = input(
             "  Launch Squelch now? [Y/N]: ").strip().upper()
         if launch == 'Y':
-            # Launch directly via Python — no cmd window
             python_exe = str(VENV_PYTHON)
             main_py    = str(BASE_DIR / "main.py")
             try:
@@ -1354,6 +1273,8 @@ def main():
                         if IS_WINDOWS else 0),
                     close_fds=True)
                 print("  Squelch launched.")
+                # Don't show "Press Enter to close" — window can close now.
+                return
             except Exception as e:
                 print(f"  Launch failed: {e}")
                 print(f"  Run manually: {python_exe} main.py")

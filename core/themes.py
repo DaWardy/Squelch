@@ -103,26 +103,30 @@ LIGHT = Theme(
 )
 
 HIGH_CONTRAST = Theme(
+    # Accessibility-focused palette. WCAG AAA contrast ratios throughout.
+    # Must be visually unmistakable vs Dark theme at a glance:
+    #   Dark   → dark grey backgrounds (#1a1a1a), soft green accent
+    #   High C → pure black background,  pure white text, vivid cyan/yellow
     name            = "High Contrast",
-    bg_primary      = "#000000",
-    bg_secondary    = "#0a0a0a",
-    bg_tertiary     = "#111111",
-    bg_alt          = "#050505",
-    fg_primary      = "#ffffff",
-    fg_secondary    = "#dddddd",
-    fg_muted        = "#888888",
-    accent          = "#00ff88",
-    accent_alt      = "#00aaff",
-    border          = "#444444",
-    border_focus    = "#00ff88",
-    tx_color        = "#ff0000",
-    warn_color      = "#ffaa00",
-    error_color     = "#ff0000",
+    bg_primary      = "#000000",   # pure black — maximum contrast
+    bg_secondary    = "#0d0d0d",   # barely-off-black for panels
+    bg_tertiary     = "#1a1a1a",   # input fields
+    bg_alt          = "#060606",
+    fg_primary      = "#ffffff",   # pure white text
+    fg_secondary    = "#ffff00",   # YELLOW secondary — visually distinct from Dark
+    fg_muted        = "#aaaaaa",
+    accent          = "#00ffcc",   # vivid cyan — nothing like Dark's green
+    accent_alt      = "#ff6600",   # vivid orange for secondary actions
+    border          = "#ffffff",   # WHITE borders — fat, visible, unmistakable
+    border_focus    = "#00ffcc",
+    tx_color        = "#ff2222",
+    warn_color      = "#ffcc00",
+    error_color     = "#ff2222",
     tab_bg          = "#111111",
     tab_selected_bg = "#000000",
-    header_bg       = "#111111",
+    header_bg       = "#000000",
     meter_bg        = "#000000",
-    tooltip_bg      = "#002200",
+    tooltip_bg      = "#001a11",
 )
 
 NIGHT = Theme(
@@ -416,6 +420,84 @@ QDockWidget::title {{
     border-bottom: 1px solid {t.border};
     font-size: {fs}px;
     color: {t.fg_primary};
+}}
+"""
+    # High Contrast — add strong overrides that inline stylesheets can't
+    # easily hide. White borders everywhere, thick focus rings, vivid text.
+    _hc_extra = ""
+    if t.name == "High Contrast":
+        _hc_extra = f"""
+QWidget {{
+    border-color: {t.border};
+}}
+QPushButton {{
+    border: 2px solid {t.border};
+    color: {t.fg_primary};
+    font-weight: bold;
+    padding: 4px 10px;
+}}
+QPushButton:hover {{
+    border: 2px solid {t.accent};
+    color: {t.accent};
+}}
+QPushButton:pressed {{
+    background: {t.accent};
+    color: #000000;
+}}
+QGroupBox {{
+    border: 2px solid {t.border};
+    margin-top: 8px;
+    font-weight: bold;
+    color: {t.fg_secondary};
+}}
+QGroupBox::title {{
+    color: {t.fg_secondary};
+    subcontrol-position: top left;
+    padding: 0 4px;
+}}
+QTabBar::tab {{
+    border: 2px solid {t.border};
+    color: {t.fg_primary};
+    font-weight: bold;
+    padding: 4px 12px;
+}}
+QTabBar::tab:selected {{
+    border-bottom: 3px solid {t.accent};
+    color: {t.accent};
+    background: {t.bg_primary};
+}}
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+    border: 2px solid {t.border};
+    color: {t.fg_primary};
+}}
+QLineEdit:focus, QComboBox:focus,
+QSpinBox:focus, QDoubleSpinBox:focus {{
+    border: 2px solid {t.accent};
+}}
+QLabel {{
+    color: {t.fg_primary};
+}}
+QCheckBox {{
+    color: {t.fg_primary};
+    spacing: 8px;
+}}
+QCheckBox::indicator {{
+    width: 16px; height: 16px;
+    border: 2px solid {t.border};
+}}
+QCheckBox::indicator:checked {{
+    background: {t.accent};
+    border-color: {t.accent};
+}}
+QHeaderView::section {{
+    background: {t.bg_secondary};
+    color: {t.fg_secondary};
+    border: 1px solid {t.border};
+    font-weight: bold;
+    padding: 4px;
+}}
+QTableWidget {{
+    gridline-color: {t.border};
 }}
 """
 

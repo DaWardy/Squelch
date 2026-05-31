@@ -18,6 +18,7 @@ from __future__ import annotations
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 import logging
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QLabel, QListWidget, QListWidgetItem,
@@ -1381,7 +1382,10 @@ for title, cat, content in HELP_ARTICLES:
     _SEARCH_INDEX[key] = words
 
 
-class HelpTab(QWidget):
+class HelpTab(SquelchPanel, QWidget):
+    panel_id    = "help"
+    panel_title = "Help"
+
     def __init__(self, config=None, parent=None):
         super().__init__(parent)
         self.cfg = config

@@ -151,7 +151,34 @@ def _apply_theme_fixes(window, theme_name: str):
             "t_fg":      "#1f2328",     # matches LIGHT.fg_primary
         }
     else:
-        return   # High Contrast and Dark use dark already — skip
+        # High Contrast: substitute inline dark colours with HC palette so
+        # widget setStyleSheet() calls don't drown out the global QSS.
+        # Dark theme is fine as-is — skip it.
+        if theme_name != "High Contrast":
+            return
+        SUBS = [
+            # Dark backgrounds → pure black
+            (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-9a-fA-F]{5}"
+                         r"|2[0-9a-fA-F]{5}|3[0-3][0-9a-fA-F]{4})",
+                         _re.I), "background:#000000"),
+            # Dark borders → white for maximum visibility
+            (_re.compile(r"border(?:-[a-z]+)?\s*:\s*(?:\d+px\s+\w+\s+)?"
+                         r"#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
+                         _re.I), "border:2px solid #ffffff"),
+            # gridline-color → white
+            (_re.compile(r"gridline-color\s*:\s*#(?:[0-9a-fA-F]{6})", _re.I),
+             "gridline-color:#ffffff"),
+            # Soft green accent → vivid cyan
+            (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:#00ffcc"),
+            (_re.compile(r"background\s*:\s*#3fbe6f", _re.I), "background:#00ffcc"),
+            # Muted grey text that is unreadable on black → pure white
+            (_re.compile(r"color\s*:\s*#(?:55|66|77|88|99|aa|bb)[0-9a-fA-F]{4}",
+                         _re.I), "color:#ffffff"),
+            # alternate-background → near-black
+            (_re.compile(r"alternate-background-color\s*:\s*#[0-9a-fA-F]{6}",
+                         _re.I), "alternate-background-color:#0d0d0d"),
+        ]
+        vals = {}  # no format placeholders needed — literals only above
 
     def _fix_widget(w: QWidget):
         try:
@@ -169,27 +196,27 @@ def _apply_theme_fixes(window, theme_name: str):
     for w in window.findChildren(QWidget):
         _fix_widget(w)
 
-    # Also fix the pyqtgraph spectrum/waterfall background which uses its own
-    # API rather than QSS. The user saw the SDR spectrum panel as solid black
-    # even in light theme — that's pyqtgraph's default background.
-    try:
-        import pyqtgraph as pg
-        pg.setConfigOption("background", "#fafbfc")
-        pg.setConfigOption("foreground", "#1f2328")
-        # Re-apply to any existing plot widgets
-        from pyqtgraph import PlotWidget, GraphicsLayoutWidget
-        for w in window.findChildren(PlotWidget):
-            try:
-                w.setBackground("#fafbfc")
-            except Exception:
-                pass
-        for w in window.findChildren(GraphicsLayoutWidget):
-            try:
-                w.setBackground("#fafbfc")
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # Fix pyqtgraph spectrum/waterfall background (its own API, not QSS).
+    _pg_bg = {"Light": "#fafbfc", "High Contrast": "#000000"}.get(theme_name)
+    _pg_fg = {"Light": "#1f2328", "High Contrast": "#ffffff"}.get(theme_name)
+    if _pg_bg:
+        try:
+            import pyqtgraph as pg
+            pg.setConfigOption("background", _pg_bg)
+            pg.setConfigOption("foreground", _pg_fg)
+            from pyqtgraph import PlotWidget, GraphicsLayoutWidget
+            for w in window.findChildren(PlotWidget):
+                try:
+                    w.setBackground(_pg_bg)
+                except Exception:
+                    pass
+            for w in window.findChildren(GraphicsLayoutWidget):
+                try:
+                    w.setBackground(_pg_bg)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # Expose as a module-level helper for panels built after startup
     import main as _main

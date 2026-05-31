@@ -304,6 +304,8 @@ class MapTab(SquelchPanel, QWidget):
                 show_adsb         = self._show_adsb.isChecked(),
                 show_aprs         = self._show_aprs.isChecked(),
                 center_on_station = True,
+                heard_stations    = getattr(self, "_heard_stations", {}),
+                hearing_me        = getattr(self, "_hearing_me", {}),
             )
             self._view.setHtml(html)
 
@@ -604,6 +606,8 @@ class MapTab(SquelchPanel, QWidget):
             }
         if hasattr(self, "_fallback_map") and self._fallback_map:
             self._fallback_map.set_hearing_me(self._hearing_me)
+        if HAS_WEBENGINE:
+            QTimer.singleShot(0, self._refresh_map)
 
 
 def _vsep() -> QFrame:

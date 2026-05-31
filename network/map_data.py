@@ -65,6 +65,8 @@ def build_map_html(config,
                    show_adsb: bool = True,
                    show_aprs: bool = True,
                    center_on_station: bool = True,
+                   heard_stations: dict | None = None,
+                   hearing_me: dict | None = None,
                    ) -> str:
     """
     Build self-contained HTML for the Leaflet map.
@@ -189,6 +191,10 @@ def build_map_html(config,
         center = [20, 0]
         zoom   = 2
 
+    # Resolve grid→lat/lon for heard/hearing_me dicts so JS gets real coords
+    heard_list    = _resolve_station_coords(heard_stations or {})
+    hearing_list  = _resolve_station_coords(hearing_me or {})
+
     html = _render_html(
         center         = center,
         zoom           = zoom,
@@ -204,8 +210,31 @@ def build_map_html(config,
         repeaters      = rep_markers,
         grid_squares   = grid_squares,
         utc_str        = now_utc.strftime("%H:%M UTC"),
+        heard_stations = heard_list,
+        hearing_me     = hearing_list,
     )
     return html
+
+
+def _resolve_station_coords(stations: dict) -> list[dict]:
+    """Resolve grid squares to lat/lon for stations missing coordinates.
+    Returns a list of dicts with lat/lon guaranteed non-zero (skips failures).
+    """
+    out = []
+    for sta in stations.values():
+        lat = sta.get("lat", 0.0)
+        lon = sta.get("lon", 0.0)
+        if not (lat or lon):
+            grid = sta.get("grid", "")
+            if not grid:
+                continue
+            try:
+                lat, lon = _grid_to_latlon(grid.upper())
+            except Exception:
+                continue
+        if lat or lon:
+            out.append({**sta, "lat": lat, "lon": lon})
+    return out
 
 
 def _fetch_adsb() -> list[dict]:
@@ -287,6 +316,8 @@ var AIRCRAFT   = {json.dumps(ctx['aircraft'])};
 var REPEATERS  = {json.dumps(ctx['repeaters'])};
 var GRIDS      = {json.dumps(ctx['grid_squares'])};
 var GRAYLINE   = {ctx['grayline_json']};
+var HEARD      = {json.dumps(ctx['heard_stations'])};
+var HEARING_ME = {json.dumps(ctx['hearing_me'])};
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -423,6 +454,45 @@ AIRCRAFT.forEach(function(a) {{
       +(a.flight||a.icao)+'<br>'
       +'Alt: '+a.alt.toLocaleString()+' ft<br>'
       +'Speed: '+a.speed+' kts'
+      +'</div>')
+    .addTo(map);
+}});
+
+// ── Heard stations (FT8/FT4/decode) — green dots ─────────────
+HEARD.forEach(function(s) {{
+  var icon = L.divIcon({{
+    html: '<div style="background:#3fbe6f;width:8px;height:8px;'
+         +'border-radius:50%;border:1px solid #fff;opacity:0.85;"></div>',
+    className:'', iconSize:[8,8], iconAnchor:[4,4]
+  }});
+  L.marker([s.lat, s.lon], {{icon:icon}})
+    .bindPopup('<div class="qso-popup">'
+      +'<b style="color:#3fbe6f">'+s.callsign+'</b><br>'
+      +(s.grid||'')+'<br>'
+      +(s.freq_mhz?(s.freq_mhz.toFixed(4)+' MHz  '):'')
+      +(s.source||'decode')
+      +(s.snr_db?'<br>SNR '+s.snr_db+' dB':'')
+      +'</div>')
+    .addTo(map);
+}});
+
+// ── PSKReporter — stations that heard us — orange triangles ───
+HEARING_ME.forEach(function(s) {{
+  var icon = L.divIcon({{
+    html: '<div style="width:0;height:0;'
+         +'border-left:6px solid transparent;'
+         +'border-right:6px solid transparent;'
+         +'border-bottom:11px solid #ff8800;'
+         +'opacity:0.9;"></div>',
+    className:'', iconSize:[12,11], iconAnchor:[6,11]
+  }});
+  var freq_mhz = s.freq_hz ? (s.freq_hz/1e6).toFixed(4)+' MHz' : '';
+  L.marker([s.lat, s.lon], {{icon:icon}})
+    .bindPopup('<div class="qso-popup">'
+      +'<b style="color:#ff8800">'+s.callsign+'</b> heard us<br>'
+      +(s.grid||'')+'<br>'
+      +(freq_mhz?freq_mhz+'  ':'')+(s.mode||'')
+      +(s.snr?'<br>SNR '+s.snr+' dB':'')
       +'</div>')
     .addTo(map);
 }});

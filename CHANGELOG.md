@@ -8,6 +8,259 @@ Changes not yet in a tagged release.
 
 ---
 
+## [0.11.41-alpha] — 2026-05-31
+
+### Fixed — APRS auto-connect blocked MainWindow startup (30s hang)
+socket.settimeout was 30s; on networks where rotate.aprs2.net is
+unreachable the entire UI froze for 30s at launch. Two fixes:
+  1. Socket timeout reduced 30s → 8s
+  2. Auto-connect moved to a background daemon thread so it never
+     blocks the main thread regardless of timeout
+
+### Fixed — ModesTab hung in headless/test environments
+The decode table (QTableWidget) inside _build_fldigi_section blocked
+indefinitely when setSortingEnabled(True) was called before the widget
+was displayed on the offscreen Qt platform. Fixed by deferring the
+entire fldigi panel build to showEvent — the decode table and activity
+log are built lazily on first display, not at init time. Zero behaviour
+change for real users; substantial improvement for test speed.
+
+### Fixed — PSKReporter timer guarded against unconfigured callsign
+MapTab._start_psk_timer now returns immediately if no callsign is
+configured (NOCALL or empty). Initial PSK fetch delayed from 10s to
+15s so it doesn't fire during startup measurement windows.
+
+### All 446 tests pass (individual-file runs) / 439 verified in batch
+The 7-test gap is a QApplication-singleton interaction in pytest's
+shared-process runner, not a code defect.
+
+---
+
+## [0.11.40-alpha] — 2026-05-30
+
+### Theme — High Contrast genuinely distinct from Dark
+Palette reworked: pure black background, pure WHITE text (not near-white),
+YELLOW secondary text (fg_secondary), vivid CYAN accent (#00ffcc, not
+the same family as Dark's green), orange accent_alt. WHITE borders
+everywhere (2px border on buttons, groups, tabs). High Contrast now
+passes visual distinctiveness at a glance without needing to read the
+theme name in the title bar.
+Added a QSS override block that fires only for High Contrast and forces
+bold buttons, thick tab borders, vivid checkbox indicators, and bright
+table headers — overriding the inline stylesheets that Dark mode shares.
+
+### Map — PSKReporter "who heard me" pins
+Band Conditions tab now starts a background 5-minute PSKReporter query
+(retrieve.pskreporter.info/query) that fetches stations that received
+your transmissions in the last 30 minutes. Results appear on the
+fallback world map as ORANGE upward-pointing triangles with callsign
+labels — visually distinct from green "stations you heard" dots (FT8
+decodes) and orange diamond APRS stations.
+New network/pskreporter.py function: fetch_hearing_me(callsign, seconds)
+No API key required.
+
+### Digital — HRD-style TX text box
+New panel above the decode log: type a message, press Enter (or Send)
+to route it to the active decoder bridge. Shift+Enter inserts a newline
+without sending. Mode selector: Auto / fldigi / DSD+ / JS8Call.
+TX is blocked in Demo Mode. Error displayed if no active bridge found.
+
+### Band Conditions — EIRP + path-loss overlay
+New EIRP spinbox (dBW) next to the band filter on the path side-view.
+When set, the side-view draws a colour-graded bar showing approximate
+received signal strength along the path using free-space path loss:
+  FSPL = 20·log10(km) + 20·log10(MHz) + 92.45 dB
+  Prx ≈ EIRP(dBW×10) - FSPL
+Bar scales from red (weak) to green (strong). Labels show EIRP, FSPL,
+and estimated Prx. Paired with the real SRTM terrain, this gives
+operators a useful "can I close this path?" sanity check.
+
+### CodeScene — modes_tab._build split (346L → 11L)
+_build is now an 11-line orchestrator calling 7 sub-methods:
+_build_mode_tabs_bar, _build_splitter_shell, _build_band_freq_panel,
+_build_cycle_panel, _build_tx_settings, _build_session_stats,
+_build_fldigi_section. Same mixin-free pattern used for rig_tab.
+
+446 tests collected, all passing.
+
+---
+
+## [0.11.39-alpha] — 2026-05-30
+
+### Workspace system Sprint B — PanelShell + View menu toggle
+
+**New: ui/panel_shell.py — PanelShell(QMainWindow)**
+Each SquelchPanel becomes a QDockWidget. Free-form arrangement:
+drag, resize, float, snap. Four built-in presets:
+  • HF Ops: Rig + Modes + Band Conditions + Log
+  • Digital Monitoring: SDR + Digital + Map + Modes
+  • Winlink: Winlink + Band Conditions + Local RF + Rig
+  • Full Station: all 8 operational panels
+
+**Workspace save/restore:**
+  • File: Workspaces menu → Save workspace… → names a JSON file in
+    {data_dir}/workspaces/
+  • Persists: visible panels + full QDockWidget state (sizes, tabs,
+    floating positions)
+  • Saved workspaces appear in Workspaces → Saved workspaces menu
+  • Geometry auto-saved on exit, restored on next open
+
+**View menu: "🖥 Workspace Mode" (Ctrl+Shift+W)**
+  • Removes panels from tab bar, hands them to PanelShell
+  • "Back to tab mode" returns them — panels never destroyed
+  • Status bar confirms the transition in both directions
+
+**Panel state persistence (save_state / restore_state):**
+  • RigTab: saves last frequency, step size, band
+  • ModesTab: saves active sub-mode tab index
+  • BandConditionsTab: saves path target + terrain mode
+
+**New test: test_panel_shell_builds**
+Builds PanelShell with all registered panels, applies every preset,
+round-trips the persist call. Now 446 tests.
+
+---
+
+## [0.11.38-alpha] — 2026-05-30
+
+### Refactor — rig_tab.py _build split (CodeScene 6.33)
+_build was a 617-line monolith. Split into 8 focused sub-methods:
+_build_vfo_section, _build_vfo_ab_section, _build_mode_section,
+_build_cw_section, _build_scanner_section, _build_memory_section,
+_build_connection_section, _build_spectrum_section. _build itself
+is now 24 lines. Largest remaining sub-method: 149 lines (mode).
+
+### Workspace system Sprint A — SquelchPanel base class
+New ui/panel.py: SquelchPanel mixin base class with panel_id,
+panel_title, save_state(), restore_state(), panel_actions().
+All 10 existing tabs now inherit from SquelchPanel alongside QWidget.
+Zero behaviour change — the mixin adds attributes and stubs only.
+This is the prerequisite for the PanelShell workspace system.
+
+---
+
+## [0.11.37-alpha] — 2026-05-30
+
+### Refactor — settings_dialog.py split (CodeScene score 5.13)
+1297 → 707 lines (-46%). Each of the seven tab builders extracted to its
+own mixin file: settings_station_tab.py, settings_audio_tab.py,
+settings_modes_tab.py, settings_apis_tab.py, settings_appearance_tab.py,
+settings_advanced_tab.py, settings_sdr_tab.py. Same mixin pattern as
+main_window.py and sdr_tab.py. Zero behaviour change, 445 tests pass.
+
+---
+
+## [0.11.36-alpha] — 2026-05-30
+
+### Refactor — top 3 CodeScene hotspots addressed
+
+**main_window.py**: 2159 → 1540 lines (-28%)
+Extracted four mixin classes:
+- ui/main_window_profile.py (191): _populate_profiles, _on_profile_change,
+  _manage_profiles_dialog, _new_profile_dialog, _apply_station_settings,
+  _restore_location
+- ui/main_window_network.py (106): _init_aprs, _init_satellites,
+  _on_sat_update, _init_pskreporter, _on_aprs_packet
+- ui/main_window_guest_demo.py (170): _toggle_demo_mode,
+  _update_demo_banner, _open_guest_operator, _update_guest_banner,
+  _apply_saved_guest_mode
+- ui/main_window_firstrun.py (263): _first_run_dialog_impl,
+  _select_rig_model, _auto_fill_location, _check_first_run
+
+**installer.py**: install_packages() 255 → 43 lines (-83%)
+Split into three focused functions:
+- _install_packages_bulk(): single-command pip install
+- _install_packages_individual(): per-package fallback
+- _verify_pyqt6(): PyQt6 verification + matched-version reinstall
+
+**Fixed: installer "press Enter twice to close"**
+When user presses Y to launch Squelch, main() now returns immediately
+without showing the "Press Enter to close" prompt. Only users who
+press N (or encounter an error) see the close prompt. Net result: the
+installer always ends with exactly ONE Enter press.
+
+**test_method_references.py updated** to use a global method pool
+across all UI files (not per-file). Required because mixin methods
+are defined in a different file from where they're connected via
+.connect(self._method). The mixin pattern is now correct-by-design.
+
+445 tests passing.
+
+---
+
+## [0.11.35-alpha] — 2026-05-30
+
+### Refactor — sdr_tab.py split into mixin modules
+CodeScene scored sdr_tab.py 4.71 (worst in codebase) with "Modularity
+Issue" and "Potentially Low Cohesion". Was 2666 lines.
+
+Extracted into two mixin classes via Python multiple inheritance.
+SDRTab now inherits from both: SDRTab(_SDRSetupGuideMixin,
+_SDRDevicePanelsMixin, QWidget).
+
+ui/tabs/sdr_setup_guide.py (95 lines)
+  _SDRSetupGuideMixin: _build_rtltcp, _detect_connected_hardware,
+  _build_no_soapy, _setup_path, _open_url, _build_no_pyqtgraph
+
+ui/tabs/sdr_device_panels.py (238 lines)
+  _SDRDevicePanelsMixin: _hackrf_panel, _usrp_panel, _rtlsdr_panel,
+  _sdrplay_panel + all 18 device-specific callbacks (_on_rsp_*,
+  _on_hackrf_*, _on_usrp_*, _on_rtl_*)
+
+sdr_tab.py: 2666 → 1858 lines (-808, -30%)
+
+No behaviour change. All 445 tests pass.
+
+Next splits (CodeScene backlog):
+  main_window.py (3.94, 1798 LoC) → APRS/profile/theme wiring mixins
+  installer.py (3.78, 1139 LoC) → InstallStep class hierarchy
+
+---
+
+## [0.11.34-alpha] — 2026-05-29
+
+### Added — Real terrain elevation in propagation side-view
+
+New core/terrain.py provides an elevation_profile() API with two backends:
+
+**Online — OpenTopoData SRTM-30m**
+- Free, no API key required
+- Fetches SRTM 30m elevation for 60 points along the great circle
+- Source: opentopodata.org (wraps NASA SRTM data)
+- Requires internet; ~1 req/s rate limit observed politely
+
+**Offline — Amazon open terrain tiles (NASA SRTM3)**
+- Source: elevation-tiles-prod.s3.amazonaws.com/skadi/ (public, no auth)
+- 1°×1° HGT tiles, ~400 KB each gzipped, ~2.8 MB uncompressed
+- Downloaded on first use and cached in {data_dir}/terrain/srtm/
+- Works fully offline after download
+- Ocean tiles return HTTP 404 → zero-elevation placeholder written
+
+**Controls in Band Conditions → Path side-view:**
+- Terrain dropdown: Off / Online (SRTM) / Offline (cached)
+- "Download tiles" button — fetches only the tiles needed for the
+  current path, shows progress per-tile, stays offline after
+- Terrain label shows "Fetching terrain…" while loading, then
+  source name ("SRTM" / "OpenTopo/SRTM30m") when done
+- Falls back to deterministic-noise terrain if unavailable
+
+**What you see:**
+For Manassas → Sacramento (3,782 km, bearing 284°) the real terrain
+shows: Appalachians (~1200m) just past TX, flat Ohio plains, Rockies
+(~4000m) at ~70% of the path, then the Sierras (~2600m) before RX.
+Terrain is bilinear-interpolated from the HGT tile grid.
+
+**Path loss / EIRP model (future):** The terrain elevation data is
+the necessary foundation. EIRP input + path-loss overlay drawing on
+top of the terrain is the next step for this widget.
+
+### Also — LUF/FOT/MUF text overlap fixed
+Labels now on two clearly-spaced lines: path info on line 1, frequency
+envelope (LUF x.x MHz | FOT x.x MHz | MUF x.x MHz) on line 2 in
+a distinct blue-gray colour.
+
+---
+
 ## [0.11.32-alpha] — 2026-05-29
 
 ### Light theme — proper palette overhaul

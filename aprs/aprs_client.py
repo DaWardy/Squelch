@@ -109,7 +109,7 @@ class APRSClient:
         try:
             self._sock = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
-            self._sock.settimeout(30)
+            self._sock.settimeout(8)
             self._sock.connect((APRS_IS_HOST, APRS_IS_PORT))
             self._sock.sendall(
                 f"user {callsign} pass -1 "

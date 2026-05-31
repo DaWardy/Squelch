@@ -32,6 +32,7 @@ from ui.widgets.launch_bar import LaunchBar
 from core.launcher import get_launcher
 from core.guest_op import operating_callsign
 from core.safety import get_safety
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QGroupBox,
@@ -87,7 +88,10 @@ WEAK_SIGNAL_BANDS = [
 ]
 
 
-class ModesTab(QWidget):
+class ModesTab(SquelchPanel, QWidget):
+    panel_id    = "modes"
+    panel_title = "Modes"
+
     def __init__(self, rig, config, log_db=None, parent=None):
         super().__init__(parent)
         self.rig    = rig
@@ -122,17 +126,36 @@ class ModesTab(QWidget):
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
+
+    def save_state(self) -> dict:
+        try:
+            return {
+                "mode_tab": self._mode_tabs.currentIndex(),
+                "filter":   getattr(self, "_callsign_filter", ""),
+            }
+        except Exception:
+            return {}
+
+    def restore_state(self, state: dict) -> None:
+        try:
+            if "mode_tab" in state:
+                self._mode_tabs.setCurrentIndex(state["mode_tab"])
+        except Exception:
+            pass
+
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(4)
 
-        # ── Launch bar ───────────────────────────────────────────────────
-        self._launch_bar = LaunchBar(
-            "modes", self.cfg,
-            rescan_callback=self._rescan_software)
-        root.addWidget(self._launch_bar)
+        # Launch bar
+        root.addWidget(LaunchBar("modes", self.cfg,
+                                  rescan_callback=self._rescan_software))
 
+        self._build_mode_tabs_bar(root)
+        self._build_splitter_shell(root)
+
+    def _build_mode_tabs_bar(self, root):
         # ── Mode selector tabs ────────────────────────────────────────────
         self._mode_tabs = QTabWidget()
         self._mode_tabs.setFixedHeight(42)
@@ -150,25 +173,29 @@ class ModesTab(QWidget):
             self._mode_tabs.addTab(QWidget(), m)
         self._mode_tabs.currentChanged.connect(self._on_mode_tab)
         root.addWidget(self._mode_tabs)
-
+        
         div = QFrame()
         div.setFrameShape(QFrame.Shape.HLine)
         div.setStyleSheet("color:#1a1a1a;")
         root.addWidget(div)
+        
 
+
+    def _build_splitter_shell(self, root):
         # ── Main splitter: controls | decode list ────────────────────────
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setStyleSheet(
+        self._main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._main_splitter.setStyleSheet(
             "QSplitter::handle{background:#1a1a1a;width:2px;}")
-
+        
         # Left panel — wrap in scroll area so it never clips
-        left_outer = QWidget()
+        self._left_outer = QWidget()
+        left_outer = self._left_outer
         left_outer.setMinimumWidth(260)
         left_outer.setMaximumWidth(400)
         left_outer_layout = QVBoxLayout(left_outer)
         left_outer_layout.setContentsMargins(0, 0, 0, 0)
         left_outer_layout.setSpacing(0)
-
+        
         from PyQt6.QtWidgets import QScrollArea
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
@@ -177,32 +204,41 @@ class ModesTab(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         left_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
+        
         left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(6, 6, 6, 6)
-        left_layout.setSpacing(6)
+        self._left_layout = QVBoxLayout(left)
+        self._left_layout.setContentsMargins(6, 6, 6, 6)
+        self._left_layout.setSpacing(6)
         left_scroll.setWidget(left)
         left_outer_layout.addWidget(left_scroll)
 
+        # Populate left panel with section sub-methods
+        self._build_band_freq_panel(self._left_layout)
+        self._build_cycle_panel(self._left_layout)
+        self._build_tx_settings(self._left_layout)
+        self._build_session_stats(self._left_layout)
+        self._left_layout.addStretch()
+        self._fldigi_built = False
+
+    def _build_band_freq_panel(self, root):
         # ── Band + frequency selector (WSJT-X style) ──────────────────
         band_grp = QGroupBox("Band / Frequency")
         band_gl  = QGridLayout(band_grp)
         band_gl.setSpacing(4)
-
+        
         band_gl.addWidget(QLabel("Band:"), 0, 0)
         self._band_combo = QComboBox()
         self._band_combo.addItems(WEAK_SIGNAL_BANDS)
         self._band_combo.setCurrentText("20m")
         self._band_combo.currentTextChanged.connect(self._on_band_change)
         band_gl.addWidget(self._band_combo, 0, 1)
-
+        
         band_gl.addWidget(QLabel("Frequency:"), 1, 0)
         self._freq_label = QLabel("14.074.000 MHz")
         self._freq_label.setStyleSheet(
             "color:#3fbe6f; font-family:'Courier New'; ")
         band_gl.addWidget(self._freq_label, 1, 1)
-
+        
         self._tune_btn = QPushButton("Tune Rig")
         self._tune_btn.setToolTip(
             "Set the rig to the calling frequency for this band/mode and key a steady carrier so you can tune your ATU. Transmits — make sure your antenna is connected.")
@@ -210,8 +246,8 @@ class ModesTab(QWidget):
         self._tune_btn.clicked.connect(self._tune_rig)
         band_gl.addWidget(self._tune_btn, 2, 0, 1, 2)
         band_grp.setMinimumHeight(80)
-        left_layout.addWidget(band_grp)
-
+        self._left_layout.addWidget(band_grp)
+        
         # ── Cycle timer ───────────────────────────────────────────────
         cycle_grp = QGroupBox("Cycle")
         cycle_l   = QVBoxLayout(cycle_grp)
@@ -230,14 +266,17 @@ class ModesTab(QWidget):
         cycle_l.addWidget(self._cycle_bar)
         cycle_l.addWidget(self._cycle_label)
         cycle_grp.setMinimumHeight(80)
-        left_layout.addWidget(cycle_grp)
+        self._left_layout.addWidget(cycle_grp)
+        
 
+
+    def _build_cycle_panel(self, root):
         # ── Auto-sequence state ───────────────────────────────────────
         state_grp = QGroupBox("Auto-Sequence")
         state_l   = QVBoxLayout(state_grp)
-
+        
         self._state_label = QLabel("● Idle — monitoring")
-
+        
         # C-11 (Tyler): big, unmistakable ON-AIR indicator. FT8 auto-transmits,
         # so the operator must always be able to tell at a glance whether the
         # rig is actually keyed.
@@ -252,18 +291,18 @@ class ModesTab(QWidget):
             "  font-weight:bold;")
         state_l.addWidget(self._onair_label)
         state_l.addWidget(self._state_label)
-
+        
         self._qso_label = QLabel("No QSO in progress")
         self._qso_label.setStyleSheet(
             " ")
         state_l.addWidget(self._qso_label)
-
+        
         self._tx_msg_label = QLabel("")
         self._tx_msg_label.setStyleSheet(
             "color:#3fbe6f; font-family:'Courier New'; ")
         self._tx_msg_label.setWordWrap(True)
         state_l.addWidget(self._tx_msg_label)
-
+        
         # Control buttons
         btn_row1 = QHBoxLayout()
         self._cq_btn = QPushButton("CQ")
@@ -274,7 +313,7 @@ class ModesTab(QWidget):
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
             "border-radius:4px;font-weight:bold;")
         self._cq_btn.clicked.connect(self._send_cq)
-
+        
         self._halt_btn = QPushButton("Halt TX")
         self._halt_btn.setToolTip(
             "Immediately stop transmitting. Use this to abort a TX cycle at any time.")
@@ -286,14 +325,17 @@ class ModesTab(QWidget):
         btn_row1.addWidget(self._cq_btn)
         btn_row1.addWidget(self._halt_btn)
         state_l.addLayout(btn_row1)
+        
+        self._left_layout.addWidget(state_grp)
+        
 
-        left_layout.addWidget(state_grp)
 
+    def _build_tx_settings(self, root):
         # ── TX settings ───────────────────────────────────────────────
         tx_grp = QGroupBox("TX Settings")
         tx_gl  = QGridLayout(tx_grp)
         tx_gl.setSpacing(4)
-
+        
         tx_gl.addWidget(QLabel("Power:"), 0, 0)
         self._power_spin = QSpinBox()
         self._power_spin.setRange(1, 100)
@@ -302,7 +344,7 @@ class ModesTab(QWidget):
         self._power_spin.setSuffix(" dBm")
         self._power_spin.setFixedWidth(80)
         tx_gl.addWidget(self._power_spin, 0, 1)
-
+        
         tx_gl.addWidget(QLabel("TX Freq:"), 1, 0)
         self._tx_freq_spin = QSpinBox()
         self._tx_freq_spin.setRange(200, 3000)
@@ -310,13 +352,13 @@ class ModesTab(QWidget):
         self._tx_freq_spin.setSuffix(" Hz")
         self._tx_freq_spin.setFixedWidth(80)
         tx_gl.addWidget(self._tx_freq_spin, 1, 1)
-
+        
         self._even_cb = QCheckBox("TX even periods")
         self._even_cb.setToolTip(
             "Transmit on even 15-second periods (00, 30s). Leave unchecked to use odd periods. Pick the opposite of the station you're working.")
         self._even_cb.setChecked(True)
         tx_gl.addWidget(self._even_cb, 2, 0, 1, 2)
-
+        
         self._auto_seq_cb = QCheckBox("Auto-sequence")
         self._auto_seq_cb.setToolTip(
             "Let the software automatically step through the QSO exchange (signal report, R+report, 73). Recommended for beginners.")
@@ -324,7 +366,7 @@ class ModesTab(QWidget):
         self._auto_seq_cb.toggled.connect(
             self.ft8_engine.set_auto_sequence)
         tx_gl.addWidget(self._auto_seq_cb, 3, 0, 1, 2)
-
+        
         self._auto_cq_cb = QCheckBox("Auto CQ")
         self._auto_cq_cb.setToolTip(
             "Automatically repeat CQ calls until someone answers. Watch the band — don't leave it unattended while transmitting.")
@@ -332,7 +374,7 @@ class ModesTab(QWidget):
         self._auto_cq_cb.toggled.connect(
             self.ft8_engine.set_auto_cq)
         tx_gl.addWidget(self._auto_cq_cb, 4, 0, 1, 2)
-
+        
         self._hold_tx_cb = QCheckBox("Hold TX frequency")
         self._hold_tx_cb.setToolTip(
             "Keep your transmit frequency fixed instead of following the station you're answering. Helps avoid being covered by callers.")
@@ -340,7 +382,7 @@ class ModesTab(QWidget):
         self._hold_tx_cb.toggled.connect(
             self.ft8_engine.set_hold_tx_freq)
         tx_gl.addWidget(self._hold_tx_cb, 5, 0, 1, 2)
-
+        
         self._dx_only_cb = QCheckBox("DX only (skip domestic)")
         self._dx_only_cb.setToolTip(
             "Only respond to stations outside your own country — useful for chasing DX.")
@@ -348,15 +390,15 @@ class ModesTab(QWidget):
         self._dx_only_cb.toggled.connect(
             self.ft8_engine.set_dx_only)
         tx_gl.addWidget(self._dx_only_cb, 6, 0, 1, 2)
-
+        
         tx_grp.setMinimumHeight(80)
-        left_layout.addWidget(tx_grp)
-
+        self._left_layout.addWidget(tx_grp)
+        
         # ── Session stats ─────────────────────────────────────────────
         stats_grp = QGroupBox("Session")
         stats_l   = QGridLayout(stats_grp)
         stats_l.setSpacing(3)
-
+        
         def _stat(label, attr):
             lbl = QLabel(label)
             lbl.setStyleSheet(" ")
@@ -366,7 +408,7 @@ class ModesTab(QWidget):
                 "font-family:'Courier New';")
             setattr(self, attr, val)
             return lbl, val
-
+        
         for row, (label, attr) in enumerate([
             ("QSOs this session:", "_stat_qsos"),
             ("DXCC worked:",       "_stat_dxcc"),
@@ -376,39 +418,80 @@ class ModesTab(QWidget):
             lbl, val = _stat(label, attr)
             stats_l.addWidget(lbl, row, 0)
             stats_l.addWidget(val, row, 1)
+        
+        self._left_layout.addWidget(stats_grp)
+        self._left_layout.addStretch()
+        
 
-        left_layout.addWidget(stats_grp)
-        left_layout.addStretch()
 
+    def _build_session_stats(self, root):
+        # ── Session stats ─────────────────────────────────────────────
+        stats_grp = QGroupBox("Session")
+        stats_l   = QGridLayout(stats_grp)
+        stats_l.setSpacing(3)
+        
+        def _stat(label, attr):
+            lbl = QLabel(label)
+            lbl.setStyleSheet(" ")
+            val = QLabel("0")
+            val.setStyleSheet(
+                "color:#3fbe6f;  "
+                "font-family:'Courier New';")
+            setattr(self, attr, val)
+            return lbl, val
+        
+        for row, (label, attr) in enumerate([
+            ("QSOs this session:", "_stat_qsos"),
+            ("DXCC worked:",       "_stat_dxcc"),
+            ("New grids:",         "_stat_grids"),
+            ("Decodes:",           "_stat_decodes"),
+        ]):
+            lbl, val = _stat(label, attr)
+            stats_l.addWidget(lbl, row, 0)
+            stats_l.addWidget(val, row, 1)
+        
+        self._left_layout.addWidget(stats_grp)
+        self._left_layout.addStretch()
+        
+
+
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not getattr(self, "_fldigi_built", True):
+            self._fldigi_built = True
+            self._build_fldigi_section(self._left_layout)
+
+    def _build_fldigi_section(self, root):
         # ── Fldigi panel (shown for PSK31/RTTY/CW/SSTV) ──────────────
         self._fldigi_panel = self._build_fldigi_panel()
-        left_layout.addWidget(self._fldigi_panel)
+        self._left_layout.addWidget(self._fldigi_panel)
         self._fldigi_panel.hide()
-
-        splitter.addWidget(left_outer)
-
+        
+        self._main_splitter.addWidget(self._left_outer)
+        
         # Right panel — decode list + activity
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(4, 8, 8, 8)
         right_layout.setSpacing(4)
-
+        
         # Decode list header
         decode_hdr = QHBoxLayout()
         decode_hdr.addWidget(QLabel("Decoded Signals"))
         decode_hdr.addStretch()
-
+        
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("Filter callsign…")
         self._filter_edit.setFixedWidth(130)
         self._filter_edit.textChanged.connect(self._filter_decodes)
         decode_hdr.addWidget(self._filter_edit)
-
+        
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setFixedHeight(24)
         self._clear_btn.clicked.connect(self._clear_decodes)
         decode_hdr.addWidget(self._clear_btn)
-
+        
         export_btn = QPushButton("⬇ Export")
         export_btn.setFixedHeight(24)
         export_btn.setToolTip(
@@ -417,12 +500,12 @@ class ModesTab(QWidget):
         export_btn.clicked.connect(self._export_decodes)
         decode_hdr.addWidget(export_btn)
         right_layout.addLayout(decode_hdr)
-
+        
         # Decode table
         self._decode_table = QTableWidget(0, len(DECODE_HEADERS))
         self._decode_table.setHorizontalHeaderLabels(DECODE_HEADERS)
         self._decode_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
+            QHeaderView.ResizeMode.Interactive)
         self._decode_table.horizontalHeader().setSectionResizeMode(
             COL_DXCC, QHeaderView.ResizeMode.Stretch)
         self._decode_table.setSelectionBehavior(
@@ -430,7 +513,9 @@ class ModesTab(QWidget):
         self._decode_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
         self._decode_table.setAlternatingRowColors(True)
-        self._decode_table.setSortingEnabled(True)
+        try:
+            self._decode_table.setSortingEnabled(True)
+        except Exception: pass
         self._decode_table.verticalHeader().setVisible(False)
         self._decode_table.setStyleSheet("""
             QTableWidget{background:#0d0d0d;
@@ -443,7 +528,7 @@ class ModesTab(QWidget):
         """)
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
         right_layout.addWidget(self._decode_table, 3)
-
+        
         # Activity log
         activity_hdr = QHBoxLayout()
         activity_hdr.addWidget(QLabel("Activity / TX Log"))
@@ -453,7 +538,7 @@ class ModesTab(QWidget):
         clr.clicked.connect(lambda: self._activity_log.clear())
         activity_hdr.addWidget(clr)
         right_layout.addLayout(activity_hdr)
-
+        
         self._activity_log = QTextEdit()
         self._activity_log.setReadOnly(True)
         self._activity_log.setMaximumHeight(120)
@@ -462,13 +547,13 @@ class ModesTab(QWidget):
             "font-family:'Courier New';  "
             "border:1px solid #1a1a1a;")
         right_layout.addWidget(self._activity_log)
-
-        splitter.addWidget(right)
-        splitter.setSizes([300, 700])
-        root.addWidget(splitter)
-
+        
+        self._main_splitter.addWidget(right)
+        self._main_splitter.setSizes([300, 700])
+        root.addWidget(self._main_splitter)
+        
         # Start cycle timer
-        self._cycle_timer.start()
+
 
     def _build_fldigi_panel(self) -> QWidget:
         """Control panel shown when PSK31/RTTY/CW/SSTV is active."""

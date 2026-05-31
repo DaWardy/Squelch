@@ -29,6 +29,7 @@ from core.sanitize import csv_safe
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QGroupBox, QTableWidget,
@@ -86,7 +87,10 @@ STATUS_LABELS = {
 }
 
 
-class LogTab(QWidget):
+class LogTab(SquelchPanel, QWidget):
+    panel_id    = "log"
+    panel_title = "Log"
+
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.cfg    = config

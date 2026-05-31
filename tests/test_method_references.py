@@ -32,24 +32,39 @@ def _connected_methods(src: str) -> list[tuple[int, str]]:
 
 
 def test_no_missing_connected_methods():
-    """Every self._X referenced in .connect() must be defined as a method."""
+    """Every self._X referenced in .connect() must be defined as a method
+    somewhere in the UI package — including mixin files."""
     failures = []
+    # Build a global pool of all method names across all UI Python files.
+    # This handles mixin patterns where methods are defined in *_mixin.py
+    # files and then inherited via multiple inheritance.
+    all_ui_methods: set[str] = set()
+    for py in UI_DIR.rglob("*.py"):
+        if "__pycache__" in str(py):
+            continue
+        try:
+            tree = ast.parse(py.read_text(errors="replace"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    for n in ast.walk(node):
+                        if isinstance(n, ast.FunctionDef):
+                            all_ui_methods.add(n.name)
+        except SyntaxError:
+            continue
+
     for py in UI_DIR.rglob("*.py"):
         if "__pycache__" in str(py):
             continue
         src = py.read_text(errors="replace")
         try:
-            tree = ast.parse(src)
+            ast.parse(src)
         except SyntaxError:
             continue
-        all_methods = _class_methods(tree)
-        if not all_methods:
-            continue
         for lineno, name in _connected_methods(src):
-            if name not in all_methods:
+            if name not in all_ui_methods:
                 failures.append(
                     f"{py.name}:{lineno}  "
-                    f".connect(self.{name})  — not defined")
+                    f".connect(self.{name})  — not defined anywhere in ui/")
     assert not failures, (
         "Connected methods not defined (crash on tab load):\n"
         + "\n".join(failures))

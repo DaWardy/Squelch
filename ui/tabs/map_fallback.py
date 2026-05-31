@@ -108,6 +108,47 @@ class WorldMapWidget(QWidget):
         self._dx_spots = spots
         self.update()
 
+
+    def set_hearing_me(self, stations_dict: dict):
+        """Update the 'who heard me' layer (PSKReporter spots)."""
+        self._hearing_me = stations_dict
+        self.update()
+
+    def _draw_hearing_me(self, p, w: int, h: int):
+        """Draw stations that heard us as orange triangles."""
+        from PyQt6.QtGui import QPen, QBrush, QPolygonF, QFont, QColor
+        from PyQt6.QtCore import QPointF
+        for sta in getattr(self, '_hearing_me', {}).values():
+            lat = sta.get('lat', 0.0)
+            lon = sta.get('lon', 0.0)
+            # Resolve grid if no lat/lon yet
+            if not lat and not lon:
+                grid = sta.get('grid', '')
+                if not grid:
+                    continue
+                try:
+                    from core.location import _grid_to_latlon
+                    lat, lon = _grid_to_latlon(grid.upper())
+                    sta['lat'] = lat; sta['lon'] = lon
+                except Exception:
+                    continue
+            x, y = self._latlon_to_xy(lat, lon, w, h)
+            # Orange upward-pointing triangle
+            size = 8
+            tri = QPolygonF([
+                QPointF(x, y - size),
+                QPointF(x - size * 0.7, y + size * 0.4),
+                QPointF(x + size * 0.7, y + size * 0.4),
+            ])
+            p.setPen(QPen(QColor('#ff8800'), 2))
+            p.setBrush(QBrush(QColor('#803000')))
+            p.drawPolygon(tri)
+            # Callsign label
+            p.setPen(QPen(QColor('#ffcc88'), 1))
+            p.setFont(QFont('Courier New', 8))
+            p.drawText(int(x) + 10, int(y) + 4,
+                       sta.get('callsign', '')[:8])
+
     def _draw_heard(self, p, w: int, h: int):
         """Draw stations heard from FT8/decodes/etc as green dots."""
         for sta in getattr(self, '_heard_stations', {}).values():
@@ -178,6 +219,7 @@ class WorldMapWidget(QWidget):
         self._draw_aprs(p, w, h)
         self._draw_dx_spots(p, w, h)
         self._draw_heard(p, w, h)
+        self._draw_hearing_me(p, w, h)
 
         # Status text shown in the _gl_bar QLabel below the canvas
 

@@ -81,3 +81,33 @@ def test_settings_dialog_opens(app):
     mw = QMainWindow()
     dlg = SettingsDialog(cfg, parent=mw)
     assert dlg._tabs.count() >= 6
+
+
+def test_panel_shell_builds(app):
+    """PanelShell builds with all registered panels and shows preset."""
+    from core.config import Config
+    from core.rig import RigController
+    from core.location import LocationManager
+    from ui.main_window import MainWindow
+    from ui.panel import SquelchPanel
+    from ui.panel_shell import PanelShell, PRESETS
+
+    cfg = Config()
+    mw = MainWindow(cfg, RigController(cfg), LocationManager(cfg))
+
+    # Collect panels
+    panels = {pid: tab for pid, tab in mw._tab_map.items()
+              if isinstance(tab, SquelchPanel) and getattr(tab, 'panel_id', '')}
+    assert len(panels) >= 8, f"Expected ≥8 panels, got {len(panels)}"
+
+    # Build PanelShell
+    shell = PanelShell(panels, cfg)
+    assert len(shell._docks) == len(panels)
+
+    # Apply all built-in presets without crashing
+    for name in PRESETS:
+        shell._apply_preset(name)
+
+    # Verify save/restore round-trips
+    shell._persist()
+    mw.close(); shell.hide()

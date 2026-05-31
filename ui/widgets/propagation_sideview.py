@@ -40,19 +40,106 @@ class PropagationSideView(QWidget):
         self._luf_mhz:    float = 3.0
         self._freq_mhz:   float = 0.0
         self._target:     str   = ""
+        # Endpoint coordinates — needed for terrain lookup
+        self._tx_lat:     float = 0.0
+        self._tx_lon:     float = 0.0
+        self._rx_lat:     float = 0.0
+        self._rx_lon:     float = 0.0
+        # Terrain state
+        self._terrain_mode:  str              = "off"   # "off"/"online"/"offline"
+        self._terrain_elev:  Optional[list[float]] = None   # metres, n+1 samples
+        self._terrain_busy:  bool             = False
+        self._terrain_label: str              = ""
+        self._eirp_dbw:      float             = 10.0  # default 10W
+
+    def set_terrain_mode(self, mode: str):
+        """Set terrain mode: 'off', 'online', or 'offline'.
+        Triggers an async elevation fetch if online/offline."""
+        self._terrain_mode = mode
+        self._terrain_elev = None
+        self._terrain_label = ""
+        if mode != "off":
+            self._fetch_terrain_async()
+        self.update()
+
+    def _fetch_terrain_async(self):
+        """Fetch elevation profile in a background thread."""
+        if self._terrain_busy:
+            return
+        if (not self._tx_lat and not self._tx_lon) or self._path_km <= 0:
+            return
+        from PyQt6.QtCore import pyqtSignal, QObject
+        import threading
+
+        class _Worker(QObject):
+            done = pyqtSignal(object, str)   # (elev_list_or_None, label)
+
+        worker = _Worker()
+        worker.done.connect(self._on_terrain_done)
+        self._terrain_busy = True
+        self._terrain_label = "Fetching terrain…"
+        self.update()
+
+        mode = self._terrain_mode
+        lat1, lon1 = self._tx_lat, self._tx_lon
+        lat2, lon2 = self._rx_lat, self._rx_lon
+
+        def _run():
+            label = ""
+            try:
+                from core.terrain import elevation_profile
+                elev = elevation_profile(lat1, lon1, lat2, lon2,
+                                         n=60, mode=mode)
+                if elev:
+                    src = "SRTM" if mode == "offline" else "OpenTopo/SRTM30m"
+                    label = f"Terrain: {src}"
+                else:
+                    label = ("Offline tiles not downloaded"
+                             if mode == "offline"
+                             else "Terrain fetch failed")
+            except Exception as e:
+                elev = None
+                label = f"Terrain error: {e}"
+            worker.done.emit(elev, label)
+
+        threading.Thread(target=_run, daemon=True,
+                         name="TerrainFetch").start()
+
+    def _on_terrain_done(self, elev, label: str):
+        self._terrain_busy = False
+        self._terrain_elev = elev
+        self._terrain_label = label
+        self.update()
+
+
+    def set_eirp_dbw(self, dbw: float):
+        self._eirp_dbw = dbw
+        self.update()
 
     def update_state(self,
                      path_km:  float,
                      muf_mhz:  float,
                      luf_mhz:  float = 3.0,
                      freq_mhz: float = 0.0,
-                     target:   str   = ""):
-        """Refresh state and repaint."""
+                     target:   str   = "",
+                     tx_lat:   float = 0.0,
+                     tx_lon:   float = 0.0,
+                     rx_lat:   float = 0.0,
+                     rx_lon:   float = 0.0):
+        """Refresh state and repaint. Pass tx/rx coords to enable terrain."""
+        path_changed = abs(path_km - self._path_km) > 1.0
         self._path_km  = max(0.0, float(path_km))
         self._muf_mhz  = max(0.0, float(muf_mhz))
         self._luf_mhz  = max(0.0, float(luf_mhz))
         self._freq_mhz = max(0.0, float(freq_mhz))
         self._target   = target or ""
+        if tx_lat or tx_lon:
+            self._tx_lat, self._tx_lon = tx_lat, tx_lon
+            self._rx_lat, self._rx_lon = rx_lat, rx_lon
+        # Re-fetch terrain if path changed and mode is active
+        if path_changed and self._terrain_mode != "off":
+            self._terrain_elev = None
+            self._fetch_terrain_async()
         self.update()
 
     # ── Geometry helpers ──────────────────────────────────────────────────
@@ -123,38 +210,49 @@ class PropagationSideView(QWidget):
         # Scale so a typical HF path's bulge fits in ~10% of the plot
         bulge_px = min(H * 0.10, sagitta / 50.0 * H * 0.10)
 
-        # ── Draw Earth surface with terrain undulation ────────────────
-        # Generate a deterministic "representative" elevation profile
-        # along the great circle. We don't have real terrain data so we
-        # use a small sum-of-sines based on the path distance, seeded by
-        # int(path) so the same path gives the same mountains. The result
-        # *suggests* mountains without claiming to be DEM-accurate.
+        # ── Draw Earth surface with terrain ───────────────────────────
         import math
-        terrain_pts = []
+        terrain_pts: list[float] = []
         n_samples = 60
-        max_terrain_px = max(8, int(H * 0.06))   # max peak height
-        seed = int(path) % 997
-        for i in range(n_samples + 1):
-            t = i / n_samples
-            # Three offset sines for variety; phase-shifted by seed
-            elev = (
-                0.55 * math.sin(t * 7.3 + seed * 0.13) +
-                0.30 * math.sin(t * 19.1 + seed * 0.27) +
-                0.15 * math.sin(t * 41.7 + seed * 0.41))
-            # Force endpoints to baseline so they meet TX/RX masts cleanly
-            taper = min(1.0, 4 * t * (1 - t))
-            elev *= taper
-            terrain_pts.append(elev)
+        max_terrain_px = max(8, int(H * 0.10))
 
-        # Build ground polygon: combine earth-bulge curve + terrain bumps
+        if self._terrain_elev and len(self._terrain_elev) >= n_samples:
+            # Real SRTM elevation data — normalise to pixel scale.
+            # Find the range across this path so mountains are visible.
+            elev = self._terrain_elev[:n_samples + 1]
+            elev_min = min(elev)
+            elev_max = max(elev)
+            elev_range = max(elev_max - elev_min, 1.0)
+            for v in elev:
+                # Taper endpoints to baseline so TX/RX masts land cleanly
+                terrain_pts.append(v)
+            def _terrain_px(i: int) -> float:
+                t = i / n_samples
+                taper = min(1.0, 6 * t * (1 - t))   # smooth at edges
+                norm = (terrain_pts[i] - elev_min) / elev_range
+                return norm * max_terrain_px * taper
+        else:
+            # No terrain data — deterministic sine noise (seed from path km)
+            seed = int(self._path_km) % 997
+            for i in range(n_samples + 1):
+                t = i / n_samples
+                elev = (0.55 * math.sin(t * 7.3 + seed * 0.13) +
+                        0.30 * math.sin(t * 19.1 + seed * 0.27) +
+                        0.15 * math.sin(t * 41.7 + seed * 0.41))
+                taper = min(1.0, 4 * t * (1 - t))
+                terrain_pts.append(elev * taper)
+
+            def _terrain_px(i: int) -> float:
+                return terrain_pts[i] * max_terrain_px
+
+        # Build ground polygon
         ground_path = QPainterPath()
         ground_path.moveTo(x0, ground)
         for i in range(n_samples + 1):
             t = i / n_samples
             px = x0 + t * plot_w
-            bulge = bulge_px * 4 * t * (1 - t)   # max at midpoint
-            terrain = terrain_pts[i] * max_terrain_px
-            py = ground + bulge - terrain
+            bulge = bulge_px * 4 * t * (1 - t)
+            py = ground + bulge - _terrain_px(i)
             ground_path.lineTo(px, py)
         ground_path.lineTo(x1, H)
         ground_path.lineTo(x0, H)
@@ -166,7 +264,6 @@ class PropagationSideView(QWidget):
         ground_grad.setColorAt(1.0, QColor("#1a2810"))
         p.fillPath(ground_path, QBrush(ground_grad))
 
-        # Surface outline (mountains visible against sky)
         p.setPen(QPen(QColor("#5a7038"), 2))
         surface = QPainterPath()
         surface.moveTo(x0, ground)
@@ -174,9 +271,48 @@ class PropagationSideView(QWidget):
             t = i / n_samples
             px = x0 + t * plot_w
             bulge = bulge_px * 4 * t * (1 - t)
-            terrain = terrain_pts[i] * max_terrain_px
-            surface.lineTo(px, ground + bulge - terrain)
+            surface.lineTo(px, ground + bulge - _terrain_px(i))
         p.drawPath(surface)
+
+
+        # ── Path-loss contours ────────────────────────────────────────
+        # Show approximate received-signal strength along the path
+        # using free-space path loss + EIRP. Gives operators a rough
+        # idea of whether their station can close the path.
+        _sky_h = locals().get("sky_h", H // 3)
+        if self._eirp_dbw != 0.0 and self._path_km > 0 and self._freq_mhz > 0:
+            import math
+            # FSPL = 20*log10(km) + 20*log10(MHz) + 92.45 (dB)
+            fspl = (20 * math.log10(max(self._path_km, 1)) +
+                    20 * math.log10(max(self._freq_mhz, 0.1)) + 92.45)
+            prx_dbm = (self._eirp_dbw * 10) - fspl  # rough Prx in dBm-ish
+            # Normalise to a position in the sky region
+            # S9 ≈ -73 dBm, usable floor ≈ -130 dBm
+            # Draw a "signal strength" bar across the top of the sky
+            norm = max(0.0, min(1.0, (prx_dbm + 130) / 57))
+            bar_w = int(plot_w * norm)
+            if bar_w > 4:
+                sig_y = top + int((_sky_h - 20) * 0.75)
+                from PyQt6.QtGui import QLinearGradient
+                sig_grad = QLinearGradient(x0, sig_y, x0 + bar_w, sig_y)
+                sig_grad.setColorAt(0.0, QColor("#ff440044"))
+                sig_grad.setColorAt(0.5, QColor("#ffaa0066"))
+                sig_grad.setColorAt(1.0, QColor("#00ff8866"))
+                p.fillRect(x0, sig_y, bar_w, 8, QBrush(sig_grad))
+                # Label
+                p.setPen(QColor("#99aabb"))
+                p.setFont(QFont("", 7))
+                p.drawText(x0 + bar_w + 4, sig_y + 7,
+                           f"Prx≈{prx_dbm:.0f} dBm")
+                # EIRP label
+                p.drawText(x0 + 2, sig_y + 7,
+                           f"EIRP {self._eirp_dbw:.0f} dBW → FSPL {fspl:.0f} dB")
+
+        # Terrain label (source + "Fetching..." status)
+        if self._terrain_label:
+            p.setPen(QColor("#778899"))
+            p.setFont(QFont("", 7))
+            p.drawText(x0 + 2, ground - 3, self._terrain_label)
 
         # ── Ionosphere F-layer band ───────────────────────────────────
         # Drawn at fixed altitude above the curved ground
@@ -298,26 +434,25 @@ class PropagationSideView(QWidget):
             msg = ("Set an operating frequency in Rig tab "
                    "to see propagation mode")
 
-        # ── Top-banner labels (two lines) ─────────────────────────────
+        # ── Top-banner labels (two clear lines) ──────────────────────
         p.setPen(QColor("#cccccc"))
         p.setFont(QFont("", 9))
-        title = (f"{self._target or 'Path'}  •  "
+        line1 = (f"{self._target or 'Path'}  •  "
                  f"{self._path_km:,.0f} km")
         if self._freq_mhz > 0:
-            title += f"  •  TX {self._freq_mhz:.3f} MHz"
-        p.drawText(x0, top + 12, title)
+            line1 += f"  •  TX {self._freq_mhz:.3f} MHz"
+        p.drawText(x0, top + 13, line1)
 
-        # Second line: propagation envelope (LUF / FOT / MUF). FOT
-        # (Frequency of Optimum Transmission) is the practical sweet
-        # spot — conventionally 0.85 × MUF for daytime F2 paths.
+        # FOT = Frequency of Optimum Transmission ≈ 0.85 × MUF.
+        # Render on its own clearly-spaced second line.
         if self._muf_mhz > 0:
-            fot = 0.85 * self._muf_mhz
-            envelope = (
-                f"LUF {self._luf_mhz:.1f}  •  "
-                f"FOT {fot:.1f}  •  "
-                f"MUF {self._muf_mhz:.1f} MHz")
+            fot = round(0.85 * self._muf_mhz, 1)
+            line2 = (f"LUF {self._luf_mhz:.1f} MHz  |  "
+                     f"FOT {fot:.1f} MHz  |  "
+                     f"MUF {self._muf_mhz:.1f} MHz")
             p.setPen(QColor("#9fb8d4"))
-            p.drawText(x0, top + 26, envelope)
+            p.setFont(QFont("", 8))
+            p.drawText(x0, top + 27, line2)
 
         # ── Mode message at the bottom ────────────────────────────────
         if msg:

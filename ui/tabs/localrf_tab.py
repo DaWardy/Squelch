@@ -20,6 +20,7 @@ from core.units import format_distance, distance_suffix
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 import logging
+from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QLabel, QGroupBox, QFrame, QPushButton,
@@ -47,7 +48,10 @@ MODE_COLORS = {
 }
 
 
-class LocalRFTab(QWidget):
+class LocalRFTab(SquelchPanel, QWidget):
+    panel_id    = "localrf"
+    panel_title = "Local RF"
+
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)
         self.cfg      = config

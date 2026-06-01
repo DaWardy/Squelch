@@ -1332,58 +1332,50 @@ class RigTab(SquelchPanel, QWidget):
                     idx, "#3fbe6f",
                     Qt.ItemDataRole.ForegroundRole)
 
-    def _populate_rig_models(self):
-        self.model_combo.clear()
-        self.model_combo.addItem("— Select rig model —")
-
-        # Auto-detect from connected ports
-        detected = None
+    def _detect_rig_model(self) -> str | None:
+        """Return the first RIG_MODELS name whose hints match an attached port, or None."""
         try:
-            ports = RigController.list_ports()
-            for p in ports:
+            for p in RigController.list_ports():
                 desc = (p.get("description") or "").upper()
-                for name, model, baud, hints in RIG_MODELS:
+                for name, _model, _baud, hints in RIG_MODELS:
                     if any(h.upper() in desc for h in hints):
-                        detected = name
-                        break
-                if detected:
-                    break
+                        return name
         except Exception:
             pass
+        return None
 
-        # Add with manufacturer separators
-        groups = {}
-        for name, model, baud, hints in RIG_MODELS:
-            mfr = name.split()[0]
-            # Map to clean group names
-            mfr_map = {
-                "SignaLink": "Audio Interfaces",
-                "RigBlaster": "Audio Interfaces",
-                "Generic": "Audio Interfaces",
-                "Explorer": "Handheld / No CAT",
-                "Baofeng": "Handheld / No CAT",
-            }
-            grp = mfr_map.get(mfr, mfr)
+    def _add_grouped_models(self):
+        """Populate model_combo with manufacturer group separators."""
+        MFR_MAP = {
+            "SignaLink": "Audio Interfaces",
+            "RigBlaster": "Audio Interfaces",
+            "Generic":    "Audio Interfaces",
+            "Explorer":   "Handheld / No CAT",
+            "Baofeng":    "Handheld / No CAT",
+        }
+        GRP_ORDER = [
+            "ICOM", "Yaesu", "Kenwood", "Elecraft", "Xiegu",
+            "Lab599", "Audio Interfaces", "Handheld / No CAT",
+        ]
+        groups: dict[str, list[str]] = {}
+        for name, _model, _baud, _hints in RIG_MODELS:
+            grp = MFR_MAP.get(name.split()[0], name.split()[0])
             groups.setdefault(grp, []).append(name)
-
-        grp_order = [
-            "ICOM","Yaesu","Kenwood","Elecraft","Xiegu",
-            "Lab599","Audio Interfaces","Handheld / No CAT"]
-        for grp in grp_order:
+        for grp in GRP_ORDER:
             if grp not in groups:
                 continue
-            # Add separator
-            self.model_combo.insertSeparator(
-                self.model_combo.count())
-            sep_idx = self.model_combo.count() - 1
-            # Can't easily label separator in QComboBox
-            # Add a disabled label item instead
+            self.model_combo.insertSeparator(self.model_combo.count())
             self.model_combo.addItem(f"── {grp} ──")
             self.model_combo.model().item(
-                self.model_combo.count()-1).setEnabled(False)
+                self.model_combo.count() - 1).setEnabled(False)
             for name in groups[grp]:
                 self.model_combo.addItem(name)
 
+    def _populate_rig_models(self):
+        self.model_combo.clear()
+        self.model_combo.addItem("— Select rig model —")
+        detected = self._detect_rig_model()
+        self._add_grouped_models()
         # Restore saved model or select detected
         saved = self.cfg.get("rig.model_name", "")
         if saved:
@@ -1395,8 +1387,7 @@ class RigTab(SquelchPanel, QWidget):
             if idx > 0:
                 self.model_combo.setCurrentIndex(idx)
                 try:
-                    self.model_lbl.setText(
-                        f"Detected: {detected}")
+                    self.model_lbl.setText(f"Detected: {detected}")
                 except AttributeError:
                     pass
 

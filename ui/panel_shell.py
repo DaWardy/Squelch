@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt, QByteArray
 from PyQt6.QtWidgets import (
     QMainWindow, QDockWidget, QWidget, QMenu, QMessageBox,
-    QInputDialog, QApplication,
+    QInputDialog, QApplication, QHBoxLayout, QLabel, QToolButton,
 )
 
 from ui.panel import SquelchPanel
@@ -54,11 +54,88 @@ PRESETS: dict[str, dict] = {
 }
 
 
+_TITLE_BAR_QSS = """
+    background:#2a2a2a;
+    border-bottom:1px solid #1a1a1a;
+"""
+_BTN_QSS = """
+    QToolButton {
+        background:#3a3a3a; color:#e0e0e0;
+        border:1px solid #555; border-radius:3px;
+        padding:1px 4px; font-size:11px;
+        min-width:20px; min-height:20px;
+    }
+    QToolButton:hover { background:#505050; }
+    QToolButton:pressed { background:#222; }
+"""
+_CLOSE_QSS = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
+                               "QToolButton:hover { background:#a04040; }")
+_FLOAT_QSS = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
+                               "QToolButton:hover { background:#404080; }")
+
+
+class _PanelTitleBar(QWidget):
+    """Custom title bar for PanelDock that embeds panel_actions() as buttons.
+
+    Replaces the default QDockWidget title bar so we can add per-panel
+    toolbar actions while keeping float/close controls.
+    """
+
+    def __init__(self, dock: "PanelDock", title: str, actions: list):
+        super().__init__(dock)
+        self.setStyleSheet(_TITLE_BAR_QSS)
+        self.setFixedHeight(28)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(6, 0, 4, 0)
+        lay.setSpacing(3)
+
+        lbl = QLabel(title)
+        lbl.setStyleSheet("color:#f0f0f0;font-weight:bold;font-size:12px;")
+        lay.addWidget(lbl, 1)
+
+        # Per-panel action buttons
+        for action in actions:
+            btn = QToolButton()
+            btn.setDefaultAction(action)
+            btn.setStyleSheet(_BTN_QSS)
+            btn.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+                if action.icon() and not action.icon().isNull()
+                else Qt.ToolButtonStyle.ToolButtonTextOnly)
+            lay.addWidget(btn)
+
+        # Separator between panel actions and window controls
+        if actions:
+            sep = QWidget()
+            sep.setFixedWidth(1)
+            sep.setStyleSheet("background:#555;")
+            lay.addWidget(sep)
+
+        # Float button
+        float_btn = QToolButton()
+        float_btn.setText("⧉")
+        float_btn.setToolTip("Float / re-dock this panel")
+        float_btn.setStyleSheet(_FLOAT_QSS)
+        float_btn.clicked.connect(
+            lambda: dock.setFloating(not dock.isFloating()))
+        lay.addWidget(float_btn)
+
+        # Close (hide) button
+        close_btn = QToolButton()
+        close_btn.setText("✕")
+        close_btn.setToolTip("Hide panel")
+        close_btn.setStyleSheet(_CLOSE_QSS)
+        close_btn.clicked.connect(dock.hide)
+        lay.addWidget(close_btn)
+
+
 class PanelDock(QDockWidget):
     """QDockWidget wrapper for a SquelchPanel.
 
-    Adds close-to-hide behaviour (panel is hidden, not destroyed) and
-    exposes the panel_id for workspace serialisation.
+    Adds close-to-hide behaviour (panel is hidden, not destroyed),
+    exposes the panel_id for workspace serialisation, and installs a
+    custom title bar that renders the panel's panel_actions() as buttons.
     """
 
     def __init__(self, panel: SquelchPanel, parent: QMainWindow):
@@ -73,21 +150,8 @@ class PanelDock(QDockWidget):
             QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable
             | QDockWidget.DockWidgetFeature.DockWidgetClosable)
-        self._style_title_bar()
-
-    def _style_title_bar(self):
-        self.setStyleSheet("""
-            QDockWidget::title {
-                background:#2a2a2a; color:#f0f0f0;
-                padding:4px 8px; font-weight:bold;
-            }
-            QDockWidget::close-button, QDockWidget::float-button {
-                background:#4a4a4a; border:1px solid #888;
-                border-radius:2px; padding:1px;
-            }
-            QDockWidget::close-button:hover { background:#a04040; }
-            QDockWidget::float-button:hover { background:#404080; }
-        """)
+        actions = panel.panel_actions() if hasattr(panel, "panel_actions") else []
+        self.setTitleBarWidget(_PanelTitleBar(self, title, actions))
 
     def closeEvent(self, event):
         """Hide rather than destroy — panel state is preserved."""

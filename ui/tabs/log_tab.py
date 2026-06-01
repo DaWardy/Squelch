@@ -91,6 +91,23 @@ class LogTab(SquelchPanel, QWidget):
     panel_id    = "log"
     panel_title = "Log"
 
+    def panel_actions(self) -> list:
+        """Toolbar actions for workspace-mode title bar."""
+        from PyQt6.QtGui import QAction
+        a_add = QAction("+ Entry", self)
+        a_add.setToolTip("Add QSO manually")
+        a_add.triggered.connect(self._manual_entry)
+
+        a_exp = QAction("⬇ ADIF", self)
+        a_exp.setToolTip("Export log as ADIF")
+        a_exp.triggered.connect(self._export_adif)
+
+        a_ref = QAction("↺", self)
+        a_ref.setToolTip("Refresh log from database")
+        a_ref.triggered.connect(self._load_log)
+
+        return [a_add, a_exp, a_ref]
+
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.cfg    = config

@@ -54,6 +54,19 @@ class MapTab(SquelchPanel, QWidget):
     Falls back to a setup guide if QtWebEngine not installed.
     """
 
+    def panel_actions(self) -> list:
+        """Toolbar actions for workspace-mode title bar."""
+        from PyQt6.QtGui import QAction
+        a_ref = QAction("↺ Map", self)
+        a_ref.setToolTip("Refresh map")
+        a_ref.triggered.connect(self._refresh_map)
+
+        a_psk = QAction("PSK", self)
+        a_psk.setToolTip("Fetch PSKReporter 'who heard me' data")
+        a_psk.triggered.connect(self._refresh_psk_hearing)
+
+        return [a_ref, a_psk]
+
     def __init__(self, config, log_db=None,
                  parent=None):
         super().__init__(parent)

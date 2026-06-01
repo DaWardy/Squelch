@@ -27,7 +27,7 @@ Import from here — never hardcode these elsewhere.
 # ── Application identity ──────────────────────────────────────────────────
 APP_NAME        = "Squelch"
 APP_FULL        = "Amateur Radio Operations Platform"
-APP_VERSION     = "0.11.41-alpha"
+APP_VERSION     = "0.11.43-alpha"
 APP_URL         = "https://github.com/dawardy/squelch"
 APP_ISSUES_URL  = "https://github.com/dawardy/squelch/issues"
 APP_LICENSE     = "GNU General Public License v3"

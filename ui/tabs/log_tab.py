@@ -111,8 +111,14 @@ class LogTab(SquelchPanel, QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
+        self._build_stats_bar(root)
+        self._build_filter_bar(root)
+        self._build_qso_table(root)
+        self._build_action_buttons(root)
+        self._build_awards_section(root)
 
-        # ── Stats bar ─────────────────────────────────────────────────────
+    def _build_stats_bar(self, root):
+        """Top row of QSO count / award stat counters."""
         stats = QHBoxLayout()
         self._stat_widgets = {}
         for key, label in [
@@ -135,7 +141,8 @@ class LogTab(SquelchPanel, QWidget):
             stats.addWidget(grp)
         root.addLayout(stats)
 
-        # ── Search / filter bar ───────────────────────────────────────────
+    def _build_filter_bar(self, root):
+        """Search box + band/mode filter dropdowns."""
         filter_row = QHBoxLayout()
         self._search = QLineEdit()
         self._search.setPlaceholderText(self.tr("Search callsign…"))
@@ -149,8 +156,7 @@ class LogTab(SquelchPanel, QWidget):
             "160m","80m","40m","30m","20m",
             "17m","15m","12m","10m","6m","2m","70cm"
         ])
-        self._band_filter.currentTextChanged.connect(
-            self._apply_filter)
+        self._band_filter.currentTextChanged.connect(self._apply_filter)
         filter_row.addWidget(self._band_filter)
 
         self._mode_filter = QComboBox()
@@ -159,8 +165,7 @@ class LogTab(SquelchPanel, QWidget):
             "FT8","FT4","WSPR","JS8","SSB","CW",
             "PSK31","RTTY","FM","AM","SSTV"
         ])
-        self._mode_filter.currentTextChanged.connect(
-            self._apply_filter)
+        self._mode_filter.currentTextChanged.connect(self._apply_filter)
         filter_row.addWidget(self._mode_filter)
 
         refresh_btn = QPushButton(self.tr("↺ Refresh"))
@@ -169,20 +174,19 @@ class LogTab(SquelchPanel, QWidget):
         filter_row.addWidget(refresh_btn)
         root.addLayout(filter_row)
 
-        # ── QSO table ─────────────────────────────────────────────────────
+    def _build_qso_table(self, root):
+        """Main QSO table. setSortingEnabled deferred to showEvent."""
         self._table = QTableWidget(0, len(HEADERS))
         self._table.setHorizontalHeaderLabels(HEADERS)
         hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(
-            C_DXCC, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(C_DXCC, QHeaderView.ResizeMode.Stretch)
         self._table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
-        self._table.setSortingEnabled(True)
+        # setSortingEnabled(True) deferred to showEvent — blocks in offscreen Qt
         self._table.verticalHeader().setVisible(False)
         self._table.setStyleSheet("""
             QTableWidget{
@@ -200,31 +204,38 @@ class LogTab(SquelchPanel, QWidget):
               background:#141414;
               border:none;padding:4px;}
         """)
-
-        # Right-click context menu
         self._table.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
         # Restore saved column widths
-        _qs = __import__("PyQt6.QtCore", fromlist=["QSettings"])
-        _settings = _qs.QSettings("Squelch", "squelch")
+        from PyQt6.QtCore import QSettings
+        _settings = QSettings("Squelch", "squelch")
         for col in range(self._table.columnCount()):
             w = _settings.value(f"log/col_{col}_width")
             if w:
                 self._table.setColumnWidth(col, int(w))
         self._table.horizontalHeader().sectionResized.connect(
-            lambda col, _, new_w: __import__("PyQt6.QtCore",
-                fromlist=["QSettings"]).QSettings("Squelch", "squelch")
-            .setValue(f"log/col_{col}_width", new_w))
+            self._save_column_width)
         self._table.customContextMenuRequested.connect(
             self._log_context_menu)
-
-        # Double-click to edit
         self._table.doubleClicked.connect(
             lambda idx: self._edit_qso_row(idx.row()))
-
         root.addWidget(self._table, 4)
 
-        # ── Action buttons ────────────────────────────────────────────────
+    def _save_column_width(self, col: int, _old: int, new_w: int):
+        """Persist column width to QSettings."""
+        from PyQt6.QtCore import QSettings
+        QSettings("Squelch", "squelch").setValue(
+            f"log/col_{col}_width", new_w)
+
+    def showEvent(self, event):
+        """Defer setSortingEnabled — blocks in offscreen Qt during init."""
+        super().showEvent(event)
+        if not getattr(self, "_sorting_enabled", False):
+            self._sorting_enabled = True
+            self._table.setSortingEnabled(True)
+
+    def _build_action_buttons(self, root):
+        """Row of export/import/upload action buttons."""
         btn_row = QHBoxLayout()
 
         add_btn = QPushButton(self.tr("+ Manual Entry"))
@@ -241,29 +252,30 @@ class LogTab(SquelchPanel, QWidget):
         btn_row.addWidget(adif_imp)
 
         lotw_btn = QPushButton(self.tr("Upload LoTW queue"))
-        lotw_btn.setToolTip("Upload pending QSOs to ARRL LoTW\nRequires TQSL and LoTW credentials in Settings → APIs")
+        lotw_btn.setToolTip(
+            "Upload pending QSOs to ARRL LoTW\n"
+            "Requires TQSL and LoTW credentials in Settings → APIs")
         lotw_btn.clicked.connect(self._show_lotw_queue)
         btn_row.addWidget(lotw_btn)
 
         qrz_btn = QPushButton(self.tr("Upload QRZ queue"))
-        qrz_btn.setToolTip("Sync log with QRZ logbook\nRequires QRZ subscription and credentials")
+        qrz_btn.setToolTip(
+            "Sync log with QRZ logbook\n"
+            "Requires QRZ subscription and credentials")
         qrz_btn.clicked.connect(self._show_qrz_queue)
         btn_row.addWidget(qrz_btn)
 
         btn_row.addStretch()
-
         self._queue_label = QLabel("")
-        self._queue_label.setStyleSheet(
-            " ")
+        self._queue_label.setStyleSheet(" ")
         btn_row.addWidget(self._queue_label)
-
         root.addLayout(btn_row)
 
-        # ── Awards panel ──────────────────────────────────────────────────
+    def _build_awards_section(self, root):
+        """Simple inline DXCC/WAS/Grids progress bars above the awards panel."""
         awards_grp = QGroupBox(self.tr("Awards Progress"))
         awards_l   = QHBoxLayout(awards_grp)
 
-        # DXCC progress
         dxcc_l = QVBoxLayout()
         dxcc_l.addWidget(QLabel("DXCC (340 total)"))
         self._dxcc_bar = QProgressBar()
@@ -275,7 +287,6 @@ class LogTab(SquelchPanel, QWidget):
         dxcc_l.addWidget(self._dxcc_bar)
         awards_l.addLayout(dxcc_l)
 
-        # WAS progress
         was_l = QVBoxLayout()
         was_l.addWidget(QLabel("WAS (50 states)"))
         self._was_bar = QProgressBar()
@@ -287,7 +298,6 @@ class LogTab(SquelchPanel, QWidget):
         was_l.addWidget(self._was_bar)
         awards_l.addLayout(was_l)
 
-        # Grids progress
         grids_l = QVBoxLayout()
         grids_l.addWidget(QLabel("Grid squares worked"))
         self._grids_bar = QProgressBar()
@@ -492,7 +502,30 @@ class LogTab(SquelchPanel, QWidget):
 
     # ── Manual entry ──────────────────────────────────────────────────────
 
-    def _manual_entry(self):
+    # ── Manual QSO entry ──────────────────────────────────────────────────
+
+    _BANDS = [
+        "160m","80m","60m","40m","30m","20m",
+        "17m","15m","12m","10m","6m","2m",
+        "1.25m","70cm","33cm","23cm",
+    ]
+    _MODES = [
+        "SSB","USB","LSB","AM","FM","CW",
+        "FT8","FT4","WSPR","JS8","PSK31",
+        "RTTY","SSTV","D-STAR","DMR","P25",
+        "YSF","NXDN","Olivia","MFSK","Other",
+    ]
+    _RST_DEFAULTS = {
+        "SSB":"59","USB":"59","LSB":"59","AM":"59","FM":"59",
+        "CW":"599","FT8":"-10","FT4":"-10","WSPR":"-10",
+    }
+
+    def _build_manual_entry_dialog(self):
+        """Build and return (dialog, fields_dict) for manual QSO entry.
+
+        fields_dict keys: cs_edit, band_combo, mode_combo,
+                          rst_sent, rst_rcvd, grid_edit, name_edit, comment_edit
+        """
         from PyQt6.QtWidgets import QComboBox
         dlg = QDialog(self)
         dlg.setWindowTitle(self.tr("Manual QSO Entry"))
@@ -500,66 +533,36 @@ class LogTab(SquelchPanel, QWidget):
         lay = QFormLayout(dlg)
         lay.setSpacing(8)
 
-        # Common bands
-        BANDS = [
-            "160m","80m","60m","40m","30m","20m",
-            "17m","15m","12m","10m","6m","2m",
-            "1.25m","70cm","33cm","23cm",
-        ]
-        # Common modes
-        MODES = [
-            "SSB","USB","LSB","AM","FM","CW",
-            "FT8","FT4","WSPR","JS8","PSK31",
-            "RTTY","SSTV","D-STAR","DMR","P25",
-            "YSF","NXDN","Olivia","MFSK","Other",
-        ]
-        # RST defaults by mode
-        RST_DEFAULTS = {
-            "SSB":"59","USB":"59","LSB":"59",
-            "AM":"59","FM":"59",
-            "CW":"599","FT8":"-10","FT4":"-10",
-            "WSPR":"-10",
-        }
-
-        # Callsign
         cs_edit = QLineEdit()
         cs_edit.setPlaceholderText("e.g. W4XYZ")
         cs_edit.setMaxLength(15)
         lay.addRow("Callsign:", cs_edit)
 
-        # Band dropdown
         band_combo = QComboBox()
-        band_combo.addItems(BANDS)
+        band_combo.addItems(self._BANDS)
         band_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         band_combo.setCurrentText("20m")
         lay.addRow("Band:", band_combo)
 
-        # Mode dropdown
         mode_combo = QComboBox()
-        mode_combo.addItems(MODES)
-        mode_combo.setEditable(True)  # allow custom modes
+        mode_combo.addItems(self._MODES)
+        mode_combo.setEditable(True)
         mode_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         mode_combo.setCurrentText("SSB")
         lay.addRow("Mode:", mode_combo)
 
-        # RST - auto-fills based on mode
         rst_sent = QLineEdit("59")
         rst_sent.setMaxLength(6)
         rst_rcvd = QLineEdit("59")
         rst_rcvd.setMaxLength(6)
-
-        def _update_rst(mode):
-            default = RST_DEFAULTS.get(mode, "59")
-            rst_sent.setText(default)
-            rst_rcvd.setText(default)
-
-        mode_combo.currentTextChanged.connect(_update_rst)
+        mode_combo.currentTextChanged.connect(
+            lambda m: (rst_sent.setText(self._RST_DEFAULTS.get(m, "59")),
+                       rst_rcvd.setText(self._RST_DEFAULTS.get(m, "59"))))
         lay.addRow("RST Sent:", rst_sent)
         lay.addRow("RST Rcvd:", rst_rcvd)
 
-        # Other fields
         grid_edit = QLineEdit()
         grid_edit.setPlaceholderText("e.g. DM79rr")
         grid_edit.setMaxLength(8)
@@ -580,57 +583,63 @@ class LogTab(SquelchPanel, QWidget):
         btns.rejected.connect(dlg.reject)
         lay.addRow(btns)
 
-        if dlg.exec():
-            call = callsign_soft(cs_edit.text())
-            if not call:
-                QMessageBox.warning(
-                    self, "Invalid Callsign",
-                    "Please enter a valid callsign.")
-                return
-            try:
-                # Dupe check
-                if self.cfg.get("log.warn_dupes", True):
-                    band = band_combo.currentText()
-                    mode = mode_combo.currentText().upper()
-                    if self.log_db.is_duplicate(
-                            call, band, mode):
-                        reply = QMessageBox.question(
-                            self, "Duplicate QSO",
-                            f"{call} already logged on "
-                            f"{band} {mode}.\n\n"
-                            "Log anyway?",
-                            QMessageBox.StandardButton.Yes |
-                            QMessageBox.StandardButton.No)
-                        if reply == QMessageBox.StandardButton.No:
-                            return
+        fields = {
+            "cs_edit":      cs_edit,
+            "band_combo":   band_combo,
+            "mode_combo":   mode_combo,
+            "rst_sent":     rst_sent,
+            "rst_rcvd":     rst_rcvd,
+            "grid_edit":    grid_edit,
+            "name_edit":    name_edit,
+            "comment_edit": comment_edit,
+        }
+        return dlg, fields
 
-                qso = QSO(
-                    call      = call,
-                    band      = band_combo.currentText(),
-                    mode      = mode_combo.currentText().upper(),
-                    rst_sent  = rst_sent.text().strip() or "59",
-                    rst_rcvd  = rst_rcvd.text().strip() or "59",
-                    grid      = grid_square_soft(grid_edit.text()),
-                    name      = name_edit.text().strip()[:50],
-                    comment   = comment_edit.text().strip()[:200],
-                    my_call   = self.cfg.callsign,
-                    my_grid   = self.cfg.grid,
-                    my_lat    = self.cfg.get(
-                        "location.lat", 0.0),
-                    my_lon    = self.cfg.get(
-                        "location.lon", 0.0),
-                    source    = "manual",
-                )
-                self.log_db.log_qso(qso)
-                self._load_log()
-                QMessageBox.information(
-                    self, self.tr("QSO Logged"),
-                    f"QSO with {call} on "
-                    f"{band_combo.currentText()} "
-                    f"{mode_combo.currentText()} logged.")
-            except Exception as e:
-                QMessageBox.warning(
-                    self, "Error", f"Could not log QSO: {e}")
+    def _manual_entry(self):
+        """Open the manual QSO entry dialog and log on accept."""
+        dlg, f = self._build_manual_entry_dialog()
+        if not dlg.exec():
+            return
+        call = callsign_soft(f["cs_edit"].text())
+        if not call:
+            QMessageBox.warning(self, "Invalid Callsign",
+                                "Please enter a valid callsign.")
+            return
+        band = f["band_combo"].currentText()
+        mode = f["mode_combo"].currentText().upper()
+        try:
+            if self.cfg.get("log.warn_dupes", True):
+                if self.log_db.is_duplicate(call, band, mode):
+                    reply = QMessageBox.question(
+                        self, "Duplicate QSO",
+                        f"{call} already logged on {band} {mode}.\n\n"
+                        "Log anyway?",
+                        QMessageBox.StandardButton.Yes |
+                        QMessageBox.StandardButton.No)
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+            qso = QSO(
+                call      = call,
+                band      = band,
+                mode      = mode,
+                rst_sent  = f["rst_sent"].text().strip() or "59",
+                rst_rcvd  = f["rst_rcvd"].text().strip() or "59",
+                grid      = grid_square_soft(f["grid_edit"].text()),
+                name      = f["name_edit"].text().strip()[:50],
+                comment   = f["comment_edit"].text().strip()[:200],
+                my_call   = self.cfg.callsign,
+                my_grid   = self.cfg.grid,
+                my_lat    = self.cfg.get("location.lat", 0.0),
+                my_lon    = self.cfg.get("location.lon", 0.0),
+                source    = "manual",
+            )
+            self.log_db.log_qso(qso)
+            self._load_log()
+            QMessageBox.information(
+                self, self.tr("QSO Logged"),
+                f"QSO with {call} on {band} {mode} logged.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not log QSO: {e}")
 
     # ── ADIF export ───────────────────────────────────────────────────────
 

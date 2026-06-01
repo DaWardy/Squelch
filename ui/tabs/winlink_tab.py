@@ -518,33 +518,8 @@ class WinlinkTab(SquelchPanel, QWidget):
         lay.addWidget(note)
         return w
 
-    def _build_p2p_tab(self) -> QWidget:
-        """
-        Peer-to-peer messaging — direct station-to-station
-        without going through an RMS gateway.
-        Both stations must have a common frequency and
-        compatible modem (VARA HF or VARA FM).
-        """
-        w   = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(8)
-
-        # Info
-        info = QLabel(
-            "📡  Peer-to-peer Winlink — direct station-to-station, "
-            "no gateway required."
-            "Both stations tune to the same frequency and initiate "
-            "from their respective Winlink clients.")
-        info.setWordWrap(True)
-        info.setStyleSheet(
-            ""
-            "background:#0d0d0d;padding:8px;"
-            "border:1px solid #1a1a1a;"
-            "border-radius:4px;")
-        lay.addWidget(info)
-
-        # Connection row
+    def _build_p2p_connection_group(self) -> QGroupBox:
+        """QGroupBox with callsign/frequency/mode fields and connect button."""
         conn_grp = QGroupBox("P2P Connection")
         cgl = QFormLayout(conn_grp)
         cgl.setSpacing(8)
@@ -578,16 +553,16 @@ class WinlinkTab(SquelchPanel, QWidget):
             "Other station must be listening on same frequency")
         p2p_conn_btn.clicked.connect(self._connect_p2p)
         cgl.addRow("", p2p_conn_btn)
-        lay.addWidget(conn_grp)
+        return conn_grp
 
-        # P2P message compose
+    def _build_p2p_message_group(self) -> QGroupBox:
+        """QGroupBox with subject, body, template selector, and send button."""
         msg_grp = QGroupBox("P2P Message")
         mgl = QVBoxLayout(msg_grp)
 
         mf = QFormLayout()
         self._p2p_subj = QLineEdit()
-        self._p2p_subj.setPlaceholderText(
-            "Message subject")
+        self._p2p_subj.setPlaceholderText("Message subject")
         mf.addRow("Subject:", self._p2p_subj)
         mgl.addLayout(mf)
 
@@ -598,37 +573,55 @@ class WinlinkTab(SquelchPanel, QWidget):
             "without passing through any Winlink server.")
         self._p2p_body.setMinimumHeight(120)
         self._p2p_body.setStyleSheet(
-            "background:#0a0a0a;"
-            "border:1px solid #1a1a1a;")
+            "background:#0a0a0a;border:1px solid #1a1a1a;")
         mgl.addWidget(self._p2p_body)
 
-        # P2P from template
         tmpl_row = QHBoxLayout()
-        tmpl_row.addWidget(
-            QLabel("From template:"))
+        tmpl_row.addWidget(QLabel("From template:"))
         self._p2p_tmpl = QComboBox()
         self._p2p_tmpl.addItem("— select —")
         try:
             from winlink.templates import TEMPLATE_LIST
-            for name, fn, desc in TEMPLATE_LIST:
+            for name, _fn, _desc in TEMPLATE_LIST:
                 self._p2p_tmpl.addItem(name)
         except Exception:
             pass
-        self._p2p_tmpl.currentTextChanged.connect(
-            self._p2p_load_template)
+        self._p2p_tmpl.currentTextChanged.connect(self._p2p_load_template)
         tmpl_row.addWidget(self._p2p_tmpl, 1)
         mgl.addLayout(tmpl_row)
 
         p2p_send_btn = QPushButton("📤 Queue for P2P Send")
         p2p_send_btn.setToolTip(
             "Queue message to send when P2P connection opens")
-        p2p_send_btn.clicked.connect(
-            self._queue_p2p_message)
+        p2p_send_btn.clicked.connect(self._queue_p2p_message)
         mgl.addWidget(p2p_send_btn)
+        return msg_grp
 
-        lay.addWidget(msg_grp)
+    def _build_p2p_tab(self) -> QWidget:
+        """
+        Peer-to-peer messaging — direct station-to-station
+        without going through an RMS gateway.
+        Both stations must have a common frequency and
+        compatible modem (VARA HF or VARA FM).
+        """
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(8)
 
-        # P2P frequency reference
+        info = QLabel(
+            "📡  Peer-to-peer Winlink — direct station-to-station, "
+            "no gateway required. "
+            "Both stations tune to the same frequency and initiate "
+            "from their respective Winlink clients.")
+        info.setWordWrap(True)
+        info.setStyleSheet(
+            "background:#0d0d0d;padding:8px;"
+            "border:1px solid #1a1a1a;border-radius:4px;")
+        lay.addWidget(info)
+        lay.addWidget(self._build_p2p_connection_group())
+        lay.addWidget(self._build_p2p_message_group())
+
         ref = QLabel(
             "Common P2P frequencies:\n"
             "  80m:   3.601.0 MHz   (night/regional)\n"
@@ -637,7 +630,6 @@ class WinlinkTab(SquelchPanel, QWidget):
             "  17m:  18.109.0 MHz\n"
             "  2m:  144.990 MHz     (local, VARA FM)")
         ref.setStyleSheet(
-            ""
             "font-family:'Courier New';"
             "background:#080808;padding:8px;"
             "border:1px solid #111;border-radius:3px;")

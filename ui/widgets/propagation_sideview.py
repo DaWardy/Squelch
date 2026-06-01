@@ -293,7 +293,6 @@ class PropagationSideView(QWidget):
             bar_w = int(plot_w * norm)
             if bar_w > 4:
                 sig_y = top + int((_sky_h - 20) * 0.75)
-                from PyQt6.QtGui import QLinearGradient
                 sig_grad = QLinearGradient(x0, sig_y, x0 + bar_w, sig_y)
                 sig_grad.setColorAt(0.0, QColor("#ff440044"))
                 sig_grad.setColorAt(0.5, QColor("#ffaa0066"))

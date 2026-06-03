@@ -139,48 +139,36 @@ def print_av_reminder():
 
 # ── Step 1: Python info ───────────────────────────────────────────────────
 
-def find_best_python() -> str:
-    """Return the best Python executable to use for the venv.
+_PREFERRED_PY = ("3.12", "3.11", "3.13")
 
-    The user reported that running `python installer.py` with their newest
-    Python (3.14) created a 3.14 venv even though they had 3.12 installed
-    — and 3.14 lacks wheels for PyQtWebEngine, SoapySDR, etc.
 
-    This function actively probes for Python 3.11/3.12/3.13 (in that order
-    of preference, since 3.12 is currently the sweet spot for HAM-radio
-    package wheels) using:
-      • The Windows `py -X.Y` launcher
-      • Direct executables (`python3.12`, `python3.11`, etc.)
-
-    Falls back to `sys.executable` only if nothing better is found.
-    Returns the absolute path of the chosen interpreter.
-    """
-    PREFERRED = ("3.12", "3.11", "3.13")
+def _probe_py_launcher(preferred: tuple[str, ...]) -> list[str]:
+    """Probe Windows `py -X.Y` launcher for each preferred version."""
     candidates: list[str] = []
+    if sys.platform != "win32":
+        return candidates
+    for ver in preferred:
+        try:
+            r = subprocess.run(
+                ["py", f"-{ver}", "-c", "import sys; print(sys.executable)"],
+                capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout.strip():
+                candidates.append(r.stdout.strip())
+                info(f"Found Python {ver} via py launcher: {r.stdout.strip()}")
+        except Exception:
+            pass
+    return candidates
 
-    # Windows `py` launcher: `py -3.12 -c "import sys; print(sys.executable)"`
-    if sys.platform == "win32":
-        for ver in PREFERRED:
-            try:
-                r = subprocess.run(
-                    ["py", f"-{ver}", "-c",
-                     "import sys; print(sys.executable)"],
-                    capture_output=True, text=True, timeout=5)
-                if r.returncode == 0:
-                    path = r.stdout.strip()
-                    if path:
-                        candidates.append(path)
-                        info(f"Found Python {ver} via py launcher: {path}")
-            except Exception:
-                pass
 
-    # Direct executables — works on macOS, Linux, and Windows with PATH set
-    for ver in PREFERRED:
+def _probe_direct_executables(preferred: tuple[str, ...],
+                               existing: list[str]) -> list[str]:
+    """Probe direct executable names (python3.12, python312, etc.)."""
+    candidates: list[str] = list(existing)
+    for ver in preferred:
         for name in (f"python{ver}", f"python{ver.replace('.', '')}"):
             try:
                 r = subprocess.run(
-                    [name, "-c",
-                     "import sys; print(sys.executable)"],
+                    [name, "-c", "import sys; print(sys.executable)"],
                     capture_output=True, text=True, timeout=5)
                 if r.returncode == 0:
                     path = r.stdout.strip()
@@ -189,24 +177,30 @@ def find_best_python() -> str:
                         info(f"Found {name}: {path}")
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 pass
+    return candidates
 
+
+def find_best_python() -> str:
+    """Return the best Python executable for the venv.
+
+    Prefers 3.12 > 3.11 > 3.13 (best wheel availability for HAM-radio
+    deps: PyQtWebEngine, SoapySDR). Falls back to sys.executable with a
+    warning if on 3.14+ where some wheels are missing.
+    """
+    candidates = _probe_py_launcher(_PREFERRED_PY)
+    candidates = _probe_direct_executables(_PREFERRED_PY, candidates)
     if candidates:
         chosen = candidates[0]
-        ver_info = sys.version_info
-        if (ver_info.major, ver_info.minor) != (3, 12):
-            info(f"Using {chosen} instead of "
-                 f"current interpreter (Python "
-                 f"{ver_info.major}.{ver_info.minor}) — better wheel "
-                 "availability for Squelch's dependencies.")
+        vi = sys.version_info
+        if (vi.major, vi.minor) != (3, 12):
+            info(f"Using {chosen} (Python {vi.major}.{vi.minor} active — "
+                 "better wheel availability via preferred version).")
         return chosen
-
-    # No preferred Python found — fall back to current interpreter
     if sys.version_info >= (3, 14):
-        warn(f"No Python 3.11/3.12/3.13 found on system. Falling back to "
-             f"Python {sys.version_info.major}.{sys.version_info.minor}, "
-             "which may lack wheels for some dependencies (PyQtWebEngine, "
-             "SoapySDR). Consider installing Python 3.12 from "
-             "https://www.python.org/downloads/")
+        warn("No Python 3.11/3.12/3.13 found. "
+             f"Falling back to Python {sys.version_info.major}."
+             f"{sys.version_info.minor} — some wheels may be missing. "
+             "Install Python 3.12: https://www.python.org/downloads/")
     return sys.executable
 
 

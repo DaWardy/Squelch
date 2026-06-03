@@ -471,12 +471,18 @@ class BandConditionsTab(SquelchPanel, QWidget):
         QTimer.singleShot(0,
             lambda t=title, m=msg: self._show_alert(t, m))
 
-    def _apply_solar(self, solar: SolarData):
-        """Update all solar index displays."""
-        # Summary
-        self._solar_data = solar
+    def _set_solar_widget(self, key: str, text: str,
+                          trend_text: str = "", color: str = "#3fbe6f"):
+        """Update one solar index label + trend label."""
+        val_lbl, trend_lbl = self._solar_widgets[key]
+        val_lbl.setText(text)
+        val_lbl.setStyleSheet(
+            f"color:{color};font-weight:bold;font-family:'Courier New';")
+        trend_lbl.setText(trend_text)
+
+    def _apply_solar_summary(self, solar: SolarData):
+        """Update summary text, MUF label, and summary color."""
         self._summary_lbl.setText(solar.conditions_summary)
-        # Show MUF estimate when available
         try:
             muf = getattr(solar, "muf_estimate_mhz", 0)
             if muf > 0:
@@ -484,8 +490,6 @@ class BandConditionsTab(SquelchPanel, QWidget):
                     f"  Est. MUF: {muf:.1f} MHz (3000km F2)")
         except Exception:
             pass
-
-        # Color summary by conditions
         if solar.storm_level >= 2:
             color = "#cc4444"
         elif solar.storm_level >= 1 or solar.k_index >= 4:
@@ -497,55 +501,42 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._summary_lbl.setStyleSheet(
             f"font-weight:bold;color:{color};")
 
-        # Indices
-        def _set(key, text, trend_text="", color="#3fbe6f"):
-            val_lbl, trend_lbl = self._solar_widgets[key]
-            val_lbl.setText(text)
-            val_lbl.setStyleSheet(
-                f"color:{color};"
-                "font-weight:bold;font-family:'Courier New';")
-            trend_lbl.setText(trend_text)
-
-        _set("sfi",  f"{solar.sfi:.0f}",
-             "↑" if solar.sfi_trend == "rising" else
-             "↓" if solar.sfi_trend == "falling" else "→")
-        _set("sn",   str(solar.sunspot_num))
+    def _apply_solar_indices(self, solar: SolarData):
+        """Update SFI, SN, K, A, X-ray, storm index widgets."""
+        trend = lambda t: "↑" if t == "rising" else "↓" if t == "falling" else "→"
+        self._set_solar_widget("sfi", f"{solar.sfi:.0f}", trend(solar.sfi_trend))
+        self._set_solar_widget("sn",  str(solar.sunspot_num))
         kp_color = ("#cc4444" if solar.k_index >= 5
-                    else "#eeaa22" if solar.k_index >= 3
-                    else "#3fbe6f")
-        _set("k",    f"{solar.k_index:.1f}",
-             "↑" if solar.k_trend == "rising" else
-             "↓" if solar.k_trend == "falling" else "→",
-             kp_color)
-        _set("a",    f"{solar.a_index:.0f}")
-        _set("xray", solar.xray_class)
-
+                    else "#eeaa22" if solar.k_index >= 3 else "#3fbe6f")
+        self._set_solar_widget("k", f"{solar.k_index:.1f}",
+                               trend(solar.k_trend), kp_color)
+        self._set_solar_widget("a",    f"{solar.a_index:.0f}")
+        self._set_solar_widget("xray", solar.xray_class)
         storm_color = ("#cc4444" if solar.storm_level >= 2
-                       else "#eeaa22" if solar.storm_level >= 1
-                       else "#3fbe6f")
-        _set("storm",
-             f"G{solar.storm_level}",
-             color=storm_color)
+                       else "#eeaa22" if solar.storm_level >= 1 else "#3fbe6f")
+        self._set_solar_widget("storm", f"G{solar.storm_level}",
+                               color=storm_color)
 
-        # Recommendations
+    def _apply_solar_aurora(self, solar: SolarData):
+        """Update recommendations, aurora widget, and age label."""
         recs = solar.band_recommendations
         for i, lbl in enumerate(self._rec_labels):
             lbl.setText(recs[i] if i < len(recs) else "")
-
-        # Aurora
         if solar.aurora_alert:
             self._aurora_lbl.setText(
                 f"🌌 Aurora alert — Kp={solar.k_index:.0f}\n"
-                f"Enhanced propagation possible on 10m/6m/VHF.")
+                "Enhanced propagation possible on 10m/6m/VHF.")
             self._aurora_widget.show()
         else:
             self._aurora_widget.hide()
+        self._age_lbl.setText(f"Updated {solar.age_minutes:.0f}m ago")
 
-        # Age
-        self._age_lbl.setText(
-            f"Updated {solar.age_minutes:.0f}m ago")
-
-        # Band conditions
+    def _apply_solar(self, solar: SolarData):
+        """Update all solar index displays."""
+        self._solar_data = solar
+        self._apply_solar_summary(solar)
+        self._apply_solar_indices(solar)
+        self._apply_solar_aurora(solar)
         self._refresh_band_display()
         try:
             self._update_muf_chart()
@@ -608,98 +599,77 @@ class BandConditionsTab(SquelchPanel, QWidget):
 
 
 
-    def _update_muf_chart(self):
-        """Draw a 24-bar hourly MUF chart using the current solar data.
+    def _draw_muf_band_lines(self, scene: QGraphicsScene,
+                             w: float, h: float, max_muf: float):
+        """Draw dotted horizontal threshold lines for each HF band."""
+        from PyQt6.QtGui import QPen, QBrush, QColor
+        for mhz, label, color in [
+            (28.0, "10m", "#3fbe6f"),
+            (21.0, "15m", "#55cc88"),
+            (14.0, "20m", "#88bb44"),
+            (7.0,  "40m", "#aaaa22"),
+        ]:
+            y = h - (mhz / max_muf) * h
+            scene.addLine(0, y, w, y,
+                          QPen(QColor(color), 0.5, Qt.PenStyle.DotLine))
+            txt = scene.addSimpleText(label)
+            txt.setPos(2, y - 11)
+            txt.setBrush(QBrush(QColor(color)))
+            font = txt.font(); font.setPointSize(7); txt.setFont(font)
 
-        Each bar represents one UTC hour. Bar height = estimated MUF
-        for a 3000 km F2 path at that hour. Color bands show which ham
-        bands are likely open (green=HF open, amber=low bands only,
-        red=MUF below 7 MHz).
-        """
+    def _draw_muf_bars(self, scene: QGraphicsScene, w: float, h: float,
+                       fof2_day: float, fof2_night: float,
+                       geo_factor: float, path_factor: float, max_muf: float):
+        """Draw 24 hourly MUF bars and UTC hour labels."""
+        import math
+        from PyQt6.QtGui import QPen, QBrush, QColor
+        bar_w = w / 24.0
+        for hr in range(24):
+            day_f = 0.5 + 0.5 * math.sin(math.radians((hr - 6) * 15))
+            fof2  = fof2_night + (fof2_day - fof2_night) * day_f
+            muf   = min(fof2 * geo_factor * path_factor, max_muf)
+            bh    = (muf / max_muf) * h
+            col   = (QColor("#1a7a3f") if muf >= 28
+                     else QColor("#3a7a1a") if muf >= 21
+                     else QColor("#7a6a1a") if muf >= 14
+                     else QColor("#7a3a1a") if muf >= 7
+                     else QColor("#5a1a1a"))
+            scene.addRect(QRectF(hr * bar_w + 1, h - bh, bar_w - 2, bh),
+                          QPen(col.lighter(120), 0.5), QBrush(col))
+        for hr in (0, 6, 12, 18):
+            txt = scene.addSimpleText(f"{hr:02d}Z")
+            txt.setPos(hr * bar_w + 1, h + 1)
+            font = txt.font(); font.setPointSize(6); txt.setFont(font)
+            txt.setBrush(QBrush(QColor("#666666")))
+
+    def _update_muf_chart(self):
+        """Draw a 24-bar hourly MUF chart using the current solar data."""
         try:
             solar = self._solar_data
             if solar is None or solar.sfi <= 0:
                 return
         except AttributeError:
             return
-
         import math
         try:
-            from PyQt6.QtGui import QPen, QBrush, QColor, QPainter
             scene = QGraphicsScene()
             self._muf_chart.setScene(scene)
             w = max(self._muf_chart.width() - 4, 240)
             h = max(self._muf_chart.height() - 8, 60)
-
-            sfi = max(70.0, float(solar.sfi or 70))
-            path_km = getattr(self, '_current_path_km', 3000.0) or 3000.0
+            sfi        = max(70.0, float(solar.sfi or 70))
+            path_km    = getattr(self, '_current_path_km', 3000.0) or 3000.0
             path_factor = max(1.5, min(4.5, path_km / 1000.0 + 1.2))
-            kp = float(solar.k_index or 0)
-            geo_factor = max(0.3, 1.0 - 0.08 * kp)
-
-            fof2_day   = math.sqrt(sfi / 25.0) * 4.0
-            fof2_night = fof2_day * 0.55
-
-            bar_w = w / 24.0
-            max_muf = 35.0  # scale ceiling (MHz)
-
-            # Band threshold lines
-            for mhz, label, color in [
-                (28.0, "10m", "#3fbe6f"),
-                (21.0, "15m", "#55cc88"),
-                (14.0, "20m", "#88bb44"),
-                (7.0,  "40m", "#aaaa22"),
-            ]:
-                y = h - (mhz / max_muf) * h
-                line = scene.addLine(
-                    0, y, w, y,
-                    QPen(QColor(color), 0.5,
-                         __import__('PyQt6.QtCore',
-                             fromlist=['Qt']).Qt.PenStyle.DotLine))
-                txt = scene.addSimpleText(label)
-                txt.setPos(2, y - 11)
-                txt.setBrush(QBrush(QColor(color)))
-                font = txt.font(); font.setPointSize(7); txt.setFont(font)
-
-            for hr in range(24):
-                day_f = 0.5 + 0.5 * math.sin(
-                    math.radians((hr - 6) * 15))
-                fof2 = fof2_night + (fof2_day - fof2_night) * day_f
-                muf  = fof2 * geo_factor * path_factor
-                muf  = min(muf, max_muf)
-
-                bh   = (muf / max_muf) * h
-                x    = hr * bar_w
-
-                # Color by band opened
-                if muf >= 28:
-                    col = QColor("#1a7a3f")
-                elif muf >= 21:
-                    col = QColor("#3a7a1a")
-                elif muf >= 14:
-                    col = QColor("#7a6a1a")
-                elif muf >= 7:
-                    col = QColor("#7a3a1a")
-                else:
-                    col = QColor("#5a1a1a")
-
-                rect = scene.addRect(
-                    QRectF(x + 1, h - bh, bar_w - 2, bh),
-                    QPen(col.lighter(120), 0.5),
-                    QBrush(col))
-
-            # UTC hour labels (every 6h)
-            for hr in (0, 6, 12, 18):
-                txt = scene.addSimpleText(f"{hr:02d}Z")
-                txt.setPos(hr * bar_w + 1, h + 1)
-                font = txt.font(); font.setPointSize(6); txt.setFont(font)
-                txt.setBrush(QBrush(QColor("#666666")))
-
+            geo_factor  = max(0.3, 1.0 - 0.08 * float(solar.k_index or 0))
+            fof2_day    = math.sqrt(sfi / 25.0) * 4.0
+            fof2_night  = fof2_day * 0.55
+            max_muf     = 35.0
+            self._draw_muf_band_lines(scene, w, h, max_muf)
+            self._draw_muf_bars(scene, w, h, fof2_day, fof2_night,
+                                geo_factor, path_factor, max_muf)
             scene.setSceneRect(0, 0, w, h + 14)
             self._muf_chart.fitInView(
                 scene.sceneRect(),
-                __import__('PyQt6.QtCore',
-                    fromlist=['Qt']).Qt.AspectRatioMode.IgnoreAspectRatio)
+                Qt.AspectRatioMode.IgnoreAspectRatio)
         except Exception as e:
             log.debug(f"MUF chart: {e}")
 

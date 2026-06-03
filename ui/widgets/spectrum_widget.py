@@ -80,8 +80,13 @@ def _make_colormap():
     return pg.ColorMap(pos, color)
 
 
+# Conditional base so class definitions below don't NameError when pyqtgraph
+# is absent.  FreqAxisItem / DBAxisItem are only ever *used* inside the
+# `if HAS_PG:` guard in SpectrumWidget.__init__, so the stub base is safe.
+_AxisBase = pg.AxisItem if HAS_PG else object
 
-class FreqAxisItem(pg.AxisItem):
+
+class FreqAxisItem(_AxisBase):
     """
     Custom X axis that displays frequency in readable format.
     Shows MHz absolute or kHz offset from center.
@@ -125,7 +130,7 @@ class FreqAxisItem(pg.AxisItem):
         return result
 
 
-class DBAxisItem(pg.AxisItem):
+class DBAxisItem(_AxisBase):
     """
     Custom Y axis showing signal level in clean dBm steps.
     """

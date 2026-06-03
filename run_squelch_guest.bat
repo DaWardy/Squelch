@@ -1,3 +1,5 @@
 @echo off
+title Squelch — Guest Operator
 cd /d "%~dp0"
-start "" venv\Scripts\python.exe main.py --guest-op %*
+call venv\Scripts\activate.bat
+pythonw main.py --guest-op %*

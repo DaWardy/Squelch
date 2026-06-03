@@ -428,11 +428,13 @@ def main():
     # Windows taskbar icon fix: set the AppUserModelID so Windows groups and
     # shows our icon correctly rather than the generic Python/document icon.
     # Must be called before any window is shown. (P2 — guarded to Windows only)
+    # NOTE: AUMID must contain only alphanumeric chars and dots — no hyphens.
+    # Use a stable ID (no version) so the taskbar entry persists across updates.
     if sys.platform == "win32":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                f"dawardy.squelch.{APP_VERSION}")
+                "dawardy.squelch")
         except Exception:
             pass
 

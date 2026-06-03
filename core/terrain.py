@@ -262,3 +262,7 @@ def tiles_download_size_mb(lat1: float, lon1: float,
                   if _tile_path(la, lo).exists()
                   and _tile_path(la, lo).stat().st_size == _HGT_SIZE)
     return (len(needed) - already) * 0.4
+
+
+# Public alias used by band_conditions_tab
+estimated_download_mb = tiles_download_size_mb

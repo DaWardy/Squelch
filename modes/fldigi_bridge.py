@@ -30,9 +30,15 @@ import time
 try:
     import defusedxml  # type: ignore
     defusedxml.defuse_stdlib()  # patches xmlrpc.client globally
-except ImportError:
-    pass  # defusedxml not installed — xmlrpc runs unpatched
-          # install with: pip install defusedxml
+except (ImportError, AttributeError):
+    # ImportError  → defusedxml not installed
+    # AttributeError → defuse_stdlib removed in defusedxml >= 0.7.0;
+    #                  use defusedxml.xmlrpc.monkey_patch() on that version
+    try:
+        import defusedxml.xmlrpc  # type: ignore
+        defusedxml.xmlrpc.monkey_patch()
+    except Exception:
+        pass  # xmlrpc runs unpatched — acceptable for local Fldigi connection
 import xmlrpc.client  # nosec B411 - patched by defusedxml above
 from pathlib import Path
 from typing import Optional, Callable

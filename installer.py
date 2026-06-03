@@ -460,58 +460,82 @@ def _verify_package(name: str):
 
 # ── Step 4: External tools ────────────────────────────────────────────────
 
-def check_external_tools():
-    hdr("[4/6] External Tools")
-    print("  Warnings here do not prevent Squelch from launching.")
-    print("  Affected tabs are disabled until tools are installed.")
-    sep()
+# ── External-tool definitions ─────────────────────────────────────────────
+_EXTERNAL_TOOLS = [
+    {
+        "name":     "rigctld (Hamlib)",
+        "cmd":      "rigctld",
+        "args":     ["--version"],
+        "required": True,
+        "dl":       "https://github.com/Hamlib/Hamlib/releases",
+        "note":     "Required for IC-7100 and all CAT rig control.",
+    },
+    {
+        "name":     "WSJT-X",
+        "paths":    [
+            r"C:\Program Files\WSJT-X\bin\wsjtx.exe",
+            r"C:\Program Files (x86)\WSJT-X\bin\wsjtx.exe",
+            "/usr/bin/wsjtx",
+        ],
+        "required": False,
+        "dl":       "https://wsjt.sourceforge.io/wsjtx.html",
+        "note":     "Required for FT8/FT4/WSPR/JS8 modes.",
+    },
+    {
+        "name":     "Fldigi",
+        "paths":    [
+            r"C:\Program Files\fldigi\fldigi.exe",
+            "/usr/bin/fldigi",
+        ],
+        "required": False,
+        "dl":       "https://sourceforge.net/projects/fldigi/",
+        "note":     "Required for PSK31/RTTY/CW/SSTV.",
+    },
+    {
+        "name":     "VARA HF",
+        "paths":    [
+            r"C:\VARA HF\VARAHF.exe",
+            r"C:\Program Files\VARA HF\VARAHF.exe",
+        ],
+        "required": False,
+        "dl":       "https://rosmodem.wordpress.com/",
+        "note":     "Required for Winlink HF.",
+    },
+]
 
-    tools = [
-        {
-            "name":     "rigctld (Hamlib)",
-            "cmd":      "rigctld",
-            "args":     ["--version"],
-            "required": True,
-            "dl":       "https://github.com/Hamlib/Hamlib/releases",
-            "note":     "Required for IC-7100 and all CAT rig control.",
-        },
-        {
-            "name":     "WSJT-X",
-            "paths":    [
-                r"C:\Program Files\WSJT-X\bin\wsjtx.exe",
-                r"C:\Program Files (x86)\WSJT-X\bin\wsjtx.exe",
-                "/usr/bin/wsjtx",
-            ],
-            "required": False,
-            "dl":       "https://wsjt.sourceforge.io/wsjtx.html",
-            "note":     "Required for FT8/FT4/WSPR/JS8 modes.",
-        },
-        {
-            "name":     "Fldigi",
-            "paths":    [
-                r"C:\Program Files\fldigi\fldigi.exe",
-                "/usr/bin/fldigi",
-            ],
-            "required": False,
-            "dl":       "https://sourceforge.net/projects/fldigi/",
-            "note":     "Required for PSK31/RTTY/CW/SSTV.",
-        },
-        {
-            "name":     "VARA HF",
-            "paths":    [
-                r"C:\VARA HF\VARAHF.exe",
-                r"C:\Program Files\VARA HF\VARAHF.exe",
-            ],
-            "required": False,
-            "dl":       "https://rosmodem.wordpress.com/",
-            "note":     "Required for Winlink HF.",
-        },
-    ]
 
-    # SoapySDR — try to auto-link from conda/PothosSDR if pip fails
-    _auto_fix_soapysdr()
+def _soapysdr_install_help():
+    """Print installation options for SoapySDR."""
+    info("")
+    info("EASY PATH (no CMake required):")
+    info("")
+    info("  Option A — RTL-TCP  (RTL-SDR only, simplest):")
+    info("    1. github.com/rtlsdrblog/rtl-sdr-blog/releases")
+    info("       → download rtlsdr-release.zip, extract")
+    info("    2. zadig.akeo.ie → install WinUSB driver for dongle")
+    info("    3. Run rtl_tcp.exe → Squelch auto-detects it")
+    info("       No pip install needed for this path.")
+    info("")
+    info("  Option B — PothosSDR bundle (all SDR hardware):")
+    info("    1. downloads.myriadrf.org/builds/PothosSDR/")
+    info("       → one installer, includes SoapySDR + drivers")
+    info("    2. Reboot  3. pip install soapysdr")
+    info("    4. RTL-SDR users: also run Zadig (zadig.akeo.ie)")
+    info("")
+    info("  Option C — conda / radioconda (GNU Radio users):")
+    info("    github.com/ryanvolz/radioconda/releases")
+    info("    conda install -c conda-forge soapysdr soapysdr-module-rtlsdr")
+    info("")
+    info("  Linux:  sudo apt install soapysdr-tools soapysdr-module-rtlsdr")
+    info("")
+    info("  SDRplay RSP users: install SDRplay API FIRST (sdrplay.com),")
+    info("    then PothosSDR (order matters — PothosSDR needs the API DLLs)")
+    info("")
+    info("Not required for IC-7100 USB audio or Rig tab spectrum.")
 
-    # SoapySDR — check via Python import
+
+def _check_soapysdr():
+    """Check SoapySDR Python binding and print diagnostic on failure."""
     result = subprocess.run(
         [str(VENV_PYTHON), "-c",
          "import SoapySDR; "
@@ -521,59 +545,27 @@ def check_external_tools():
         capture_output=True, text=True)
     if result.returncode == 0:
         ok(result.stdout.strip())
+        sep()
+        return
+    err_out = (result.stderr or result.stdout or "").lower()
+    if "no module named" in err_out:
+        warn("SoapySDR Python package not installed.")
+        info(f"  {VENV_PYTHON} -m pip install soapysdr")
+        info("  Make sure PothosSDR is installed FIRST.")
+    elif "dll" in err_out or "libsoapysdr" in err_out:
+        warn("SoapySDR package found but DLLs missing.")
+        info("  PothosSDR not installed or not in PATH.")
+        info("  Install: downloads.myriadrf.org/builds/PothosSDR/")
+        info("  After install: reboot, then try again.")
     else:
-        # More helpful: distinguish "not installed" from
-        # "installed but SoapySDR DLLs not in PATH"
-        err_out = (result.stderr or result.stdout or "").lower()
-        if "no module named" in err_out:
-            warn("SoapySDR Python package not installed.")
-            info("")
-            info("  To install (run in the Squelch folder):")
-            info(f"    {VENV_PYTHON} -m pip install soapysdr")
-            info("  Or use the venv pip directly:")
-            info(f"    {VENV_PYTHON.parent / 'pip'} install soapysdr")
-            info("")
-            info("  Make sure PothosSDR is installed FIRST.")
-        elif "dll" in err_out or "libsoapysdr" in err_out:
-            warn("SoapySDR package found but DLLs missing.")
-            info("  PothosSDR not installed or not in PATH.")
-            info("  Install: downloads.myriadrf.org/builds/PothosSDR/")
-            info("  After install: reboot, then try again.")
-        else:
-            warn("SoapySDR not installed — SDR waterfall unavailable.")
-            warn(f"  Error: {(result.stderr or result.stdout or '').strip()[:80]}")
-        info("")
-        info("EASY PATH (no CMake required):")
-        info("")
-        info("  Option A — RTL-TCP  (RTL-SDR only, simplest):")
-        info("    1. github.com/rtlsdrblog/rtl-sdr-blog/releases")
-        info("       → download rtlsdr-release.zip, extract")
-        info("    2. zadig.akeo.ie → install WinUSB driver for dongle")
-        info("    3. Run rtl_tcp.exe → Squelch auto-detects it")
-        info("       No pip install needed for this path.")
-        info("")
-        info("  Option B — PothosSDR bundle (all SDR hardware):")
-        info("    1. downloads.myriadrf.org/builds/PothosSDR/")
-        info("       → one installer, includes SoapySDR + drivers")
-        info("    2. Reboot")
-        info("    3. pip install soapysdr")
-        info("    4. RTL-SDR users: also run Zadig (zadig.akeo.ie)")
-        info("")
-        info("  Option C — conda / radioconda (GNU Radio users):")
-        info("    github.com/ryanvolz/radioconda/releases")
-        info("    conda install -c conda-forge soapysdr soapysdr-module-rtlsdr")
-        info("")
-        info("  Linux:  sudo apt install soapysdr-tools soapysdr-module-rtlsdr")
-        info("")
-        info("  SDRplay RSP users:")
-        info("    Install SDRplay API FIRST: sdrplay.com/softwarehome")
-        info("    Then PothosSDR bundle (includes SoapySDRplay)")
-        info("    Order matters — PothosSDR must see the API to install driver")
-        info("")
-        info("Not required for IC-7100 USB audio or Rig tab spectrum.")
+        warn("SoapySDR not installed — SDR waterfall unavailable.")
+        warn(f"  Error: {(result.stderr or result.stdout or '').strip()[:80]}")
+    _soapysdr_install_help()
     sep()
 
-    # VB-Cable
+
+def _check_vbcable():
+    """Check for VB-Cable virtual audio device."""
     result = subprocess.run(
         [str(VENV_PYTHON), "-c",
          "import sounddevice as sd; "
@@ -593,7 +585,9 @@ def check_external_tools():
             ok(out)
     sep()
 
-    # Serial ports
+
+def _check_serial_ports():
+    """List serial ports; highlight if a rig is detected."""
     result = subprocess.run(
         [str(VENV_PYTHON), "-c",
          "import serial.tools.list_ports as lp; "
@@ -613,37 +607,46 @@ def check_external_tools():
             ok(out)
     sep()
 
-    for tool in tools:
-        found = False
-        # Check PATH first
-        if "cmd" in tool:
-            path = shutil.which(tool["cmd"])
-            if path:
-                result = subprocess.run(
-                    [path] + tool.get("args", []),
-                    capture_output=True, text=True)
-                ver = (result.stdout or result.stderr
-                       or "").strip().split("\n")[0]
-                ok(f"{tool['name']} — {ver[:60]}")
+
+def _check_tool(tool: dict):
+    """Check one external tool entry; print ok/warn/err and a sep."""
+    found = False
+    if "cmd" in tool:
+        path = shutil.which(tool["cmd"])
+        if path:
+            result = subprocess.run(
+                [path] + tool.get("args", []),
+                capture_output=True, text=True)
+            ver = (result.stdout or result.stderr or "").strip().split("\n")[0]
+            ok(f"{tool['name']} — {ver[:60]}")
+            found = True
+    if not found:
+        for candidate in tool.get("paths", []):
+            if Path(candidate).exists():
+                ok(f"{tool['name']} — {candidate}")
                 found = True
+                break
+    if not found:
+        (err if tool.get("required") else warn)(
+            f"{tool['name']} — {'NOT FOUND' if tool.get('required') else 'not found'}"
+            + (f" ({tool['note']})" if not tool.get("required") else ""))
+        info(f"Download: {tool['dl']}")
+        info("If installed but not detected, set the path in:")
+        info("  Squelch → File → Paths & Executables")
+    sep()
 
-        # Check common paths
-        if not found:
-            for candidate in tool.get("paths", []):
-                if Path(candidate).exists():
-                    ok(f"{tool['name']} — {candidate}")
-                    found = True
-                    break
 
-        if not found:
-            if tool.get("required"):
-                err(f"{tool['name']} — NOT FOUND")
-            else:
-                warn(f"{tool['name']} — not found ({tool['note']})")
-            info(f"Download: {tool['dl']}")
-            info(f"If installed but not detected, set the path in:")
-            info(f"  Squelch → File → Paths & Executables")
-        sep()
+def check_external_tools():
+    hdr("[4/6] External Tools")
+    print("  Warnings here do not prevent Squelch from launching.")
+    print("  Affected tabs are disabled until tools are installed.")
+    sep()
+    _auto_fix_soapysdr()
+    _check_soapysdr()
+    _check_vbcable()
+    _check_serial_ports()
+    for tool in _EXTERNAL_TOOLS:
+        _check_tool(tool)
 
 
 # ── Step 5: Config ────────────────────────────────────────────────────────
@@ -1078,65 +1081,58 @@ def _auto_fix_soapysdr():
         warn(f"SoapySDR still failing: {err_msg}")
 
 
-def _select_sdr_drivers():
-    """Interactive SDR driver selection step during install."""
-    import shutil, subprocess as sp
-    conda_exe = None
+_SDR_DRIVERS = [
+    ("1", "RTL-SDR  (any RTL2832U dongle)",
+     "soapysdr-module-rtlsdr",
+     "RTL-SDR Blog V3/V4, Nooelec, generic. Also needs Zadig WinUSB."),
+    ("2", "HackRF One",
+     "soapysdr-module-hackrf",
+     "1 MHz - 6 GHz transceiver by Great Scott Gadgets."),
+    ("3", "SDRplay RSP2Pro / RSP1A / RSPdx / RSPduo",
+     "soapysdr-module-sdrplay",
+     "Requires SDRplay API installed first: sdrplay.com/softwarehome"),
+    ("4", "USRP B200 mini / B210  (Ettus Research)",
+     "soapysdr-module-uhd",
+     "Professional full-duplex, 70 MHz - 6 GHz. (may be Linux-only on conda)"),
+    ("5", "Airspy R2 / Airspy Mini",
+     "soapysdr-module-airspy",
+     "High performance, 24 MHz - 1.8 GHz. (may be Linux-only on conda)"),
+    ("6", "LimeSDR / LimeSDR Mini",
+     "soapysdr-module-lms7",
+     "Open source transceiver, 100 kHz - 3.8 GHz."),
+    ("7", "ALL of the above",
+     "soapysdr-module-rtlsdr soapysdr-module-hackrf "
+     "soapysdr-module-sdrplay soapysdr-module-uhd "
+     "soapysdr-module-airspy soapysdr-module-lms7",
+     "Install all drivers (each tried separately; skips any unavailable)."),
+    ("0", "Skip — install later via Settings > SDR Hardware", None, ""),
+]
+
+
+def _find_conda() -> str | None:
+    """Return path to conda/mamba/micromamba, or None if not found."""
     for name in ["conda", "mamba", "micromamba"]:
         f = shutil.which(name)
         if f:
-            conda_exe = f
-            break
-    if not conda_exe:
-        for p in [
-            Path.home() / "miniforge3" / "Scripts" / "conda.exe",
-            Path.home() / "miniconda3"  / "Scripts" / "conda.exe",
-            Path(r"C:/miniforge3/Scripts/conda.exe"),
-            Path(r"C:/miniconda3/Scripts/conda.exe"),
-        ]:
-            if p.exists():
-                conda_exe = str(p)
-                break
+            return f
+    for p in [
+        Path.home() / "miniforge3" / "Scripts" / "conda.exe",
+        Path.home() / "miniconda3"  / "Scripts" / "conda.exe",
+        Path(r"C:/miniforge3/Scripts/conda.exe"),
+        Path(r"C:/miniconda3/Scripts/conda.exe"),
+    ]:
+        if p.exists():
+            return str(p)
+    return None
 
-    if not conda_exe:
-        info("conda not found — skipping driver selection.")
-        info("Install drivers later: conda install -c conda-forge soapyrtlsdr ...")
-        return
 
-    sep()
-    hdr("[5b/6] SDR Hardware Drivers")
-    DRIVERS = [
-        ("1", "RTL-SDR  (any RTL2832U dongle)",
-         "soapysdr-module-rtlsdr",
-         "RTL-SDR Blog V3/V4, Nooelec, generic. Also needs Zadig WinUSB."),
-        ("2", "HackRF One",
-         "soapysdr-module-hackrf",
-         "1 MHz - 6 GHz transceiver by Great Scott Gadgets."),
-        ("3", "SDRplay RSP2Pro / RSP1A / RSPdx / RSPduo",
-         "soapysdr-module-sdrplay",
-         "Requires SDRplay API installed first: sdrplay.com/softwarehome"),
-        ("4", "USRP B200 mini / B210  (Ettus Research)",
-         "soapysdr-module-uhd",
-         "Professional full-duplex, 70 MHz - 6 GHz. (may be Linux-only on conda)"),
-        ("5", "Airspy R2 / Airspy Mini",
-         "soapysdr-module-airspy",
-         "High performance, 24 MHz - 1.8 GHz. (may be Linux-only on conda)"),
-        ("6", "LimeSDR / LimeSDR Mini",
-         "soapysdr-module-lms7",
-         "Open source transceiver, 100 kHz - 3.8 GHz."),
-        ("7", "ALL of the above",
-         "soapysdr-module-rtlsdr soapysdr-module-hackrf "
-         "soapysdr-module-sdrplay soapysdr-module-uhd "
-         "soapysdr-module-airspy soapysdr-module-lms7",
-         "Install all drivers (each tried separately; skips any unavailable)."),
-        ("0", "Skip — install later via Settings > SDR Hardware",
-         None, ""),
-    ]
+def _prompt_sdr_selection() -> list[str]:
+    """Display SDR driver menu; return list of conda package names to install."""
     print()
     print("  What SDR hardware do you have?")
     print("  You can select multiple: type  1 3  for RTL-SDR and RSP2Pro")
     print()
-    for num, name, pkg, note in DRIVERS:
+    for num, name, _pkg, note in _SDR_DRIVERS:
         print(f"    [{num}]  {name}")
         if note:
             print(f"         {note}")
@@ -1145,47 +1141,57 @@ def _select_sdr_drivers():
         choice = input("  Your choice(s): ").strip()
     except (EOFError, KeyboardInterrupt):
         info("Skipped.")
-        return
+        return []
     if not choice or choice.strip() == "0":
         info("Skipped. Install drivers later via Settings > SDR Hardware.")
-        return
-
-    selected_pkgs = []
+        return []
+    pkgs: list[str] = []
     for token in choice.split():
-        for num, name, pkg, note in DRIVERS:
+        for num, _name, pkg, _note in _SDR_DRIVERS:
             if token == num and pkg:
                 for p in pkg.split():
-                    if p not in selected_pkgs:
-                        selected_pkgs.append(p)
-
-    if not selected_pkgs:
+                    if p not in pkgs:
+                        pkgs.append(p)
+    if not pkgs:
         info("No valid selection — skipped.")
-        return
+    return pkgs
 
-    info(f"Installing {len(selected_pkgs)} driver(s), one at a time "
+
+def _install_sdr_packages(conda_exe: str, pkgs: list[str]):
+    """Install each SDR conda package individually; report results."""
+    info(f"Installing {len(pkgs)} driver(s), one at a time "
          "(so one unavailable package doesn't block the rest)...")
     succeeded, failed = [], []
-    for pkg in selected_pkgs:
+    for pkg in pkgs:
         print(f"  → {pkg}")
-        r = sp.run([conda_exe, "install", "-c", "conda-forge", "-y", pkg],
-                   capture_output=not VERBOSE)
-        if r.returncode == 0:
-            succeeded.append(pkg)
-        else:
-            failed.append(pkg)
-
+        r = subprocess.run(
+            [conda_exe, "install", "-c", "conda-forge", "-y", pkg],
+            capture_output=not VERBOSE)
+        (succeeded if r.returncode == 0 else failed).append(pkg)
     if succeeded:
         ok(f"Installed: {', '.join(succeeded)}")
-        site = _get_venv_site_packages()
-        _install_soapy_plugins(site)
+        _install_soapy_plugins(_get_venv_site_packages())
     if failed:
         warn(f"Not available on this platform/channel: {', '.join(failed)}")
-        info("  These drivers may be Linux-only on conda-forge, or need a")
-        info("  vendor SDK first (e.g. SDRplay API, Ettus UHD). RTL-SDR and")
-        info("  HackRF are the most reliable on Windows via conda.")
+        info("  RTL-SDR and HackRF are the most reliable on Windows via conda.")
+        info("  Others may need a vendor SDK first (SDRplay API, Ettus UHD).")
     if not succeeded:
         warn("No drivers installed. RTL-SDR is the simplest to start with:")
         info("  conda install -c conda-forge soapysdr-module-rtlsdr")
+
+
+def _select_sdr_drivers():
+    """Interactive SDR driver selection step during install."""
+    conda_exe = _find_conda()
+    if not conda_exe:
+        info("conda not found — skipping driver selection.")
+        info("Install drivers later: conda install -c conda-forge soapyrtlsdr ...")
+        return
+    sep()
+    hdr("[5b/6] SDR Hardware Drivers")
+    pkgs = _prompt_sdr_selection()
+    if pkgs:
+        _install_sdr_packages(conda_exe, pkgs)
 
 
 def main():

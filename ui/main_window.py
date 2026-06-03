@@ -507,30 +507,25 @@ class MainWindow(
                 from ui.tabs.stub_tab import StubTab
                 return StubTab(label, key, self.cfg)
         except Exception as e:
-            log.error(
-                f"Tab '{key}' failed to load: "
-                f"{type(e).__name__}: {e}")
+            log.error(f"Tab '{key}' failed to load: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
-            # Always return something visible
-            err_w = QWidget()
-            err_w.setObjectName("tab_load_error")   # smoke tests detect this
-            err_l = QVBoxLayout(err_w)
-            err_l.setContentsMargins(30, 30, 30, 30)
-            t = QLabel(f"Tab failed to load: {key}")
-            t.setStyleSheet(
-                "color:#cc4444;"
-                "font-weight:bold;")
-            err_l.addWidget(t)
-            d = QLabel(
-                f"{type(e).__name__}: {e}\n\n"
-                "Check logs/squelch.log for details.")
-            d.setWordWrap(True)
-            d.setStyleSheet(
-                "")
-            err_l.addWidget(d)
-            err_l.addStretch()
-            return err_w
+            return self._make_tab_error_widget(key, e)
+
+    def _make_tab_error_widget(self, key: str, exc: Exception) -> QWidget:
+        """Return a visible placeholder widget when a tab fails to load."""
+        err_w = QWidget()
+        err_w.setObjectName("tab_load_error")   # smoke tests detect this
+        err_l = QVBoxLayout(err_w)
+        err_l.setContentsMargins(30, 30, 30, 30)
+        t = QLabel(f"Tab failed to load: {key}")
+        t.setStyleSheet("color:#cc4444;font-weight:bold;")
+        err_l.addWidget(t)
+        d = QLabel(f"{type(exc).__name__}: {exc}\n\nCheck logs/squelch.log for details.")
+        d.setWordWrap(True)
+        err_l.addWidget(d)
+        err_l.addStretch()
+        return err_w
 
     def _build_topbar(self) -> QFrame:
         bar = QFrame()
@@ -1350,81 +1345,62 @@ class MainWindow(
 
     # ── Settings ──────────────────────────────────────────────────────────
 
-    def _open_settings(self):
-        """Open full settings editor (Ctrl+,).
-        Destroys any previous dialog before creating a new one to avoid
-        'wrapped C/C++ object deleted' from stale widget references."""
-        # If a dialog is already visible, just bring it to the front.
+    def _close_stale_settings_dialog(self) -> bool:
+        """Close any existing settings dialog. Returns True if one was visible
+        (caller should skip opening a new one)."""
         old_dlg = getattr(self, '_settings_dlg', None)
-        if old_dlg is not None:
-            try:
-                from PyQt6 import sip
-            except ImportError:
-                import sip
-            try:
-                if not sip.isdeleted(old_dlg) and old_dlg.isVisible():
-                    old_dlg.raise_()
-                    old_dlg.activateWindow()
-                    return
-            except Exception:
-                pass
-            # Cleanly destroy the old dialog's C++ side first.
-            try:
-                if not sip.isdeleted(old_dlg):
-                    old_dlg.hide()
-                    old_dlg.close()
-                    old_dlg.deleteLater()
-            except Exception:
-                pass
-            self._settings_dlg = None
-            # Process pending events so deleteLater() completes before
-            # we build a new dialog — prevents "QWidget has been deleted".
-            from PyQt6.QtWidgets import QApplication
-            QApplication.processEvents()
+        if old_dlg is None:
+            return False
+        try:
+            from PyQt6 import sip
+        except ImportError:
+            import sip
+        try:
+            if not sip.isdeleted(old_dlg) and old_dlg.isVisible():
+                old_dlg.raise_()
+                old_dlg.activateWindow()
+                return True
+        except Exception:
+            pass
+        try:
+            if not sip.isdeleted(old_dlg):
+                old_dlg.hide()
+                old_dlg.close()
+                old_dlg.deleteLater()
+        except Exception:
+            pass
+        self._settings_dlg = None
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()  # let deleteLater() complete
+        return False
 
+    def _open_settings(self):
+        """Open full settings editor (Ctrl+,)."""
+        if self._close_stale_settings_dialog():
+            return
         try:
             from ui.dialogs.settings_dialog import SettingsDialog
-            # Parent to None (top-level) rather than self to avoid
-            # parent-child deletion cascade issues.
             self._settings_dlg = SettingsDialog(self.cfg, parent=self)
             dlg = self._settings_dlg
         except Exception as e:
             log.error(f"Settings dialog failed to open: {e}")
             from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, "Settings",
-                f"Could not open settings: {e}\n\n"
-                "Try restarting Squelch.")
+            QMessageBox.warning(self, "Settings",
+                                f"Could not open settings: {e}\n\nTry restarting Squelch.")
             return
         if dlg.exec():
-            # Apply all settings
             self._apply_station_settings()
-            cs = self.cfg.callsign
-            if cs:
-                self._cs_lbl.setText(cs)
-            grid = self.cfg.grid
-            if grid:
-                self._grid_lbl.setText(grid)
-            # Reload stylesheet if theme changed
+            if self.cfg.callsign:
+                self._cs_lbl.setText(self.cfg.callsign)
+            if self.cfg.grid:
+                self._grid_lbl.setText(self.cfg.grid)
             from core.themes import get_stylesheet
             from PyQt6.QtWidgets import QApplication
             app = QApplication.instance()
             if app:
-                theme = self.cfg.get("ui.theme", "Dark")
-                fs    = self.cfg.get("ui.font_size", 11)
-                app.setStyleSheet(
-                    get_stylesheet(theme, fs))
-        # placeholder to fix old stub reference
-        if False:
-            QMessageBox.information(
-                self, "Settings",
-            "Full in-app settings editor coming in v2.0.\n\n"
-            "Current options:\n"
-            "• Click callsign or grid in top bar to edit\n"
-            "• View menu → Theme / Font Size / Tabs\n"
-            "• Rig menu → Select Radio Model\n"
-            "• Edit config.json for advanced options\n\n"
-            "config.example.json documents all available keys.")
+                app.setStyleSheet(get_stylesheet(
+                    self.cfg.get("ui.theme", "Dark"),
+                    self.cfg.get("ui.font_size", 11)))
 
     # ── Help window ───────────────────────────────────────────────────────
 

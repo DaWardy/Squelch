@@ -82,103 +82,101 @@ def parse_args():
 
 
 
+def _light_theme_subs():
+    """Return (SUBS, vals) regex substitution tables for the Light theme."""
+    import re as _re
+    SUBS = [
+        (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
+                     _re.I), "background:{t_bg}"),
+        (_re.compile(r"background\s*:\s*#(?:1[5-9a-fA-F][0-9a-fA-F]{4}"
+                     r"|2[0-9a-fA-F]{5})", _re.I), "background:{t_bg2}"),
+        (_re.compile(r"background\s*:\s*#(?:0a1a0a|1a2a1a|1a3a1a|1e2e1e|"
+                     r"0d2a0d|0a2a1a|1a4a1a|143a14)", _re.I),
+         "background:{t_acc_bg}"),
+        (_re.compile(r"background\s*:\s*#(?:1a0808|2a0808|0a0000|3a0808)",
+                     _re.I), "background:{t_err_bg}"),
+        (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:{t_acc}"),
+        (_re.compile(r"color\s*:\s*#(?:7fdf9f|66ff66|44dd44)", _re.I),
+         "color:{t_acc}"),
+        (_re.compile(r"border(?:-[a-z]+)?\s*:\s*1px solid "
+                     r"#(?:1a1a1a|111|222|333|0a0a0a|141414)", _re.I),
+         "border:1px solid {t_border}"),
+        (_re.compile(r"color\s*:\s*#(?:ffffff|f0f0f0|e0e0e0|dddddd|cccccc)",
+                     _re.I), "color:{t_fg}"),
+        (_re.compile(r"gridline-color\s*:\s*#(?:0[0-9a-fA-F]{5}|"
+                     r"1[0-9a-fA-F]{5}|2[0-9a-fA-F]{5})", _re.I),
+         "gridline-color:{t_border}"),
+        (_re.compile(r"alternate-background-color\s*:\s*#(?:1[0-9a-fA-F]{5}"
+                     r"|0[0-9a-fA-F]{5})", _re.I),
+         "alternate-background-color:{t_bg_alt}"),
+    ]
+    vals = {
+        "t_bg": "#f1f3f5", "t_bg2": "#e7ebef", "t_bg_alt": "#eef1f4",
+        "t_acc_bg": "#dcefe2", "t_err_bg": "#ffebe9",
+        "t_acc": "#1f7a3f", "t_border": "#d0d7de", "t_fg": "#1f2328",
+    }
+    return SUBS, vals
+
+
+def _hc_theme_subs():
+    """Return (SUBS, vals) regex substitution tables for the High Contrast theme."""
+    import re as _re
+    SUBS = [
+        (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-9a-fA-F]{5}"
+                     r"|2[0-9a-fA-F]{5}|3[0-3][0-9a-fA-F]{4})",
+                     _re.I), "background:#000000"),
+        (_re.compile(r"border(?:-[a-z]+)?\s*:\s*(?:\d+px\s+\w+\s+)?"
+                     r"#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
+                     _re.I), "border:2px solid #ffffff"),
+        (_re.compile(r"gridline-color\s*:\s*#(?:[0-9a-fA-F]{6})", _re.I),
+         "gridline-color:#ffffff"),
+        (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:#00ffcc"),
+        (_re.compile(r"background\s*:\s*#3fbe6f", _re.I), "background:#00ffcc"),
+        (_re.compile(r"color\s*:\s*#(?:55|66|77|88|99|aa|bb)[0-9a-fA-F]{4}",
+                     _re.I), "color:#ffffff"),
+        (_re.compile(r"alternate-background-color\s*:\s*#[0-9a-fA-F]{6}",
+                     _re.I), "alternate-background-color:#0d0d0d"),
+    ]
+    return SUBS, {}
+
+
+def _fix_pyqtgraph_theme(window, theme_name: str):
+    """Apply pyqtgraph background/foreground colors for Light and High Contrast."""
+    _pg_bg = {"Light": "#fafbfc", "High Contrast": "#000000"}.get(theme_name)
+    _pg_fg = {"Light": "#1f2328", "High Contrast": "#ffffff"}.get(theme_name)
+    if not _pg_bg:
+        return
+    try:
+        import pyqtgraph as pg
+        pg.setConfigOption("background", _pg_bg)
+        pg.setConfigOption("foreground", _pg_fg)
+        from pyqtgraph import PlotWidget, GraphicsLayoutWidget
+        for w in window.findChildren(PlotWidget):
+            try:
+                w.setBackground(_pg_bg)
+            except Exception:
+                pass
+        for w in window.findChildren(GraphicsLayoutWidget):
+            try:
+                w.setBackground(_pg_bg)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _apply_theme_fixes(window, theme_name: str):
-    """Post-load pass that corrects widgets with hardcoded dark inline stylesheets.
+    """Post-load regex pass that corrects widgets with hardcoded dark inline stylesheets.
 
-    Widget-level setStyleSheet() overrides the QApplication stylesheet, so
-    light/high-contrast themes get dark backgrounds from the inline styles.
-    We walk every widget, detect dark hex colors via regex, and substitute
-    with the active theme's semantic colors.
-
-    This also re-applies via a helper so newly-created panels (e.g. SDR
-    device panels built on connect) can call _reapply_theme(widget) directly.
+    Widget setStyleSheet() overrides the global QApplication QSS, so light /
+    high-contrast themes get dark backgrounds from inline styles. We walk every
+    widget, detect dark hex colors, and substitute with the active theme's colors.
     """
     if theme_name not in ("Light", "High Contrast"):
         return
-
-    import re as _re
     from PyQt6.QtWidgets import QWidget
-
-    if theme_name == "Light":
-        # Map dark hex → light-theme semantic equivalents. The palette here
-        # mirrors the LIGHT Theme dataclass in core/themes.py — calmer
-        # off-white instead of pure white to match what the global QSS does.
-        SUBS = [
-            # Very dark backgrounds (#000000-#14ffff) → light panel
-            (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
-                         _re.I), "background:{t_bg}"),
-            # Mid-dark backgrounds (#15-#2f) → slightly deeper panel
-            (_re.compile(r"background\s*:\s*#(?:1[5-9a-fA-F][0-9a-fA-F]{4}"
-                         r"|2[0-9a-fA-F]{5})", _re.I), "background:{t_bg2}"),
-            # Dark green tinted backgrounds → soft green tint
-            (_re.compile(r"background\s*:\s*#(?:0a1a0a|1a2a1a|1a3a1a|1e2e1e|"
-                         r"0d2a0d|0a2a1a|1a4a1a|143a14)", _re.I),
-             "background:{t_acc_bg}"),
-            # Dark red tint → light red tint
-            (_re.compile(r"background\s*:\s*#(?:1a0808|2a0808|0a0000|3a0808)",
-                         _re.I), "background:{t_err_bg}"),
-            # Bright accent green text → muted dark green
-            (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:{t_acc}"),
-            # Console / waterfall text that was bright-green-on-black
-            # — keep it readable on light by darkening
-            (_re.compile(r"color\s*:\s*#(?:7fdf9f|66ff66|44dd44)", _re.I),
-             "color:{t_acc}"),
-            # Dark borders
-            (_re.compile(r"border(?:-[a-z]+)?\s*:\s*1px solid "
-                         r"#(?:1a1a1a|111|222|333|0a0a0a|141414)", _re.I),
-             "border:1px solid {t_border}"),
-            # Light text that was readable on dark but now invisible on light
-            (_re.compile(r"color\s*:\s*#(?:ffffff|f0f0f0|e0e0e0|dddddd|cccccc)",
-                         _re.I), "color:{t_fg}"),
-            # gridline-color used by QTableWidget — was #1a1a1a (dark line on
-            # dark bg, visible). On light bg, that's a hard black line.
-            (_re.compile(r"gridline-color\s*:\s*#(?:0[0-9a-fA-F]{5}|"
-                         r"1[0-9a-fA-F]{5}|2[0-9a-fA-F]{5})", _re.I),
-             "gridline-color:{t_border}"),
-            # alternate-background-color (table zebra stripes)
-            (_re.compile(r"alternate-background-color\s*:\s*#(?:1[0-9a-fA-F]{5}"
-                         r"|0[0-9a-fA-F]{5})", _re.I),
-             "alternate-background-color:{t_bg_alt}"),
-        ]
-        vals = {
-            "t_bg":      "#f1f3f5",     # matches LIGHT.bg_secondary
-            "t_bg2":     "#e7ebef",     # matches LIGHT.bg_tertiary
-            "t_bg_alt":  "#eef1f4",     # matches LIGHT.bg_alt
-            "t_acc_bg":  "#dcefe2",     # soft green tint
-            "t_err_bg":  "#ffebe9",     # soft red tint
-            "t_acc":     "#1f7a3f",     # matches LIGHT.accent
-            "t_border":  "#d0d7de",     # matches LIGHT.border
-            "t_fg":      "#1f2328",     # matches LIGHT.fg_primary
-        }
-    else:
-        # High Contrast: substitute inline dark colours with HC palette so
-        # widget setStyleSheet() calls don't drown out the global QSS.
-        # Dark theme is fine as-is — skip it.
-        if theme_name != "High Contrast":
-            return
-        SUBS = [
-            # Dark backgrounds → pure black
-            (_re.compile(r"background\s*:\s*#(?:0[0-9a-fA-F]{5}|1[0-9a-fA-F]{5}"
-                         r"|2[0-9a-fA-F]{5}|3[0-3][0-9a-fA-F]{4})",
-                         _re.I), "background:#000000"),
-            # Dark borders → white for maximum visibility
-            (_re.compile(r"border(?:-[a-z]+)?\s*:\s*(?:\d+px\s+\w+\s+)?"
-                         r"#(?:0[0-9a-fA-F]{5}|1[0-4][0-9a-fA-F]{4})",
-                         _re.I), "border:2px solid #ffffff"),
-            # gridline-color → white
-            (_re.compile(r"gridline-color\s*:\s*#(?:[0-9a-fA-F]{6})", _re.I),
-             "gridline-color:#ffffff"),
-            # Soft green accent → vivid cyan
-            (_re.compile(r"color\s*:\s*#3fbe6f", _re.I), "color:#00ffcc"),
-            (_re.compile(r"background\s*:\s*#3fbe6f", _re.I), "background:#00ffcc"),
-            # Muted grey text that is unreadable on black → pure white
-            (_re.compile(r"color\s*:\s*#(?:55|66|77|88|99|aa|bb)[0-9a-fA-F]{4}",
-                         _re.I), "color:#ffffff"),
-            # alternate-background → near-black
-            (_re.compile(r"alternate-background-color\s*:\s*#[0-9a-fA-F]{6}",
-                         _re.I), "alternate-background-color:#0d0d0d"),
-        ]
-        vals = {}  # no format placeholders needed — literals only above
+    SUBS, vals = (_light_theme_subs() if theme_name == "Light"
+                  else _hc_theme_subs())
 
     def _fix_widget(w: QWidget):
         try:
@@ -195,30 +193,8 @@ def _apply_theme_fixes(window, theme_name: str):
 
     for w in window.findChildren(QWidget):
         _fix_widget(w)
-
-    # Fix pyqtgraph spectrum/waterfall background (its own API, not QSS).
-    _pg_bg = {"Light": "#fafbfc", "High Contrast": "#000000"}.get(theme_name)
-    _pg_fg = {"Light": "#1f2328", "High Contrast": "#ffffff"}.get(theme_name)
-    if _pg_bg:
-        try:
-            import pyqtgraph as pg
-            pg.setConfigOption("background", _pg_bg)
-            pg.setConfigOption("foreground", _pg_fg)
-            from pyqtgraph import PlotWidget, GraphicsLayoutWidget
-            for w in window.findChildren(PlotWidget):
-                try:
-                    w.setBackground(_pg_bg)
-                except Exception:
-                    pass
-            for w in window.findChildren(GraphicsLayoutWidget):
-                try:
-                    w.setBackground(_pg_bg)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    # Expose as a module-level helper for panels built after startup
+    _fix_pyqtgraph_theme(window, theme_name)
+    # Expose as module-level helper for panels built after startup
     import main as _main
     _main._reapply_theme_to = lambda w: _fix_widget(w)
 
@@ -370,6 +346,47 @@ def _wiring_smoke_test(window):
     return len(issues) == 0
 
 
+def _setup_qt_app() -> "QApplication":
+    """Create and configure QApplication. Must be called before any Qt object.
+
+    Sets High-DPI policy, application icon (taskbar/alt-tab), and the Windows
+    AppUserModelID so the taskbar entry shows the Squelch icon, not Python's.
+    Returns the QApplication instance.
+    """
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import Qt
+    except ImportError:
+        print("\nERROR: PyQt6 not found.\nRun bootstrap.bat to install dependencies.\n")
+        sys.exit(1)
+    try:
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    except AttributeError:
+        pass
+    app = QApplication(sys.argv)
+    try:
+        from PyQt6.QtGui import QIcon
+        _ico = Path(__file__).parent / "assets" / "squelch.ico"
+        _png = Path(__file__).parent / "assets" / "squelch.png"
+        _icon_path = _ico if _ico.exists() else _png
+        if _icon_path.exists():
+            app.setWindowIcon(QIcon(str(_icon_path)))
+    except Exception:
+        pass
+    app.setApplicationName("Squelch")
+    app.setApplicationVersion(APP_VERSION)
+    # AUMID: alphanumeric+dots only (no hyphens) — stable across versions
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "dawardy.squelch")
+        except Exception:
+            pass
+    return app
+
+
 def main():
     from core.config import LOG_DIR as _LD
     try:
@@ -378,73 +395,24 @@ def main():
         pass
     args = parse_args()
     setup_logging(args.debug)
-    # Apply log level from config if not in debug mode
     if not args.debug:
-        from core.config import CONFIG_PATH, Config
-        _tmp_cfg = Config(CONFIG_PATH)
-        level_str = _tmp_cfg.get("advanced.log_level", "INFO")
+        from core.config import CONFIG_PATH, Config as _C
+        level_str = _C(CONFIG_PATH).get("advanced.log_level", "INFO")
         import logging as _lg
-        _lg.getLogger().setLevel(
-            getattr(_lg, level_str, _lg.INFO))
+        _lg.getLogger().setLevel(getattr(_lg, level_str, _lg.INFO))
     log = logging.getLogger(__name__)
     log.info("=" * 56)
     log.info(f"Squelch starting  lab={args.lab_mode}  debug={args.debug}")
     log.info("=" * 56)
 
-    try:
-        from PyQt6.QtWidgets import QApplication
-        from PyQt6.QtCore import Qt
-    except ImportError:
-        print(
-            "\nERROR: PyQt6 not found.\n"
-            "Run bootstrap.bat to install dependencies.\n"
-        )
-        sys.exit(1)
-
-    # High-DPI MUST be set before QApplication — do not move
-    try:
-        QApplication.setHighDpiScaleFactorRoundingPolicy(
-            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    except AttributeError:
-        pass
-
-    app = QApplication(sys.argv)
-    # Application icon (taskbar, window, alt-tab)
-    try:
-        from PyQt6.QtGui import QIcon
-        from pathlib import Path as _P
-        # Use .ico on Windows (multi-resolution) for best taskbar quality;
-        # fall back to .png on Linux/macOS.
-        _ico = _P(__file__).parent / "assets" / "squelch.ico"
-        _png = _P(__file__).parent / "assets" / "squelch.png"
-        _icon_path = _ico if _ico.exists() else _png
-        if _icon_path.exists():
-            app.setWindowIcon(QIcon(str(_icon_path)))
-    except Exception:
-        pass
-    app.setApplicationName("Squelch")
-    app.setApplicationVersion(APP_VERSION)
-
-    # Windows taskbar icon fix: set the AppUserModelID so Windows groups and
-    # shows our icon correctly rather than the generic Python/document icon.
-    # Must be called before any window is shown. (P2 — guarded to Windows only)
-    # NOTE: AUMID must contain only alphanumeric chars and dots — no hyphens.
-    # Use a stable ID (no version) so the taskbar entry persists across updates.
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "dawardy.squelch")
-        except Exception:
-            pass
+    app = _setup_qt_app()
 
     from core.config   import Config
     from core.safety   import get_safety
     from core.rig      import RigController
     from core.location import LocationManager
 
-    config   = Config(
-        Path(args.config).expanduser().resolve())
+    config   = Config(Path(args.config).expanduser().resolve())
     rig      = RigController(config)
     location = LocationManager(config)
 
@@ -453,8 +421,6 @@ def main():
         log.info("Guest Operator mode active")
 
     location.load_from_config()
-
-    # Start safety systems
     safety = get_safety()
     safety.set_rig(rig)
     safety.start_watchdog()
@@ -472,7 +438,6 @@ def main():
     log.info("Window ready")
 
     ret = app.exec()
-
     try:
         get_safety().stop_watchdog()
     except Exception:

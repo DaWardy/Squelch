@@ -845,6 +845,59 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             self._dev_combo.addItem(dev.display_name)
         self._dev_combo.setCurrentIndex(0)
 
+    def _build_audio_mode_group(self):
+        """Build Input Mode GroupBox; sets self._audio_mode_btns. Returns group."""
+        from PyQt6.QtWidgets import QGroupBox, QVBoxLayout, QRadioButton, QButtonGroup
+        grp = QGroupBox("Input Mode")
+        lay = QVBoxLayout(grp)
+        self._audio_mode_btns = QButtonGroup()
+        rb_mono = QRadioButton("Mono Audio  —  rig USB audio, standard receive")
+        rb_mono.setChecked(True)
+        rb_mono.setToolTip(
+            "Use the rig's demodulated audio output\n"
+            "Bandwidth: ~3 kHz SSB, ~15 kHz FM\n"
+            "Works with IC-7100, FT-991A, TS-2000, any USB rig")
+        self._audio_mode_btns.addButton(rb_mono, 0)
+        lay.addWidget(rb_mono)
+        rb_iq = QRadioButton("IQ Stereo  —  L=I, R=Q (FUNcube, IC-7300 IQ mode)")
+        rb_iq.setToolTip(
+            "True complex IQ from a stereo source\n"
+            "Bandwidth: up to 192 kHz depending on soundcard\n"
+            "Supported: IC-7300/7610/705 (IQ mode), FUNcube Dongle, Softrock")
+        self._audio_mode_btns.addButton(rb_iq, 1)
+        lay.addWidget(rb_iq)
+        return grp
+
+    def _build_audio_device_form(self):
+        """Build device + sample-rate form. Returns (layout, dev_combo, sr_combo)."""
+        from PyQt6.QtWidgets import QFormLayout, QComboBox
+        from sdr.audio_iq_source import AudioIQSource
+        f = QFormLayout()
+        dev_combo = QComboBox()
+        dev_combo.addItem("Default (system default input)")
+        try:
+            for d in AudioIQSource.enumerate_inputs():
+                dev_combo.addItem(
+                    f"{d['name']}  ({d['channels']}ch, {d['default_sr']}Hz)")
+        except Exception:
+            pass
+        rig_model = self.cfg.get("rig.selected_model", "") if self.cfg else ""
+        rig_dev   = find_rig_audio_device(rig_model)
+        if rig_dev:
+            for i in range(dev_combo.count()):
+                if rig_dev[:10].lower() in dev_combo.itemText(i).lower():
+                    dev_combo.setCurrentIndex(i)
+                    break
+        dev_combo.setToolTip(
+            "For IC-7100: USB Audio CODEC\n"
+            "For IC-7300 IQ: USB Audio CODEC (stereo, 192kHz)")
+        f.addRow("Audio Device:", dev_combo)
+        sr_combo = QComboBox()
+        sr_combo.addItems(["48000 Hz  (standard)", "96000 Hz",
+                           "192000 Hz  (IQ mode, IC-7300)"])
+        f.addRow("Sample Rate:", sr_combo)
+        return f, dev_combo, sr_combo
+
     def _open_audio_source_dialog(self):
         """Open dialog to configure rig audio as SDR input."""
         if not HAS_AUDIO_SRC:
@@ -854,124 +907,36 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
                 "sounddevice is needed to use rig audio input.")
             return
 
-        from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QComboBox,
-            QDialogButtonBox, QLabel, QGroupBox,
-            QVBoxLayout, QRadioButton, QButtonGroup)
-        from sdr.audio_iq_source import AudioIQSource
-
+        from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QLabel, QVBoxLayout)
         dlg = QDialog(self)
         dlg.setWindowTitle("Rig Audio Input")
         dlg.setMinimumWidth(420)
         root = QVBoxLayout(dlg)
-
-        # ── Mode selector ────────────────────────────────
-        mode_grp = QGroupBox("Input Mode")
-        mode_lay = QVBoxLayout(mode_grp)
-
-        self._audio_mode_btns = QButtonGroup()
-
-        rb_mono = QRadioButton(
-            "Mono Audio  —  rig USB audio, standard receive")
-        rb_mono.setChecked(True)
-        rb_mono.setToolTip(
-            "Use the rig's demodulated audio output\n"
-            "Good for: digital decode routing, audio spectrum\n"
-            "Bandwidth: ~3 kHz SSB, ~15 kHz FM\n"
-            "Works with IC-7100, FT-991A, TS-2000, any USB rig")
-        self._audio_mode_btns.addButton(rb_mono, 0)
-        mode_lay.addWidget(rb_mono)
-
-        rb_iq = QRadioButton(
-            "IQ Stereo  —  L=I, R=Q (FUNcube, IC-7300 IQ mode)")
-        rb_iq.setToolTip(
-            "True complex IQ from a stereo source\n"
-            "Gives full waterfall around center frequency\n"
-            "Bandwidth: up to 192 kHz depending on soundcard\n"
-            "Supported rigs: IC-7300/7610/705 (IQ mode),\n"
-            "FUNcube Dongle, Softrock, SDR-Kits")
-        self._audio_mode_btns.addButton(rb_iq, 1)
-        mode_lay.addWidget(rb_iq)
-
-        root.addWidget(mode_grp)
-
-        # ── Device selector ───────────────────────────────
-        f = QFormLayout()
-
-        dev_combo = QComboBox()
-        dev_combo.addItem("Default (system default input)")
-        try:
-            for d in AudioIQSource.enumerate_inputs():
-                dev_combo.addItem(
-                    f"{d['name']}  ({d['channels']}ch, "
-                    f"{d['default_sr']}Hz)")
-        except Exception:
-            pass
-
-        # Pre-select rig audio if detected
-        rig_model = self.cfg.get(
-            "rig.selected_model", "") if self.cfg else ""
-        rig_dev = find_rig_audio_device(rig_model)
-        if rig_dev:
-            for i in range(dev_combo.count()):
-                if rig_dev[:10].lower() in                         dev_combo.itemText(i).lower():
-                    dev_combo.setCurrentIndex(i)
-                    break
-
-        dev_combo.setToolTip(
-            "Select the audio input device\n"
-            "For IC-7100: USB Audio CODEC\n"
-            "For IC-7300 IQ: USB Audio CODEC (stereo, 192kHz)")
-        f.addRow("Audio Device:", dev_combo)
-
-        sr_combo = QComboBox()
-        sr_combo.addItems([
-            "48000 Hz  (standard)",
-            "96000 Hz",
-            "192000 Hz  (IQ mode, IC-7300)"])
-        f.addRow("Sample Rate:", sr_combo)
-
-        root.addLayout(f)
-
-        # ── IQ-capable rig note ───────────────────────────
+        root.addWidget(self._build_audio_mode_group())
+        form, dev_combo, sr_combo = self._build_audio_device_form()
+        root.addLayout(form)
         iq_note = QLabel(
             "IQ-capable rigs:\n"
-            "  IC-7300 / IC-7610 / IC-705:\n"
-            "    Menu: SET → Connectors → USB Send/Keying\n"
-            "    Set USB Audio to 'IQ' mode at 192kHz\n"
-            "  FUNcube Dongle Pro+:\n"
-            "    Always outputs stereo IQ — just select it\n"
-            "  Softrock / SDR-Kits:\n"
-            "    Use IQ Stereo mode with any soundcard")
+            "  IC-7300/7610/705: SET → Connectors → USB Send/Keying → IQ 192kHz\n"
+            "  FUNcube Dongle Pro+: always IQ — just select it\n"
+            "  Softrock / SDR-Kits: IQ Stereo with any soundcard")
         iq_note.setStyleSheet(
-            ""
-            "font-family:'Courier New';"
-            "background:#0a0a0a;padding:8px;"
+            "font-family:'Courier New';background:#0a0a0a;padding:8px;"
             "border:1px solid #1a1a1a;border-radius:3px;")
         iq_note.setWordWrap(True)
         root.addWidget(iq_note)
-
         btns = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok |
-            QDialogButtonBox.StandardButton.Cancel)
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         root.addWidget(btns)
-
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-
-        # Apply selection
-        mode_id  = self._audio_mode_btns.checkedId()
-        mode_str = "iq_stereo" if mode_id == 1 else "mono"
-        dev_txt  = dev_combo.currentText()
-        dev_name = dev_txt.split("  (")[0].strip()
+        mode_str = "iq_stereo" if self._audio_mode_btns.checkedId() == 1 else "mono"
+        dev_name = dev_combo.currentText().split("  (")[0].strip()
         if dev_name.startswith("Default"):
             dev_name = "Default"
-
-        sr_map = {0: 48000, 1: 96000, 2: 192000}
-        sr     = sr_map[sr_combo.currentIndex()]
-
+        sr = {0: 48000, 1: 96000, 2: 192000}[sr_combo.currentIndex()]
         self._start_audio_source(dev_name, mode_str, sr)
 
     def _start_audio_source(self, device: str,
@@ -1525,12 +1490,59 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
                     self.tr("Recording file not found."))
 
 
+    def _open_recording_file(self, p) -> "Recording | None":
+        """Parse a recording file path and return a Recording, or None on error.
+
+        Handles .sigmf-meta, .sigmf-data (finds sibling meta), raw IQ
+        (.cf32/.iq/.bin — prompts for sample rate), and unknown formats.
+        Returns None without showing a dialog only for the unsupported-format
+        case (caller checks for None and warns).
+        """
+        from pathlib import Path as _P
+        from PyQt6.QtWidgets import QMessageBox, QInputDialog
+        from sdr.iq_recorder import Recording
+        p = _P(p)
+        if p.suffix == ".sigmf-meta":
+            return Recording.from_meta_file(p)
+        if p.suffix == ".sigmf-data":
+            meta = p.with_suffix(".sigmf-meta")
+            if meta.exists():
+                return Recording.from_meta_file(meta)
+            QMessageBox.warning(
+                self, self.tr("Missing metadata"),
+                self.tr("This .sigmf-data file has no sibling "
+                        ".sigmf-meta — sample rate and center frequency are unknown."))
+            return None
+        if p.suffix.lower() in (".cf32", ".iq", ".bin"):
+            sr, ok = QInputDialog.getInt(
+                self, self.tr("Sample rate"),
+                self.tr("Sample rate (Hz) — required for raw IQ files:"),
+                2_400_000, 8_000, 100_000_000, 1)
+            if not ok:
+                return None
+            try:
+                duration = p.stat().st_size / 8 / sr
+            except Exception:
+                duration = 0.0
+            return Recording(
+                name=p.stem, data_path=p, meta_path=p,
+                center_hz=getattr(self, "_center_hz", 0),
+                sample_rate=sr, datatype="cf32_le",
+                duration_s=duration, file_size=p.stat().st_size)
+        QMessageBox.information(
+            self, self.tr("Unsupported format"),
+            self.tr(
+                f"'{p.suffix}' files are not currently supported.\n"
+                "Supported: .sigmf-meta, .sigmf-data, .cf32, .iq, .bin\n\n"
+                "WAV audio is not IQ data — use Squelch's Record button "
+                "or a SigMF-compliant capture tool."))
+        return None
+
     def _browse_recording(self):
         """Open any SigMF / raw IQ file from anywhere on disk."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
         path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Open IQ recording"),
-            "",
+            self, self.tr("Open IQ recording"), "",
             "All supported (*.sigmf-meta *.sigmf-data *.cf32 *.iq *.bin);;"
             "SigMF metadata (*.sigmf-meta);;"
             "SigMF data (*.sigmf-data);;"
@@ -1538,79 +1550,16 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             "All files (*)")
         if not path:
             return
-        from pathlib import Path as _P
-        from sdr.iq_recorder import Recording
-        p = _P(path)
-        rec: Recording | None = None
-
-        if p.suffix == ".sigmf-meta":
-            rec = Recording.from_meta_file(p)
-        elif p.suffix == ".sigmf-data":
-            # Look for sibling .sigmf-meta
-            meta = p.with_suffix(".sigmf-meta")
-            if meta.exists():
-                rec = Recording.from_meta_file(meta)
-            else:
-                QMessageBox.warning(
-                    self, self.tr("Missing metadata"),
-                    self.tr("This .sigmf-data file has no sibling "
-                            ".sigmf-meta — sample rate and center "
-                            "frequency are unknown."))
-                return
-        elif p.suffix.lower() in (".cf32", ".iq", ".bin"):
-            # Raw complex64 — ask the user for sample rate (the only
-            # thing the player needs that isn't in the filename).
-            sr, ok = QInputDialog.getInt(
-                self, self.tr("Sample rate"),
-                self.tr("Sample rate (Hz) — required for raw IQ files:"),
-                2_400_000, 8_000, 100_000_000, 1)
-            if not ok:
-                return
-            try:
-                size = p.stat().st_size
-                duration = size / 8 / sr   # 8 bytes per complex64 sample
-            except Exception:
-                duration = 0.0
-            rec = Recording(
-                name        = p.stem,
-                data_path   = p,
-                meta_path   = p,        # not used for raw
-                center_hz   = self._center_hz
-                              if hasattr(self, "_center_hz") else 0,
-                sample_rate = sr,
-                datatype    = "cf32_le",
-                duration_s  = duration,
-                file_size   = p.stat().st_size,
-            )
-        else:
-            QMessageBox.information(
-                self, self.tr("Unsupported format"),
-                self.tr(
-                    f"'{p.suffix}' files are not currently supported by "
-                    "the IQ player. Supported formats:\n"
-                    "  • SigMF (.sigmf-meta + .sigmf-data)\n"
-                    "  • Raw complex64 IQ (.cf32, .iq, .bin)\n\n"
-                    "WAV demodulated audio is not IQ data — record via "
-                    "Squelch's Record button or use a SigMF-compliant "
-                    "capture tool."))
-            return
-
+        rec = self._open_recording_file(path)
         if not rec:
-            QMessageBox.warning(
-                self, self.tr("Load Failed"),
-                self.tr("Could not read recording metadata."))
             return
-
         if not self._player.load(rec):
-            QMessageBox.warning(
-                self, self.tr("Load Failed"),
-                self.tr("Recording file not found or unreadable."))
+            QMessageBox.warning(self, self.tr("Load Failed"),
+                                self.tr("Recording file not found or unreadable."))
             return
-
         self._player.on_samples(self._on_samples)
         self._player.on_progress(self._on_play_progress)
-        self._player.on_end(
-            lambda: QTimer.singleShot(0, self._stop_playback))
+        self._player.on_end(lambda: QTimer.singleShot(0, self._stop_playback))
         self._set_freq(rec.center_hz)
         self._rec_status.setText(f"Loaded: {rec.name}")
 

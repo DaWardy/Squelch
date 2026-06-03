@@ -980,81 +980,68 @@ def _recreate_venv(python_exe: Path):
     _install_soapy_plugins(site)
 
 
-def _auto_fix_soapysdr():
-    """Full SoapySDR auto-fix pipeline integrated into installer."""
-    import re as _re, subprocess as sp, shutil
+_SOAPY_PROBE = (
+    "import SoapySDR; d=SoapySDR.Device.enumerate();"
+    "print(f'SoapySDR {SoapySDR.getAPIVersion()} -- {len(d)} device(s)')"
+)
 
-    # Step 1: already works?
-    r = sp.run([str(VENV_PYTHON), "-c",
-                "import SoapySDR; d=SoapySDR.Device.enumerate();"
-                "print(f'SoapySDR {SoapySDR.getAPIVersion()} "
-                "-- {len(d)} device(s)')"],
-               capture_output=True, text=True)
+
+def _soapy_already_works() -> bool:
+    """Return True (and install plugins) if SoapySDR already imports in venv."""
+    r = subprocess.run([str(VENV_PYTHON), "-c", _SOAPY_PROBE],
+                       capture_output=True, text=True)
     if r.returncode == 0:
         ok(r.stdout.strip())
         _install_soapy_plugins(_get_venv_site_packages())
-        return
+        return True
+    return False
 
-    # Step 2: find SoapySDR in conda/PothosSDR
-    soapy_src = _find_soapy_anywhere()
-    if not soapy_src:
-        warn("SoapySDR not installed.")
-        info("  conda install -c conda-forge soapysdr")
-        info("  Then re-run: python installer.py")
-        return
 
-    src_dir = Path(soapy_src)
-    if src_dir.name == "SoapySDR":
-        src_dir = src_dir.parent
-
-    # Step 3: check Python version vs .pyd version
-    rv = sp.run([str(VENV_PYTHON), "--version"],
-                capture_output=True, text=True)
+def _soapy_version_compatible(src_dir: Path) -> bool:
+    """Check venv Python vs SoapySDR .pyd ABI tag.
+    Returns True if compatible (proceed to copy).
+    Returns False and prints guidance if mismatched (caller should abort).
+    """
+    import re as _re
+    rv = subprocess.run([str(VENV_PYTHON), "--version"],
+                        capture_output=True, text=True)
     m = _re.search(r"Python (\d+)\.(\d+)", rv.stdout + rv.stderr)
     venv_maj, venv_min = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
-
     pyd_files = list(src_dir.glob("_SoapySDR*.pyd"))
     pyd_maj, pyd_min = 0, 0
     if pyd_files:
         m2 = _re.search(r"cp(\d)(\d+)", pyd_files[0].name)
         if m2:
             pyd_maj, pyd_min = int(m2.group(1)), int(m2.group(2))
+    if not pyd_maj or (venv_maj == pyd_maj and venv_min == pyd_min):
+        return True  # compatible or unknown — proceed
+    warn(f"Python version mismatch: venv={venv_maj}.{venv_min}  "
+         f"SoapySDR .pyd=cp{pyd_maj}{pyd_min}")
+    for root in [Path.home() / "miniforge3", Path.home() / "miniconda3",
+                 Path(r"C:/miniforge3"), Path(r"C:/miniconda3")]:
+        py = root / "python.exe"
+        if not py.exists():
+            py = root / "bin" / "python3"
+        if py.exists():
+            rv2 = subprocess.run([str(py), "--version"],
+                                 capture_output=True, text=True)
+            m3 = _re.search(r"Python (\d+)\.(\d+)", rv2.stdout + rv2.stderr)
+            if m3 and (int(m3.group(1)), int(m3.group(2))) == (pyd_maj, pyd_min):
+                ok(f"Found matching Python {pyd_maj}.{pyd_min}: {py}")
+                _recreate_venv(py)
+                return False
+    info(f"Install Python {pyd_maj}.{pyd_min} from python.org, or:")
+    info("  conda install -c conda-forge soapysdr  (matches your venv Python)")
+    return False
 
-    if pyd_maj and (venv_maj != pyd_maj or venv_min != pyd_min):
-        warn(f"Python version mismatch!")
-        warn(f"  Venv:    Python {venv_maj}.{venv_min}")
-        warn(f"  SoapySDR .pyd: cp{pyd_maj}{pyd_min} "
-             f"= Python {pyd_maj}.{pyd_min}")
-        info("")
-        # Find matching conda Python
-        for root in [Path.home() / "miniforge3", Path.home() / "miniconda3",
-                     Path(r"C:/miniforge3"), Path(r"C:/miniconda3")]:
-            py = root / "python.exe"
-            if not py.exists():
-                py = root / "bin" / "python3"
-            if py.exists():
-                rv2 = sp.run([str(py), "--version"],
-                             capture_output=True, text=True)
-                m3 = _re.search(r"Python (\d+)\.(\d+)",
-                                rv2.stdout + rv2.stderr)
-                if m3 and (int(m3.group(1)), int(m3.group(2))) == (pyd_maj, pyd_min):
-                    ok(f"Found matching Python {pyd_maj}.{pyd_min}: {py}")
-                    _recreate_venv(py)
-                    return
-        info(f"Install Python {pyd_maj}.{pyd_min} from python.org")
-        info("Or: conda install -c conda-forge soapysdr  "
-             "(to get a version matching your venv Python)")
-        return
 
-    # Step 4: copy into venv
-    site = _get_venv_site_packages()
+def _soapy_copy_to_venv(src_dir: Path, site: Path):
+    """Copy SoapySDR Python binding files from src_dir into the venv."""
     info(f"Copying SoapySDR from {src_dir} to {site} ...")
-
     spy = src_dir / "SoapySDR.py"
     if spy.exists():
         shutil.copy2(spy, site / "SoapySDR.py")
         ok("  Copied SoapySDR.py")
-
     sf = src_dir / "SoapySDR"
     if sf.exists():
         dst = site / "SoapySDR"
@@ -1062,23 +1049,40 @@ def _auto_fix_soapysdr():
             shutil.rmtree(dst)
         shutil.copytree(sf, dst)
         ok("  Copied SoapySDR/")
-
     for pyd in src_dir.glob("_SoapySDR*.pyd"):
         shutil.copy2(pyd, site / pyd.name)
         ok(f"  Copied {pyd.name}")
 
-    # Step 5: verify and install plugins
-    r2 = sp.run([str(VENV_PYTHON), "-c",
-                 "import SoapySDR; d=SoapySDR.Device.enumerate();"
-                 "print(f'SoapySDR {SoapySDR.getAPIVersion()} "
-                 "-- {len(d)} device(s)')"],
-                capture_output=True, text=True)
-    if r2.returncode == 0:
-        ok(f"SoapySDR working: {r2.stdout.strip()}")
+
+def _soapy_verify_install(site: Path):
+    """Verify SoapySDR works after copy; install plugins if ok."""
+    r = subprocess.run([str(VENV_PYTHON), "-c", _SOAPY_PROBE],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        ok(f"SoapySDR working: {r.stdout.strip()}")
         _install_soapy_plugins(site)
     else:
-        err_msg = (r2.stderr or r2.stdout or "").strip()[:120]
-        warn(f"SoapySDR still failing: {err_msg}")
+        warn(f"SoapySDR still failing: {(r.stderr or r.stdout or '').strip()[:120]}")
+
+
+def _auto_fix_soapysdr():
+    """Full SoapySDR auto-fix pipeline: check → find → verify ABI → copy → verify."""
+    if _soapy_already_works():
+        return
+    soapy_src = _find_soapy_anywhere()
+    if not soapy_src:
+        warn("SoapySDR not installed.")
+        info("  conda install -c conda-forge soapysdr")
+        info("  Then re-run: python installer.py")
+        return
+    src_dir = Path(soapy_src)
+    if src_dir.name == "SoapySDR":
+        src_dir = src_dir.parent
+    if not _soapy_version_compatible(src_dir):
+        return
+    site = _get_venv_site_packages()
+    _soapy_copy_to_venv(src_dir, site)
+    _soapy_verify_install(site)
 
 
 _SDR_DRIVERS = [

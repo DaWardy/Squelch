@@ -110,97 +110,72 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
 
     # ── Load / Save ───────────────────────────────────────────
 
-    def _load_all(self):
-        """Populate all fields from config and keyring."""
-        cfg = self.cfg
+    # ── Settings load helpers (one per tab section) ──────────────────────
 
-        # Station
-        self._callsign.setText(cfg.callsign or "")
-        self._op_name.setText(
-            cfg.get("station.op_name", ""))
-        self._grid.setText(cfg.grid or "")
+    def _load_station(self, cfg):
         region_map = {"1": 1, "2": 0, "3": 2}
+        lic_map    = {"technician": 0, "general": 1, "extra": 2, "other": 3}
+        self._callsign.setText(cfg.callsign or "")
+        self._op_name.setText(cfg.get("station.op_name", ""))
+        self._grid.setText(cfg.grid or "")
         self._itu_region.setCurrentIndex(
-            region_map.get(
-                str(cfg.get("station.itu_region", "2")), 0))
-        lic_map = {
-            "technician": 0, "general": 1,
-            "extra": 2, "other": 3}
+            region_map.get(str(cfg.get("station.itu_region", "2")), 0))
         self._license.setCurrentIndex(
-            lic_map.get(
-                cfg.get("station.license", "").lower(), 1))
-        self._station_call.setText(
-            cfg.get("station.station_callsign", ""))
-        self._contest_exchange.setText(
-            cfg.get("station.contest_exchange", ""))
+            lic_map.get(cfg.get("station.license", "").lower(), 1))
+        self._station_call.setText(cfg.get("station.station_callsign", ""))
+        self._contest_exchange.setText(cfg.get("station.contest_exchange", ""))
 
-        # Modes
-        self._auto_launch_wsjtx.setChecked(
-            cfg.get("modes.auto_launch_wsjtx", True))
-        self._auto_log_ft8.setChecked(
-            cfg.get("modes.auto_log_ft8", True))
-        self._wsjtx_udp_port.setValue(
-            cfg.get("modes.wsjtx_udp_port", 2237))
-        self._cq_timeout_cycles.setValue(
-            cfg.get("modes.cq_timeout_cycles", 2))
-        self._ptt_timeout.setValue(
-            cfg.get("safety.ptt_timeout_s", 180))
-        self._tx_inhibit.setChecked(
-            cfg.get("safety.tx_inhibit", False))
-        self._log_dupes.setChecked(
-            cfg.get("log.warn_dupes", True))
+    def _load_modes(self, cfg):
+        self._auto_launch_wsjtx.setChecked(cfg.get("modes.auto_launch_wsjtx", True))
+        self._auto_log_ft8.setChecked(cfg.get("modes.auto_log_ft8", True))
+        self._wsjtx_udp_port.setValue(cfg.get("modes.wsjtx_udp_port", 2237))
+        self._cq_timeout_cycles.setValue(cfg.get("modes.cq_timeout_cycles", 2))
+        self._ptt_timeout.setValue(cfg.get("safety.ptt_timeout_s", 180))
+        self._tx_inhibit.setChecked(cfg.get("safety.tx_inhibit", False))
+        self._log_dupes.setChecked(cfg.get("log.warn_dupes", True))
 
-        # Appearance
+    def _load_appearance(self, cfg):
         themes = ["Dark", "Light", "High Contrast", "Night"]
         theme  = cfg.get("ui.theme", "Dark")
-        self._theme.setCurrentIndex(
-            themes.index(theme) if theme in themes else 0)
-
-        saved_fs = cfg.get("ui.font_size", 11)
+        self._theme.setCurrentIndex(themes.index(theme) if theme in themes else 0)
         font_sizes = [10, 11, 13, 15, 18]
+        saved_fs   = cfg.get("ui.font_size", 11)
         self._font_size.setCurrentIndex(
-            font_sizes.index(saved_fs)
-            if saved_fs in font_sizes else 1)
-        # Units pref
-        u = cfg.get("ui.units", "metric")
-        ui_idx = self._units.findData(u)
+            font_sizes.index(saved_fs) if saved_fs in font_sizes else 1)
+        ui_idx = self._units.findData(cfg.get("ui.units", "metric"))
         if ui_idx >= 0:
             self._units.setCurrentIndex(ui_idx)
+        self._layout_locked.setChecked(cfg.get("ui.layout_locked", False))
+        self._clock_utc.setChecked(cfg.get("ui.clock_utc", True))
 
-        self._layout_locked.setChecked(
-            cfg.get("ui.layout_locked", False))
-        self._clock_utc.setChecked(
-            cfg.get("ui.clock_utc", True))
-
-        # Advanced
-        level_map = {
-            "INFO": 0, "DEBUG": 1, "WARNING": 2}
+    def _load_advanced(self, cfg):
+        level_map = {"INFO": 0, "DEBUG": 1, "WARNING": 2}
         self._log_level.setCurrentIndex(
-            level_map.get(
-                cfg.get("advanced.log_level", "INFO"), 0))
-        self._api_timeout.setValue(
-            cfg.get("advanced.api_timeout_s", 10))
-        self._grayline_interval.setValue(
-            cfg.get("advanced.grayline_interval_s", 60))
+            level_map.get(cfg.get("advanced.log_level", "INFO"), 0))
+        self._api_timeout.setValue(cfg.get("advanced.api_timeout_s", 10))
+        self._grayline_interval.setValue(cfg.get("advanced.grayline_interval_s", 60))
 
-        # APIs — load from keyring
+    def _load_apis(self, cfg):
         try:
             from core.credentials import get_store
             store = get_store(cfg.get("profile.name", "default"))
-            self._qrz_user.setText(
-                cfg.get("apis.qrz_user", ""))
-            self._hamqth_user.setText(
-                cfg.get("apis.hamqth_user", ""))
-            self._rr_user.setText(
-                cfg.get("apis.rr_user", ""))
-            self._lotw_user.setText(
-                cfg.get("apis.lotw_user", ""))
-            self._clublog_email.setText(
-                cfg.get("apis.clublog_email", ""))
-            self._rb_token.setText(
-                store.retrieve("repeaterbook_token") or "")
+            self._qrz_user.setText(cfg.get("apis.qrz_user", ""))
+            self._hamqth_user.setText(cfg.get("apis.hamqth_user", ""))
+            self._rr_user.setText(cfg.get("apis.rr_user", ""))
+            self._lotw_user.setText(cfg.get("apis.lotw_user", ""))
+            self._clublog_email.setText(cfg.get("apis.clublog_email", ""))
+            self._rb_token.setText(store.retrieve("repeaterbook_token") or "")
         except Exception:
             pass
+
+    def _load_all(self):
+        """Populate all fields from config and keyring."""
+        cfg = self.cfg
+        self._load_station(cfg)
+        self._load_modes(cfg)
+        self._load_appearance(cfg)
+        self._load_advanced(cfg)
+        self._load_apis(cfg)
 
 
     def _conda_exe(self) -> str:
@@ -373,121 +348,87 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         threading.Thread(target=_run, daemon=True).start()
 
 
-    def _apply(self):
-        """Save all settings without closing."""
-        cfg = self.cfg
+    # ── Settings save helpers (one per tab section) ──────────────────────
 
-        # Station
+    def _save_station(self, cfg):
         cs = self._callsign.text().strip().upper()
         if cs:
             cfg.callsign = cs
-        cfg.set("station.op_name",
-                self._op_name.text().strip())
+        cfg.set("station.op_name", self._op_name.text().strip())
         grid = self._grid.text().strip().upper()
         if grid:
             cfg.grid = grid
         region_map = {0: "2", 1: "1", 2: "3"}
         cfg.set("station.itu_region",
-                region_map.get(
-                    self._itu_region.currentIndex(), "2"))
-        lic_labels = ["technician", "general",
-                      "extra", "other"]
-        cfg.set("station.license",
-                lic_labels[self._license.currentIndex()])
+                region_map.get(self._itu_region.currentIndex(), "2"))
+        lic_labels = ["technician", "general", "extra", "other"]
+        cfg.set("station.license", lic_labels[self._license.currentIndex()])
         cfg.set("station.station_callsign",
                 self._station_call.text().strip().upper())
         cfg.set("station.contest_exchange",
                 self._contest_exchange.text().strip())
 
-        # Audio
-        cfg.set("audio.input",
-                self._audio_input.currentText())
-        cfg.set("audio.output",
-                self._audio_output.currentText())
-        cfg.set("audio.digital_input",
-                self._digital_input.currentText())
-        cfg.set("audio.digital_output",
-                self._digital_output.currentText())
+    def _save_audio(self, cfg):
+        cfg.set("audio.input",          self._audio_input.currentText())
+        cfg.set("audio.output",         self._audio_output.currentText())
+        cfg.set("audio.digital_input",  self._digital_input.currentText())
+        cfg.set("audio.digital_output", self._digital_output.currentText())
 
-        # Modes
-        cfg.set("modes.auto_launch_wsjtx",
-                self._auto_launch_wsjtx.isChecked())
-        cfg.set("modes.auto_log_ft8",
-                self._auto_log_ft8.isChecked())
-        cfg.set("modes.wsjtx_udp_port",
-                self._wsjtx_udp_port.value())
-        cfg.set("modes.cq_timeout_cycles",
-                self._cq_timeout_cycles.value())
-        cfg.set("safety.ptt_timeout_s",
-                self._ptt_timeout.value())
-        cfg.set("safety.tx_inhibit",
-                self._tx_inhibit.isChecked())
-        cfg.set("log.warn_dupes",
-                self._log_dupes.isChecked())
+    def _save_modes(self, cfg):
+        cfg.set("modes.auto_launch_wsjtx",  self._auto_launch_wsjtx.isChecked())
+        cfg.set("modes.auto_log_ft8",       self._auto_log_ft8.isChecked())
+        cfg.set("modes.wsjtx_udp_port",     self._wsjtx_udp_port.value())
+        cfg.set("modes.cq_timeout_cycles",  self._cq_timeout_cycles.value())
+        cfg.set("safety.ptt_timeout_s",     self._ptt_timeout.value())
+        cfg.set("safety.tx_inhibit",        self._tx_inhibit.isChecked())
+        cfg.set("log.warn_dupes",           self._log_dupes.isChecked())
 
-        # Appearance
-        cfg.set("ui.theme",
-                self._theme.currentText())
-        cfg.set("ui.font_size",
-                self._font_size.currentData())
-        cfg.set("ui.units",
-                self._units.currentData() or "metric")
-        cfg.set("ui.layout_locked",
-                self._layout_locked.isChecked())
-        cfg.set("ui.clock_utc",
-                self._clock_utc.isChecked())
+    def _save_appearance(self, cfg):
+        cfg.set("ui.theme",          self._theme.currentText())
+        cfg.set("ui.font_size",      self._font_size.currentData())
+        cfg.set("ui.units",          self._units.currentData() or "metric")
+        cfg.set("ui.layout_locked",  self._layout_locked.isChecked())
+        cfg.set("ui.clock_utc",      self._clock_utc.isChecked())
 
-        # Advanced
+    def _save_advanced(self, cfg):
         levels = ["INFO", "DEBUG", "WARNING"]
         cfg.set("advanced.log_level",
                 levels[self._log_level.currentIndex()])
-        cfg.set("advanced.api_timeout_s",
-                self._api_timeout.value())
-        cfg.set("advanced.grayline_interval_s",
-                self._grayline_interval.value())
+        cfg.set("advanced.api_timeout_s",      self._api_timeout.value())
+        cfg.set("advanced.grayline_interval_s", self._grayline_interval.value())
 
-        # APIs — save to config (passwords to keyring)
-        cfg.set("apis.qrz_user",
-                self._qrz_user.text().strip())
-        cfg.set("apis.hamqth_user",
-                self._hamqth_user.text().strip())
-        cfg.set("apis.rr_user",
-                self._rr_user.text().strip())
-        cfg.set("apis.lotw_user",
-                self._lotw_user.text().strip())
-        cfg.set("apis.clublog_email",
-                self._clublog_email.text().strip())
-
-        # Store passwords in keyring
+    def _save_apis(self, cfg):
+        cfg.set("apis.qrz_user",      self._qrz_user.text().strip())
+        cfg.set("apis.hamqth_user",   self._hamqth_user.text().strip())
+        cfg.set("apis.rr_user",       self._rr_user.text().strip())
+        cfg.set("apis.lotw_user",     self._lotw_user.text().strip())
+        cfg.set("apis.clublog_email", self._clublog_email.text().strip())
         try:
             from core.credentials import get_store
-            profile = cfg.get("profile.name", "default")
-            store   = get_store(profile)
-            if self._qrz_pass.text():
-                store.store("qrz_password",
-                            self._qrz_pass.text())
-            if self._hamqth_pass.text():
-                store.store("hamqth_password",
-                            self._hamqth_pass.text())
-            if self._lotw_pass.text():
-                store.store("lotw_password",
-                            self._lotw_pass.text())
-            if self._clublog_pass.text():
-                store.store("clublog_password",
-                            self._clublog_pass.text())
-            if self._rb_token.text():
-                store.store("repeaterbook_token",
-                            self._rb_token.text())
+            store = get_store(cfg.get("profile.name", "default"))
+            for attr, key in [
+                (self._qrz_pass,     "qrz_password"),
+                (self._hamqth_pass,  "hamqth_password"),
+                (self._lotw_pass,    "lotw_password"),
+                (self._clublog_pass, "clublog_password"),
+                (self._rb_token,     "repeaterbook_token"),
+            ]:
+                if attr.text():
+                    store.store(key, attr.text())
         except Exception as e:
             log.warning(f"Keyring save: {e}")
 
+    def _apply(self):
+        """Save all settings without closing."""
+        cfg = self.cfg
+        self._save_station(cfg)
+        self._save_audio(cfg)
+        self._save_modes(cfg)
+        self._save_appearance(cfg)
+        self._save_advanced(cfg)
+        self._save_apis(cfg)
         cfg.save()
-
-        # Apply live changes — deferred via QTimer so the OK click can
-        # return immediately and the freeze (from setStyleSheet on every
-        # widget in the app) happens AFTER the dialog closes. Otherwise
-        # the user sees the dialog stay open and unresponsive for 1-2s
-        # while the global stylesheet is rebuilt.
+        # Deferred so the dialog closes before the stylesheet rebuild
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(0, self._apply_live)
 

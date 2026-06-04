@@ -115,54 +115,60 @@ class ProfileManager:
         """Save profile list to profiles.json."""
         PROFILES_DIR.mkdir(parents=True, exist_ok=True)
         data = {
-            "profiles": [
-                asdict(p) for p in self._profiles.values()],
-            "last_used": (self._current.name
-                          if self._current else "default"),
+            "profiles": [asdict(p) for p in self._profiles.values()],
+            "last_used": (self._current.name if self._current else "default"),
         }
-        PROFILES_META.write_text(
-            json.dumps(data, indent=2), encoding='utf-8')
+        try:
+            PROFILES_META.write_text(
+                json.dumps(data, indent=2), encoding='utf-8')
+        except Exception as e:
+            log.error(f"Profile save failed: {e}")
 
     # ── Profile CRUD ──────────────────────────────────────────────────────
 
-    def create(self, name: str, display_name: str,
-               callsign: str = "",
-               is_guest_op: bool = False,
-               control_op: str = "") -> Profile:
-        """Create a new profile."""
-        # Sanitize name to alphanumeric + underscore
-        safe_name = re.sub(r'[^a-z0-9_]', '_',
-                           name.lower().strip())[:20]
-        if not safe_name:
-            safe_name = "profile"
+    def create(self, name: str, display_name: str = "",
+               callsign: str = "") -> Profile:
+        """Create a new profile with the given slug name, display name, and callsign.
 
-        # Ensure unique
-        base = safe_name
-        counter = 1
+        Guest operator fields (is_guest_op, control_op) are set separately
+        via configure_guest_op() to keep this signature lean.
+        """
+        safe_name = re.sub(r'[^a-z0-9_]', '_', name.lower().strip())[:20] or "profile"
+        base, counter = safe_name, 1
         while safe_name in self._profiles:
             safe_name = f"{base}_{counter}"
             counter += 1
-
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
-
         profile = Profile(
-            name          = safe_name,
-            display_name  = display_name[:50],
-            callsign      = callsign.upper().strip()[:12],
-            is_guest_op   = is_guest_op,
-            control_op    = control_op.upper().strip()[:12],
-            created_at    = now,
-            last_used     = now,
+            name         = safe_name,
+            display_name = (display_name or name)[:50],
+            callsign     = callsign.upper().strip()[:12],
+            created_at   = now,
+            last_used    = now,
         )
-
-        # Create directory
         profile.dir.mkdir(parents=True, exist_ok=True)
-
         self._profiles[safe_name] = profile
         self.save()
         log.info(f"Profile created: {safe_name}")
         return profile
+
+    def configure_guest_op(self, name: str, control_op: str,
+                           is_guest_op: bool = True) -> bool:
+        """Set guest operator fields on an existing profile.
+
+        Separated from create() to keep argument count lean (C-15 Sam use case).
+        Returns True if the profile was found and updated.
+        """
+        profile = self._profiles.get(name)
+        if not profile:
+            log.warning(f"configure_guest_op: profile {name!r} not found")
+            return False
+        profile.is_guest_op = is_guest_op
+        profile.control_op  = control_op.upper().strip()[:12]
+        self.save()
+        log.info(f"Guest op configured for {name}: control_op={profile.control_op}")
+        return True
 
     def delete(self, name: str):
         """Delete a profile. Cannot delete the last profile."""

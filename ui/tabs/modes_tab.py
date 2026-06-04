@@ -749,32 +749,30 @@ class ModesTab(SquelchPanel, QWidget):
         self._pota_spots = spots
         self._filter_sota_pota()
 
+    def _collect_sota_pota_spots(self, mode: str) -> list:
+        """Return merged spot tuples for the selected mode ('SOTA'/'POTA'/'Both')."""
+        spots = []
+        if mode in ("SOTA", "Both"):
+            for s in self._sota_spots:
+                spots.append((s.callsign, f"{s.freq_mhz:.4f}",
+                               s.mode, s.summit, s.summit_name, s.freq_mhz, "sota"))
+        if mode in ("POTA", "Both"):
+            for s in self._pota_spots:
+                spots.append((s.callsign, f"{s.freq_mhz:.4f}",
+                               s.mode, s.park, s.park_name, s.freq_mhz, "pota"))
+        return spots
+
     def _filter_sota_pota(self, _=None):
         from PyQt6.QtWidgets import QTableWidgetItem
         from PyQt6.QtCore import Qt
-        mode = self._sp_mode.currentText()
-        all_spots = []
-        if mode in ("SOTA", "Both"):
-            for s in self._sota_spots:
-                all_spots.append((
-                    s.callsign, f"{s.freq_mhz:.4f}",
-                    s.mode, s.summit, s.summit_name,
-                    s.freq_mhz, "sota"))
-        if mode in ("POTA", "Both"):
-            for s in self._pota_spots:
-                all_spots.append((
-                    s.callsign, f"{s.freq_mhz:.4f}",
-                    s.mode, s.park, s.park_name,
-                    s.freq_mhz, "pota"))
-
+        all_spots = self._collect_sota_pota_spots(self._sp_mode.currentText())
         self._sp_table.setRowCount(0)
         for spot_data in all_spots[:15]:
             row = self._sp_table.rowCount()
             self._sp_table.insertRow(row)
             for col, val in enumerate(spot_data[:5]):
                 item = QTableWidgetItem(str(val))
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._sp_table.setItem(row, col, item)
 
     def _tune_to_sota_pota(self, index):
@@ -861,36 +859,37 @@ class ModesTab(SquelchPanel, QWidget):
             self._dx_spots = self._dx_spots[:100]
         self._filter_dx_spots()
 
-    def _filter_dx_spots(self):
+    def _resolve_dx_band(self) -> str:
+        """Return the band filter string: '' = all, otherwise e.g. '20m'."""
+        band = self._dx_band.currentText()
+        if band == "Current":
+            return self._current_band or ""
+        return "" if band == "All" else band
+
+    def _add_dx_spot_row(self, spot) -> None:
+        """Append one DX spot as a centred row in the DX table."""
         from PyQt6.QtWidgets import QTableWidgetItem
         from PyQt6.QtCore import Qt
-        band = self._dx_band.currentText()
+        row = self._dx_table.rowCount()
+        self._dx_table.insertRow(row)
+        for col, val in enumerate([
+                spot.dx_call, f"{spot.freq_khz:.1f}",
+                spot.spotter, spot.comment[:30], spot.time_utc]):
+            item = QTableWidgetItem(val)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._dx_table.setItem(row, col, item)
+
+    def _filter_dx_spots(self):
+        band = self._resolve_dx_band()
         mode = self._dx_mode_filter.currentText()
-
-        if band == "Current":
-            band = self._current_band or ""
-        elif band == "All":
-            band = ""
-
         self._dx_table.setRowCount(0)
         shown = 0
         for spot in self._dx_spots:
             if band and spot.band != band:
                 continue
-            if mode != "All" and spot.mode and                spot.mode.upper() != mode.upper():
+            if mode != "All" and spot.mode and spot.mode.upper() != mode.upper():
                 continue
-            row = self._dx_table.rowCount()
-            self._dx_table.insertRow(row)
-            for col, val in enumerate([
-                    spot.dx_call,
-                    f"{spot.freq_khz:.1f}",
-                    spot.spotter,
-                    spot.comment[:30],
-                    spot.time_utc]):
-                item = QTableWidgetItem(val)
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignCenter)
-                self._dx_table.setItem(row, col, item)
+            self._add_dx_spot_row(spot)
             shown += 1
             if shown >= 10:
                 break

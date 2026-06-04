@@ -394,34 +394,6 @@ class ModesTab(SquelchPanel, QWidget):
         tx_grp.setMinimumHeight(80)
         self._left_layout.addWidget(tx_grp)
         
-        # ── Session stats ─────────────────────────────────────────────
-        stats_grp = QGroupBox("Session")
-        stats_l   = QGridLayout(stats_grp)
-        stats_l.setSpacing(3)
-        
-        def _stat(label, attr):
-            lbl = QLabel(label)
-            lbl.setStyleSheet(" ")
-            val = QLabel("0")
-            val.setStyleSheet(
-                "color:#3fbe6f;  "
-                "font-family:'Courier New';")
-            setattr(self, attr, val)
-            return lbl, val
-        
-        for row, (label, attr) in enumerate([
-            ("QSOs this session:", "_stat_qsos"),
-            ("DXCC worked:",       "_stat_dxcc"),
-            ("New grids:",         "_stat_grids"),
-            ("Decodes:",           "_stat_decodes"),
-        ]):
-            lbl, val = _stat(label, attr)
-            stats_l.addWidget(lbl, row, 0)
-            stats_l.addWidget(val, row, 1)
-        
-        self._left_layout.addWidget(stats_grp)
-        self._left_layout.addStretch()
-        
 
 
     def _build_session_stats(self, root):
@@ -1133,11 +1105,23 @@ class ModesTab(SquelchPanel, QWidget):
 
     # ── UI updates ────────────────────────────────────────────────────────
 
+    def _color_decode_item(self, item: QTableWidgetItem,
+                           decode: DecodedSignal):
+        """Apply foreground color (and optional bold) to a decode table cell."""
+        if decode.worked:
+            item.setForeground(QBrush(QColor("#444444")))
+        elif decode.new_dxcc:
+            item.setForeground(QBrush(QColor("#ffaa00")))
+        elif decode.new_grid:
+            item.setForeground(QBrush(QColor("#44aaff")))
+        elif decode.is_reply_to == self.cfg.callsign.upper():
+            item.setForeground(QBrush(QColor("#3fbe6f")))
+            item.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
+
     def _add_decode(self, decode: DecodedSignal):
         """Add a decoded signal to the table."""
         row = self._decode_table.rowCount()
         self._decode_table.insertRow(row)
-
         items = [
             decode.callsign,
             decode.grid or "—",
@@ -1149,29 +1133,13 @@ class ModesTab(SquelchPanel, QWidget):
             decode.dxcc or decode.country or "—",
             self._decode_flag(decode),
         ]
-
         for col, text in enumerate(items):
             item = QTableWidgetItem(text)
-            item.setTextAlignment(
-                Qt.AlignmentFlag.AlignCenter)
-            # Color coding
-            if decode.worked:
-                item.setForeground(QBrush(QColor("#444444")))
-            elif decode.new_dxcc:
-                item.setForeground(QBrush(QColor("#ffaa00")))
-            elif decode.new_grid:
-                item.setForeground(QBrush(QColor("#44aaff")))
-            elif decode.is_reply_to == self.cfg.callsign.upper():
-                item.setForeground(QBrush(QColor("#3fbe6f")))
-                item.setFont(QFont("Courier New", 11,
-                                   QFont.Weight.Bold))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._color_decode_item(item, decode)
             self._decode_table.setItem(row, col, item)
-
-        # Keep last 200 rows
         while self._decode_table.rowCount() > 200:
             self._decode_table.removeRow(0)
-
-        # Update decode count
         self._stat_decodes.setText(
             str(int(self._stat_decodes.text()) + 1))
 

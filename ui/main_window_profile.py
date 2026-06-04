@@ -15,8 +15,8 @@ class _MainWindowProfileMixin:
     def _populate_profiles(self):
         """Load operator profiles into the combo box."""
         try:
-            from core.profiles import ProfileManager
-            pm = ProfileManager()
+            from core.profiles import get_profile_manager
+            pm = get_profile_manager()
             profiles = pm.list_profiles()
             current  = pm.current_name()
 
@@ -48,8 +48,8 @@ class _MainWindowProfileMixin:
             self._manage_profiles_dialog()
             return
         try:
-            from core.profiles import ProfileManager
-            pm = ProfileManager()
+            from core.profiles import get_profile_manager
+            pm = get_profile_manager()
             if pm.switch_to(name):
                 # Refresh UI from new profile
                 cs = self.cfg.callsign
@@ -69,8 +69,8 @@ class _MainWindowProfileMixin:
         from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QListWidget,
                                      QHBoxLayout, QPushButton, QInputDialog,
                                      QMessageBox, QLabel)
-        from core.profiles import ProfileManager
-        pm = ProfileManager()
+        from core.profiles import get_profile_manager
+        pm = get_profile_manager()
         dlg = QDialog(self)
         dlg.setWindowTitle("Manage Operator Profiles")
         dlg.setMinimumWidth(380)
@@ -137,9 +137,9 @@ class _MainWindowProfileMixin:
             "Profile name (e.g. your callsign):")
         if ok and name.strip():
             try:
-                from core.profiles import ProfileManager
-                pm = ProfileManager()
-                pm.create(name.strip())
+                from core.profiles import get_profile_manager
+                pm = get_profile_manager()
+                pm.create_named(name.strip())
                 self._populate_profiles()
                 # Switch to new profile
                 idx = self._profile_combo.findText(name.strip())

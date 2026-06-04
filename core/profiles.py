@@ -268,7 +268,7 @@ class ProfileManager:
     def current_name(self) -> str:
         """Return current profile display name."""
         pm = get_profile_manager()
-        cur = pm.current()
+        cur = pm.current   # @property — no parentheses
         if cur:
             return cur.display_name or cur.name
         return "Default"
@@ -283,14 +283,17 @@ class ProfileManager:
                 return result is not None
         return False
 
-    def create(self, display_name: str) -> bool:
-        """Create a new profile with given display name."""
+    def create_named(self, display_name: str) -> bool:
+        """Create a new profile with given display name (convenience wrapper).
+        Slug is auto-generated from display_name.
+        """
         pm = get_profile_manager()
-        slug = display_name.upper().replace(" ", "_")[:20]
+        slug = re.sub(r'[^a-z0-9_]', '_', display_name.lower().strip())[:20] or "profile"
         try:
-            pm.create(slug, display_name, display_name)
+            pm.create(slug, display_name)
             return True
-        except Exception:
+        except Exception as e:
+            log.debug(f"Profile create_named failed: {e}")
             return False
 
     @property

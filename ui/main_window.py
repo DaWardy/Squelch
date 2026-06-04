@@ -906,10 +906,11 @@ class MainWindow(
         self.cfg.save()
         # Also update the profile record so switch_to() doesn't overwrite
         try:
-            from core.profiles import ProfileManager
-            pm = ProfileManager()
-            if pm.current():
-                pm.current().callsign = val
+            from core.profiles import get_profile_manager
+            pm = get_profile_manager()
+            cur = pm.current   # @property — access without ()
+            if cur:
+                cur.callsign = val
                 pm.save()
         except Exception:
             pass

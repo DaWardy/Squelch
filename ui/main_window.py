@@ -134,58 +134,48 @@ class ClickableLabel(QLabel):
 
         self._edit.focusOutEvent = _focus_out
 
+    def _commit_callsign(self, val: str):
+        """Sanitize and commit a callsign value: [A-Z0-9/] only."""
+        import re
+        clean = re.sub(r'[^A-Z0-9/]', '', val.upper())
+        if not clean:
+            return
+        self.setText(clean)
+        try:
+            self._on_commit(clean)
+        except Exception as e:
+            log.warning(f"Callsign commit: {e}")
+
+    def _commit_location(self, val: str):
+        """Sanitize and commit a location/grid value: alphanumeric + common punctuation."""
+        import re
+        clean = re.sub(r'[^A-Za-z0-9 ,./\-]', '', val).strip()
+        if not clean:
+            return
+        # Don't setText — let _on_grid_edit set the final Maidenhead grid
+        try:
+            self._on_commit(clean)
+        except Exception as e:
+            log.warning(f"Location commit: {e}")
+
     def _commit(self):
-        # Guard against double-commit (returnPressed + focusOut both fire)
+        """Finalise in-place edit; route to callsign or location handler."""
         if self._edit is None or self._editing is False:
             return
-        # Mark done immediately to block re-entry
         self._editing = False
-        edit = self._edit
-        self._edit = None
-
+        edit, self._edit = self._edit, None
         raw = edit.text().strip()
         try:
-            edit.hide()
-            edit.deleteLater()
+            edit.hide(); edit.deleteLater()
         except Exception:
             pass
-
-        # Allow letters, digits, slash (portable calls), spaces for
-        # location searches (ZIP codes, city names)
         val = raw.strip()
         if not val or val.lower() in self._PLACEHOLDERS:
             return
-
-        # Callsign: uppercase, alphanumeric + /
-        # Location: allow spaces, digits, letters (ZIP/city)
-        import re
-        # Check if it looks like a callsign or a location query
-        val_upper = val.upper()
-        is_callsign = bool(re.match(
-            r'[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z]', val_upper))
-
         if self._placeholder and 'call' in self._placeholder.lower():
-            # Callsign field - strip to safe chars only
-            val_clean = re.sub(r'[^A-Z0-9/]', '', val_upper)
-            if not val_clean:
-                return
-            self.setText(val_clean)
-            try:
-                self._on_commit(val_clean)
-            except Exception as e:
-                log.warning(f"Callsign commit: {e}")
+            self._commit_callsign(val)
         else:
-            # Location field - allow spaces, digits, letters for
-            # ZIP codes, city names, MGRS, grid squares
-            val_clean = re.sub(r'[^A-Za-z0-9 ,./\-]', '', val).strip()
-            if not val_clean:
-                return
-            # Don't setText here — let _on_grid_edit set the
-            # final Maidenhead grid after resolution completes
-            try:
-                self._on_commit(val_clean)
-            except Exception as e:
-                log.warning(f"Location commit: {e}")
+            self._commit_location(val)
 
 from ui.main_window_profile   import _MainWindowProfileMixin
 from ui.main_window_network   import _MainWindowNetworkMixin

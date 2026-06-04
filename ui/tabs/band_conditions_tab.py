@@ -49,6 +49,14 @@ class BandConditionsTab(SquelchPanel, QWidget):
     # Worker thread → main thread: path-to result delivery
     _path_resolved = pyqtSignal(float, float, str, bool, str)
 
+    # Mid-band center frequencies for the "what if I tried this band?" UI
+    _BAND_CTR_MHZ = {
+        "160m": 1.900,  "80m": 3.750,  "60m": 5.357,
+        "40m":  7.150,  "30m": 10.125, "20m": 14.150,
+        "17m":  18.110, "15m": 21.250, "12m": 24.940,
+        "10m":  28.300, "6m":  50.150,
+    }
+
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.cfg   = config
@@ -861,40 +869,29 @@ class BandConditionsTab(SquelchPanel, QWidget):
                 f"Est. MUF: {feed._solar.muf_estimate_mhz:.1f} MHz")
             self._current_path_km = km
             self._update_muf_chart()
-            # Update the educational side-view widget too. Operating freq
-            # comes from cfg/rig — UNLESS the user picked a specific band
-            # in the band-filter combo, in which case we use that band's
-            # center freq so they can see "what if I tried this on 20m?"
-            try:
-                # Band center freqs (MHz) — informal mid-band conversational
-                # frequencies most operators think of when picking a band.
-                _BAND_CTR = {
-                    "160m": 1.900,  "80m": 3.750,  "60m": 5.357,
-                    "40m":  7.150,  "30m": 10.125, "20m": 14.150,
-                    "17m":  18.110, "15m": 21.250, "12m": 24.940,
-                    "10m":  28.300, "6m":  50.150,
-                }
-                band = self._band_filter.currentText() \
-                    if hasattr(self, "_band_filter") else "Auto"
-                if band != "Auto" and band in _BAND_CTR:
-                    op_freq = _BAND_CTR[band]
-                else:
-                    op_freq = float(
-                        self.cfg.get("rig.last_freq_hz", 0)) / 1e6
-                luf = feed._solar.luf_estimate_mhz if hasattr(
-                    feed._solar, "luf_estimate_mhz") else 3.0
-                self._prop_sideview.update_state(
-                    path_km  = km,
-                    muf_mhz  = feed._solar.muf_estimate_mhz,
-                    luf_mhz  = luf,
-                    freq_mhz = op_freq,
-                    target   = target,
-                    tx_lat   = getattr(self, "_BandConditionsTab__terrain_tx_lat", 0.0),
-                    tx_lon   = getattr(self, "_BandConditionsTab__terrain_tx_lon", 0.0),
-                    rx_lat   = getattr(self, "_BandConditionsTab__terrain_rx_lat", 0.0),
-                    rx_lon   = getattr(self, "_BandConditionsTab__terrain_rx_lon", 0.0))
-            except Exception:
-                pass
+            self._update_path_sideview(km, target, feed)
+        except Exception:
+            pass
+
+    def _update_path_sideview(self, km: float, target: str, feed):
+        """Update propagation_sideview with resolved path + operating frequency."""
+        try:
+            band    = self._band_filter.currentText() \
+                if hasattr(self, "_band_filter") else "Auto"
+            op_freq = (self._BAND_CTR_MHZ[band]
+                       if band != "Auto" and band in self._BAND_CTR_MHZ
+                       else float(self.cfg.get("rig.last_freq_hz", 0)) / 1e6)
+            luf = getattr(feed._solar, "luf_estimate_mhz", 3.0)
+            self._prop_sideview.update_state(
+                path_km  = km,
+                muf_mhz  = feed._solar.muf_estimate_mhz,
+                luf_mhz  = luf,
+                freq_mhz = op_freq,
+                target   = target,
+                tx_lat   = getattr(self, "_BandConditionsTab__terrain_tx_lat", 0.0),
+                tx_lon   = getattr(self, "_BandConditionsTab__terrain_tx_lon", 0.0),
+                rx_lat   = getattr(self, "_BandConditionsTab__terrain_rx_lat", 0.0),
+                rx_lon   = getattr(self, "_BandConditionsTab__terrain_rx_lon", 0.0))
         except Exception:
             pass
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
 #
@@ -43,6 +44,22 @@ except ImportError:
 
 # Map refresh interval — gray line moves visibly over ~60s
 MAP_REFRESH_S = 60
+
+
+@dataclass
+class HeardSpot:
+    """Data for a station heard by any RF source (FT8, PSKReporter, etc.).
+
+    Pass to MapTab.add_heard_station() instead of individual keyword args.
+    Future pin sources (Winlink gateways, Local RF) use this same type.
+    """
+    callsign: str
+    grid:     str   = ""
+    lat:      float = 0.0
+    lon:      float = 0.0
+    source:   str   = "decode"
+    freq_mhz: float = 0.0
+    snr_db:   float = 0.0
 
 
 class MapTab(SquelchPanel, QWidget):
@@ -390,34 +407,36 @@ class MapTab(SquelchPanel, QWidget):
                     5000,   # Batch updates every 5 seconds
                     self._refresh_aprs)
 
-    def add_heard_station(self, callsign: str, grid: str = "",
-                          lat: float = 0.0, lon: float = 0.0,
-                          source: str = "decode",
-                          freq_mhz: float = 0.0,
-                          snr_db: float = 0.0):
-        """Pin a station heard from any source (FT8 decode, PSKReporter
-        spot, Winlink gateway, Local RF repeater, etc.). Idempotent —
-        calling with the same callsign updates rather than duplicates."""
-        # Resolve grid to lat/lon if needed
+    def add_heard_station(self, callsign: str, spot: "HeardSpot | None" = None):
+        """Pin a station heard from any source. Idempotent — same callsign updates.
+
+        spot: HeardSpot dataclass.  If None a bare-minimum entry is stored.
+        Legacy keyword-arg callers should migrate to HeardSpot; see HeardSpot
+        at module level.
+        """
+        if spot is None:
+            spot = HeardSpot(callsign=callsign)
+        grid     = (spot.grid or "").upper()
+        lat, lon = spot.lat, spot.lon
         if (not lat and not lon) and grid:
             try:
                 from core.location import _grid_to_latlon
-                lat, lon = _grid_to_latlon(grid.upper())
+                lat, lon = _grid_to_latlon(grid)
             except Exception:
                 return
         if not lat and not lon:
-            return     # nothing to plot
+            return
         if not hasattr(self, '_heard_stations'):
             self._heard_stations = {}
         import time
         self._heard_stations[callsign.upper()] = {
             "callsign": callsign.upper(),
-            "grid":     grid.upper(),
+            "grid":     grid,
             "lat":      lat,
             "lon":      lon,
-            "source":   source,
-            "freq_mhz": freq_mhz,
-            "snr_db":   snr_db,
+            "source":   spot.source,
+            "freq_mhz": spot.freq_mhz,
+            "snr_db":   spot.snr_db,
             "ts":       time.time(),
         }
         # Throttled refresh — same pattern as APRS
@@ -485,62 +504,56 @@ class MapTab(SquelchPanel, QWidget):
             else:
                 self._fallback_map.set_satellite_positions([])
 
-            # Status bar
-            if lat or lon:
-                info = gray_line_info(lat, lon, now)
-                self._fallback_map.set_gl_info(info)
-                status = format_gray_line_status(info)
-                self._gl_bar.setText(status)
-                if info.is_gray_line:
-                    self._gl_bar.setStyleSheet(
-                        "background:#0a1a0a;color:#3fbe6f;"
-                        ""
-                        "font-family:'Courier New';"
-                        "border-top:1px solid #3fbe6f;")
-                else:
-                    self._gl_bar.setStyleSheet(
-                        "background:#0a0a0a;"
-                        ""
-                        "font-family:'Courier New';"
-                        "border-top:1px solid #1a1a1a;")
-            else:
-                self._gl_bar.setText(
-                    "Set location in top bar to show "
-                    "gray line")
+            self._update_fallback_gl_bar(lat, lon, now)
 
         except Exception as e:
             log.debug(f"Fallback map refresh: {e}")
+
+    def _update_fallback_gl_bar(self, lat: float, lon: float, now):
+        """Update the gray-line status bar below the fallback map."""
+        if not (lat or lon):
+            self._gl_bar.setText("Set location in top bar to show gray line")
+            return
+        info   = gray_line_info(lat, lon, now)
+        status = format_gray_line_status(info)
+        self._fallback_map.set_gl_info(info)
+        self._gl_bar.setText(status)
+        self._gl_bar.setStyleSheet(
+            "background:#0a1a0a;color:#3fbe6f;"
+            "font-family:'Courier New';border-top:1px solid #3fbe6f;"
+            if info.is_gray_line else
+            "background:#0a0a0a;"
+            "font-family:'Courier New';border-top:1px solid #1a1a1a;")
+
+    def _resolve_qso_coords(self, q):
+        """Return (my_lat, my_lon, their_lat, their_lon) for one QSO, or None."""
+        my_lat  = float(getattr(q, "my_lat", 0.0) or
+                        self.cfg.get("location.lat", 0.0) or 0.0)
+        my_lon  = float(getattr(q, "my_lon", 0.0) or
+                        self.cfg.get("location.lon", 0.0) or 0.0)
+        their_lat = float(getattr(q, "lat", 0.0) or 0.0)
+        their_lon = float(getattr(q, "lon", 0.0) or 0.0)
+        if not their_lat and getattr(q, "grid", ""):
+            try:
+                from core.location import _grid_to_latlon
+                their_lat, their_lon = _grid_to_latlon(q.grid)
+            except Exception:
+                pass
+        if my_lat and my_lon and their_lat and their_lon:
+            return my_lat, my_lon, their_lat, their_lon
+        return None
 
     def _build_qso_paths(self) -> list:
         """Build QSO path dicts for map drawing."""
         paths = []
         try:
-            qsos = self.log_db.recent_qsos(limit=200)
-            for q in qsos:
-                # My location
-                my_lat = float(
-                    getattr(q, "my_lat", 0.0) or
-                    self.cfg.get("location.lat", 0.0) or 0.0)
-                my_lon = float(
-                    getattr(q, "my_lon", 0.0) or
-                    self.cfg.get("location.lon", 0.0) or 0.0)
-                # Their location
-                their_lat = float(getattr(q, "lat", 0.0) or 0.0)
-                their_lon = float(getattr(q, "lon", 0.0) or 0.0)
-                # Derive from grid if lat/lon missing
-                if (not their_lat) and q.grid:
-                    try:
-                        from core.location import _grid_to_latlon
-                        their_lat, their_lon =                             _grid_to_latlon(q.grid)
-                    except Exception:
-                        pass
-                if my_lat and my_lon and                    their_lat and their_lon:
-                    paths.append({
-                        "from": [my_lat, my_lon],
-                        "to":   [their_lat, their_lon],
-                        "mode": q.mode,
-                        "call": q.call,
-                    })
+            for q in self.log_db.recent_qsos(limit=200):
+                coords = self._resolve_qso_coords(q)
+                if coords:
+                    my_lat, my_lon, their_lat, their_lon = coords
+                    paths.append({"from": [my_lat, my_lon],
+                                  "to":   [their_lat, their_lon],
+                                  "mode": q.mode, "call": q.call})
         except Exception as e:
             log.debug(f"QSO paths: {e}")
         return paths

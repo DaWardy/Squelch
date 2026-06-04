@@ -1067,13 +1067,16 @@ class ModesTab(SquelchPanel, QWidget):
             if mw and hasattr(mw, "_tab_map"):
                 map_tab = mw._tab_map.get("map")
                 if map_tab and hasattr(map_tab, "add_heard_station"):
+                    from ui.tabs.map_tab import HeardSpot
                     QTimer.singleShot(0, lambda d=decode: (
                         map_tab.add_heard_station(
-                            callsign=d.callsign,
-                            grid=getattr(d, "grid", ""),
-                            source="FT8",
-                            freq_mhz=getattr(d, "freq_hz", 0) / 1e6,
-                            snr_db=getattr(d, "snr", 0))))
+                            d.callsign,
+                            HeardSpot(
+                                callsign=d.callsign,
+                                grid=getattr(d, "grid", ""),
+                                source="FT8",
+                                freq_mhz=getattr(d, "freq_hz", 0) / 1e6,
+                                snr_db=getattr(d, "snr", 0)))))
         except Exception:
             pass
 

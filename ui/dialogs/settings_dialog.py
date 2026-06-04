@@ -491,51 +491,50 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(0, self._apply_live)
 
-    def _apply_live(self):
-        """Apply theme and font immediately — called on Apply/OK."""
+    def _get_live_theme_settings(self):
+        """Return (app, sip, theme, fs) guarded for sip safety, or None if unavailable."""
         try:
-            from core.themes import get_stylesheet
             from PyQt6.QtWidgets import QApplication
-            from PyQt6.QtGui import QFont
             try:
                 from PyQt6 import sip
             except ImportError:
                 import sip
             app = QApplication.instance()
-            if not app:
-                return
-            # Guard against C++ object already deleted
-            if sip.isdeleted(self):
-                return
+            if not app or sip.isdeleted(self):
+                return None
+            if sip.isdeleted(self._theme) or sip.isdeleted(self._font_size):
+                return None
+            theme = self._theme.currentText()
+            fs    = self._font_size.currentData() or 11
+            return app, sip, theme, fs
+        except (RuntimeError, AttributeError):
+            return None
+
+    def _repolish_all_widgets(self, app, sip):
+        """Unpolish/re-polish every widget so QSS changes take immediate effect."""
+        for w in app.allWidgets():
             try:
-                if sip.isdeleted(self._theme):
-                    return
-                theme = self._theme.currentText()
-                if sip.isdeleted(self._font_size):
-                    return
-                fs = self._font_size.currentData() or 11
-            except (RuntimeError, AttributeError):
+                if sip.isdeleted(w):
+                    continue
+                st = w.style()
+                st.unpolish(w)
+                st.polish(w)
+                w.update()
+            except Exception:
+                pass
+
+    def _apply_live(self):
+        """Apply theme and font immediately — called on Apply/OK."""
+        try:
+            from core.themes import get_stylesheet
+            from PyQt6.QtGui import QFont
+            result = self._get_live_theme_settings()
+            if result is None:
                 return
+            app, sip, theme, fs = result
             app.setStyleSheet(get_stylesheet(theme, fs))
-            f = QFont()
-            f.setPointSize(fs)
-            app.setFont(f)
-            # Re-polish every widget so the new stylesheet/font actually
-            # takes effect. Without this, widgets that had inline styles
-            # don't repaint with the new global theme — which is the user
-            # report of "theme change appears to not apply."
-            for w in app.allWidgets():
-                try:
-                    if sip.isdeleted(w):
-                        continue
-                    st = w.style()
-                    st.unpolish(w)
-                    st.polish(w)
-                    w.update()
-                except Exception:
-                    pass
-            # Also re-run the dark-color substitution pass that fixes
-            # hardcoded inline styles for the light theme.
+            f = QFont(); f.setPointSize(fs); app.setFont(f)
+            self._repolish_all_widgets(app, sip)
             try:
                 import main as _main
                 for tlw in app.topLevelWidgets():
@@ -571,46 +570,31 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 self.cfg.set(key, val)
             self._load_all()
 
-    def _refresh_audio_devices(self):
-        """Populate audio device dropdowns from sounddevice."""
-        # Common virtual audio devices always listed
-        # even if sounddevice can't enumerate
-        common_inputs = [
-            "Default",
-            "CABLE Output (VB-Audio Virtual Cable)",
-            "USB Audio CODEC",
-            "Microphone (USB)",
-            "Stereo Mix",
-        ]
-        common_outputs = [
-            "Default",
-            "CABLE Input (VB-Audio Virtual Cable)",
-            "Speakers (USB Audio CODEC)",
-            "Speakers",
-            "Headphones",
-        ]
+    _COMMON_INPUTS  = ["Default", "CABLE Output (VB-Audio Virtual Cable)",
+                        "USB Audio CODEC", "Microphone (USB)", "Stereo Mix"]
+    _COMMON_OUTPUTS = ["Default", "CABLE Input (VB-Audio Virtual Cable)",
+                        "Speakers (USB Audio CODEC)", "Speakers", "Headphones"]
 
-        in_devices  = list(common_inputs)
-        out_devices = list(common_outputs)
-        detected    = False
-
+    def _enumerate_audio_devices(self) -> tuple[list, list, bool]:
+        """Return (in_devices, out_devices, detected) from sounddevice.
+        Falls back to common-device lists if sounddevice is unavailable.
+        """
+        in_devices  = list(self._COMMON_INPUTS)
+        out_devices = list(self._COMMON_OUTPUTS)
         try:
             import sounddevice as sd
-            devs = sd.query_devices()
-            for d in devs:
+            for d in sd.query_devices():
                 name = d["name"]
-                if d["max_input_channels"] > 0:
-                    if name not in in_devices:
-                        in_devices.append(name)
-                if d["max_output_channels"] > 0:
-                    if name not in out_devices:
-                        out_devices.append(name)
-            detected = True
-        except Exception as e:
-            # sounddevice not installed or no audio
-            pass
+                if d["max_input_channels"] > 0 and name not in in_devices:
+                    in_devices.append(name)
+                if d["max_output_channels"] > 0 and name not in out_devices:
+                    out_devices.append(name)
+            return in_devices, out_devices, True
+        except Exception:
+            return in_devices, out_devices, False
 
-        # Populate dropdowns
+    def _populate_audio_combos(self, in_devices: list, out_devices: list):
+        """Fill input/output combos, preserving current selection if still valid."""
         for combo, devices in [
             (self._audio_input,   in_devices),
             (self._digital_input, in_devices),
@@ -618,10 +602,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             saved = combo.currentText()
             combo.clear()
             combo.addItems(devices)
-            # Restore or default
             if saved in devices:
                 combo.setCurrentText(saved)
-
         for combo, devices in [
             (self._audio_output,   out_devices),
             (self._digital_output, out_devices),
@@ -632,35 +614,34 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             if saved in devices:
                 combo.setCurrentText(saved)
 
-        # Restore saved config values
+    def _restore_audio_config_values(self, in_devices: list,
+                                     out_devices: list, detected: bool):
+        """Apply saved config audio values to combos; update the refresh button label."""
         cfg = self.cfg
-        saved_in  = cfg.get("audio.input", "")
-        saved_out = cfg.get("audio.output", "")
-        saved_din = cfg.get("audio.digital_input", "")
-        saved_dout= cfg.get("audio.digital_output", "")
-
-        for combo, val in [
-            (self._audio_input,    saved_in),
-            (self._audio_output,   saved_out),
-            (self._digital_input,  saved_din),
-            (self._digital_output, saved_dout),
+        for combo, key in [
+            (self._audio_input,    "audio.input"),
+            (self._audio_output,   "audio.output"),
+            (self._digital_input,  "audio.digital_input"),
+            (self._digital_output, "audio.digital_output"),
         ]:
+            val = cfg.get(key, "")
             if val:
-                # Add if not in list (was set manually before)
                 if combo.findText(val) < 0:
                     combo.addItem(val)
                 combo.setCurrentText(val)
-
         if not detected:
             self._refresh_audio_btn.setText(
                 "↺ Refresh (sounddevice not installed)")
-            self._refresh_audio_btn.setStyleSheet(
-                "")
         else:
             total = len(in_devices) + len(out_devices)
-            self._refresh_audio_btn.setText(
-                f"↺ Device list ({total} found)")
-            self._refresh_audio_btn.setStyleSheet("")
+            self._refresh_audio_btn.setText(f"↺ Device list ({total} found)")
+        self._refresh_audio_btn.setStyleSheet("")
+
+    def _refresh_audio_devices(self):
+        """Populate audio device dropdowns from sounddevice."""
+        in_dev, out_dev, detected = self._enumerate_audio_devices()
+        self._populate_audio_combos(in_dev, out_dev)
+        self._restore_audio_config_values(in_dev, out_dev, detected)
 
     def _open_data_dir(self):
         import subprocess, sys

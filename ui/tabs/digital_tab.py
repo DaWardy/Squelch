@@ -231,6 +231,31 @@ class DigitalTab(SquelchPanel, QWidget):
                 return True
         return super().eventFilter(obj, event)
 
+    @staticmethod
+    def _try_fldigi_send(txt: str) -> bool:
+        try:
+            from modes.fldigi_bridge import FldigiBridge
+            bridge = FldigiBridge.instance()
+            if bridge and bridge.connected:
+                bridge.send_text(txt)
+                return True
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _try_js8call_send(txt: str) -> bool:
+        try:
+            import socket, json as _json
+            with socket.create_connection(("127.0.0.1", 2237), timeout=2) as s:
+                s.sendall((_json.dumps(
+                    {"type": "TX.SEND_MESSAGE", "value": txt, "params": {}}
+                ) + "\n").encode())
+            return True
+        except Exception:
+            pass
+        return False
+
     def _send_tx_text(self):
         """Route TX box text to the active decoder bridge."""
         text = getattr(self, "_tx_text", None)
@@ -239,7 +264,6 @@ class DigitalTab(SquelchPanel, QWidget):
         txt = text.toPlainText().strip()
         if not txt:
             return
-        # Respect Demo Mode
         try:
             from core.safety import get_app_state
             st = get_app_state()
@@ -249,26 +273,8 @@ class DigitalTab(SquelchPanel, QWidget):
         except Exception:
             pass
         mode = self._tx_mode.currentText()
-        sent = False
-        if mode in ("Auto", "fldigi"):
-            try:
-                from modes.fldigi_bridge import FldigiBridge
-                bridge = FldigiBridge.instance()
-                if bridge and bridge.connected:
-                    bridge.send_text(txt)
-                    sent = True
-            except Exception:
-                pass
-        if not sent and mode in ("Auto", "JS8Call"):
-            try:
-                import socket, json as _json
-                with socket.create_connection(("127.0.0.1", 2237), timeout=2) as s:
-                    s.sendall((_json.dumps({
-                        "type": "TX.SEND_MESSAGE", "value": txt,
-                        "params": {}}) + "\n").encode())
-                    sent = True
-            except Exception:
-                pass
+        sent = (mode in ("Auto", "fldigi") and self._try_fldigi_send(txt)) or \
+               (mode in ("Auto", "JS8Call") and self._try_js8call_send(txt))
         if sent:
             self._tx_status.setText(f"Sent {len(txt)} chars")
             self._tx_text.clear()
@@ -544,71 +550,52 @@ class DigitalTab(SquelchPanel, QWidget):
         QTimer.singleShot(0,
             lambda e=event: self._add_decode_row(e))
 
-    def _add_decode_row(self, event: DecodeEvent):
+    def _update_statusbar_decode(self, event: "DecodeEvent", color: str) -> None:
+        self._protocol_lbl.setText(event.protocol)
+        self._protocol_lbl.setStyleSheet(
+            f"color:{color};font-weight:bold;font-family:'Courier New';")
+        self._tg_lbl.setText(f"TG: {event.talkgroup or '—'}")
+        self._enc_lbl.setText("🔒 ENCRYPTED" if event.encrypted else "")
+
+    def _update_call_panel_decode(self, event: "DecodeEvent") -> None:
+        self._call_proto.setText(f"Protocol: {event.protocol}")
+        self._call_tg.setText(f"Talkgroup: {event.talkgroup or '—'}")
+        self._call_src.setText(f"Source: {event.source_id or '—'}")
+        self._call_enc.setText(
+            "🔒 Encrypted — audio unavailable" if event.encrypted else "")
+        self._call_enc.setStyleSheet(
+            "color:#cc4444;" if event.encrypted else "color:#3fbe6f;")
+
+    def _add_decode_row(self, event: "DecodeEvent"):
         """Add a decode event to the table."""
-        # Apply filters
         proto_filter = self._proto_filter.currentText()
-        if (proto_filter != "All protocols" and
-                event.protocol != proto_filter):
+        if proto_filter != "All protocols" and event.protocol != proto_filter:
             return
         if self._hide_enc.isChecked() and event.encrypted:
             return
 
-        # Add row
         row = self._table.rowCount()
         if row > 500:
             self._table.removeRow(0)
             row = self._table.rowCount()
-
         self._table.insertRow(row)
 
-        ts = datetime.fromtimestamp(
-            event.timestamp,
-            tz=timezone.utc).strftime("%H:%M:%S")
-
+        ts    = datetime.fromtimestamp(event.timestamp,
+                                       tz=timezone.utc).strftime("%H:%M:%S")
         color = PROTOCOL_COLORS.get(event.protocol, "#555")
-        cells = [
-            ts,
-            event.protocol,
-            event.talkgroup or "—",
-            event.source_id  or "—",
-            event.raw_line[:60],
-            "🔒" if event.encrypted else "",
-        ]
+        cells = [ts, event.protocol, event.talkgroup or "—",
+                 event.source_id or "—", event.raw_line[:60],
+                 "🔒" if event.encrypted else ""]
         for col, val in enumerate(cells):
             item = QTableWidgetItem(val)
-            item.setTextAlignment(
-                Qt.AlignmentFlag.AlignCenter)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if col == 1:
                 item.setForeground(QColor(color))
             self._table.setItem(row, col, item)
-
         self._table.scrollToBottom()
 
-        # Update status bar
-        self._protocol_lbl.setText(event.protocol)
-        self._protocol_lbl.setStyleSheet(
-            f"color:{color};"
-            "font-weight:bold;font-family:'Courier New';")
-        self._tg_lbl.setText(
-            f"TG: {event.talkgroup or '—'}")
-        self._enc_lbl.setText(
-            "🔒 ENCRYPTED" if event.encrypted else "")
-
-        # Update active call panel
-        self._call_proto.setText(
-            f"Protocol: {event.protocol}")
-        self._call_tg.setText(
-            f"Talkgroup: {event.talkgroup or '—'}")
-        self._call_src.setText(
-            f"Source: {event.source_id or '—'}")
-        self._call_enc.setText(
-            "🔒 Encrypted — audio unavailable"
-            if event.encrypted else "")
-        self._call_enc.setStyleSheet(
-            "color:#cc4444;" if event.encrypted
-            else "color:#3fbe6f;")
-
+        self._update_statusbar_decode(event, color)
+        self._update_call_panel_decode(event)
         self._no_decoder_msg.hide()
 
     def _on_row_click(self, index):

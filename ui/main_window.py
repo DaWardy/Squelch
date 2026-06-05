@@ -450,52 +450,46 @@ class MainWindow(
                 f"{label} undocked — close it or drag it back "
                 "to re-dock", 4000)
 
-    def _make_tab(self, key: str, label: str) -> QWidget:
-        """
-        Lazy-load tab widgets — only import when first created.
-        All imports are local to avoid top-level import failures.
-        Each tab is wrapped in try/except so one bad tab
-        never crashes the whole application.
-        """
+    # Registry for simple tabs: key → (module_path, class_name, args_lambda)
+    # args_lambda(self, ldb) → tuple of constructor args
+    _TAB_REGISTRY = {
+        "rig":      ("ui.tabs.rig_tab",             "RigTab",            lambda s, _: (s.rig, s.cfg)),
+        "modes":    ("ui.tabs.modes_tab",           "ModesTab",          lambda s, ldb: (s.rig, s.cfg, ldb)),
+        "log":      ("ui.tabs.log_tab",             "LogTab",            lambda s, _: (s.cfg,)),
+        "bandcond": ("ui.tabs.band_conditions_tab", "BandConditionsTab", lambda s, _: (s.cfg,)),
+        "sdr":      ("ui.tabs.sdr_tab",             "SDRTab",            lambda s, _: (s.cfg, s.rig)),
+        "digital":  ("ui.tabs.digital_tab",         "DigitalTab",        lambda s, _: (s.cfg, s.rig)),
+        "localrf":  ("ui.tabs.localrf_tab",         "LocalRFTab",        lambda s, _: (s.cfg, s.rig)),
+        "winlink":  ("ui.tabs.winlink_tab",         "WinlinkTab",        lambda s, _: (s.cfg, s.rig)),
+        "help":     ("ui.tabs.help_tab",            "HelpTab",           lambda s, _: (s.cfg,)),
+    }
+
+    def _make_map_tab(self, ldb) -> "QWidget":
+        """Build MapTab and wire the location-change callback."""
+        from ui.tabs.map_tab import MapTab
+        tab = MapTab(self.cfg, ldb)
+        self.location.on_location_change(tab.on_location_change)
+        return tab
+
+    def _build_tab(self, key: str, label: str, ldb) -> "QWidget":
+        """Instantiate one tab widget. Imports are lazy (local)."""
+        if key == "map":
+            return self._make_map_tab(ldb)
+        entry = self._TAB_REGISTRY.get(key)
+        if entry:
+            import importlib
+            mod_path, cls_name, args_fn = entry
+            cls = getattr(importlib.import_module(mod_path), cls_name)
+            return cls(*args_fn(self, ldb))
+        from ui.tabs.stub_tab import StubTab
+        return StubTab(label, key, self.cfg)
+
+    def _make_tab(self, key: str, label: str) -> "QWidget":
+        """Lazy-load tab widgets — each tab is isolated so one failure
+        never crashes the whole application."""
         ldb = self._get_log_db()
         try:
-            if key == "rig":
-                from ui.tabs.rig_tab import RigTab
-                return RigTab(self.rig, self.cfg)
-            elif key == "modes":
-                from ui.tabs.modes_tab import ModesTab
-                return ModesTab(self.rig, self.cfg, ldb)
-            elif key == "log":
-                from ui.tabs.log_tab import LogTab
-                return LogTab(self.cfg)
-            elif key == "bandcond":
-                from ui.tabs.band_conditions_tab import (
-                    BandConditionsTab)
-                return BandConditionsTab(self.cfg)
-            elif key == "sdr":
-                from ui.tabs.sdr_tab import SDRTab
-                return SDRTab(self.cfg, self.rig)
-            elif key == "digital":
-                from ui.tabs.digital_tab import DigitalTab
-                return DigitalTab(self.cfg, self.rig)
-            elif key == "localrf":
-                from ui.tabs.localrf_tab import LocalRFTab
-                return LocalRFTab(self.cfg, self.rig)
-            elif key == "map":
-                from ui.tabs.map_tab import MapTab
-                tab = MapTab(self.cfg, self._get_log_db())
-                self.location.on_location_change(
-                    tab.on_location_change)
-                return tab
-            elif key == "winlink":
-                from ui.tabs.winlink_tab import WinlinkTab
-                return WinlinkTab(self.cfg, self.rig)
-            elif key == "help":
-                from ui.tabs.help_tab import HelpTab
-                return HelpTab(self.cfg)
-            else:
-                from ui.tabs.stub_tab import StubTab
-                return StubTab(label, key, self.cfg)
+            return self._build_tab(key, label, ldb)
         except Exception as e:
             log.error(f"Tab '{key}' failed to load: {type(e).__name__}: {e}")
             import traceback

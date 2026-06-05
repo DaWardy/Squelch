@@ -353,69 +353,71 @@ class LocalRFTab(SquelchPanel, QWidget):
 
     # ── Search ────────────────────────────────────────────────────────────
 
-    def _do_search(self):
-        # Configurable start point (C-04, Marcus): if the From field is set,
-        # search from there instead of the station's configured location.
-        override = ""
-        if hasattr(self, "_from_edit"):
-            override = self._from_edit.text().strip()
-        if override:
-            grid, lat, lon = override, 0.0, 0.0
+    def _latlon_from_override(self, override: str) -> tuple[float, float]:
+        """Resolve lat/lon from a user-entered grid, ZIP, or city string."""
+        try:
             from core.location import _grid_to_latlon
-            try:
-                lat, lon = _grid_to_latlon(override)
-            except Exception:
-                # Not a grid — try ZIP/city via geocode
-                try:
-                    from core.location import geocode_place
-                    lat, lon = geocode_place(override)
-                except Exception:
-                    lat, lon = 0.0, 0.0
-        else:
-            grid = self.cfg.get("location.grid_square", "") or \
-                   self.cfg.grid or ""
-            lat  = self.cfg.get("location.lat", 0.0)
-            lon  = self.cfg.get("location.lon", 0.0)
+            return _grid_to_latlon(override)
+        except Exception:
+            pass
+        try:
+            from core.location import geocode_place
+            return geocode_place(override)
+        except Exception:
+            return 0.0, 0.0
 
-        if not lat and not lon and not grid:
-            QMessageBox.warning(
-                self, "Location Required",
-                "Set your location in the top bar first.\n"
-                "Click the grid square field and enter\n"
-                "your Maidenhead grid or ZIP code.")
-            return
-
+    def _latlon_from_config(self) -> tuple[float, float]:
+        """Return lat/lon from the station's configured location."""
+        grid = self.cfg.get("location.grid_square", "") or self.cfg.grid or ""
+        lat  = float(self.cfg.get("location.lat", 0.0) or 0.0)
+        lon  = float(self.cfg.get("location.lon", 0.0) or 0.0)
         if grid and not (lat and lon):
-            from core.location import _grid_to_latlon
             try:
+                from core.location import _grid_to_latlon
                 lat, lon = _grid_to_latlon(grid)
             except Exception:
                 pass
+        return lat, lon
 
-        if not lat and not lon:
-            QMessageBox.warning(
-                self, "Location Error",
-                "Could not determine lat/lon from grid.\n"
-                "Try entering a ZIP code instead.")
+    def _resolve_search_origin(self) -> tuple[float, float]:
+        """Return (lat, lon) for the search start point — override or config."""
+        override = self._from_edit.text().strip() if hasattr(self, "_from_edit") else ""
+        if override:
+            return self._latlon_from_override(override)
+        return self._latlon_from_config()
+
+    def _do_search(self):
+        lat, lon = self._resolve_search_origin()
+
+        if not (lat or lon):
+            override = self._from_edit.text().strip() if hasattr(self, "_from_edit") else ""
+            if override:
+                QMessageBox.warning(
+                    self, "Location Error",
+                    "Could not determine lat/lon from that location.\n"
+                    "Try a Maidenhead grid, ZIP code, or city name.")
+            else:
+                QMessageBox.warning(
+                    self, "Location Required",
+                    "Set your location in the top bar first.\n"
+                    "Click the grid square field and enter\n"
+                    "your Maidenhead grid or ZIP code.")
             return
 
         radius = self._radius.value()
-        # The spinbox shows miles in imperial mode; the search filters in km.
         from core.units import units_pref, KM_PER_MILE
         if units_pref(self.cfg) == "imperial":
             radius = radius * KM_PER_MILE
-        mode   = self._mode_filter.currentText()
-        mode   = "" if mode == "All" else mode
+        mode = self._mode_filter.currentText()
+        mode = "" if mode == "All" else mode
 
         self._search_btn.setEnabled(False)
         self._search_btn.setText("Fetching…")
         self._no_results.hide()
         self._table.setRowCount(0)
-        # Honest status — hearham is gone, RB needs token, RadioID covers
-        # digital. Tell the user what's actually happening.
+
         from network.repeaterbook import _rb_token
-        has_tok = bool(_rb_token())
-        if has_tok:
+        if bool(_rb_token()):
             src = "RepeaterBook"
         elif mode.lower() in ("dmr", "p25", "nxdn", "d-star"):
             src = "RadioID.net (free, no token)"
@@ -424,8 +426,7 @@ class LocalRFTab(SquelchPanel, QWidget):
         self._status_lbl.setText(
             f"Fetching from {src}… filtering within "
             f"{self._radius.value():.0f}{distance_suffix(self.cfg)}")
-        self._loc_lbl.setText(
-            f"Location: {lat:.4f}, {lon:.4f}")
+        self._loc_lbl.setText(f"Location: {lat:.4f}, {lon:.4f}")
 
         nearest_async(
             lat, lon,
@@ -434,17 +435,14 @@ class LocalRFTab(SquelchPanel, QWidget):
             mode=mode,
             error_callback=self._on_search_error)
 
-        # Watchdog: if no results in 20s, reset UI so it never hangs forever
         self._search_pending = True
         def _watchdog():
             if getattr(self, "_search_pending", False):
                 self._search_btn.setEnabled(True)
                 self._search_btn.setText("🔍 Search")
                 self._status_lbl.setText(
-                    "Search timed out. HearHam.com downloads the full "
-                    "repeater list (~21k entries) which can take "
-                    "15-30s on a slow connection. Try again.")
-        QTimer.singleShot(40000, _watchdog)  # 40s for hearham bulk download
+                    "Search timed out. Try again.")
+        QTimer.singleShot(40000, _watchdog)
 
 
     def _on_search_error(self, message: str, needs_token: bool):

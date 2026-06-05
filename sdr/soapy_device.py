@@ -34,6 +34,43 @@ from typing import Optional, Callable
 
 log = logging.getLogger(__name__)
 
+def _inject_soapy_from_path(sp, conda_root) -> None:
+    """Inject a conda site-packages dir into sys.path and fix up env vars."""
+    import sys, os
+    from pathlib import Path as _P
+
+    if str(sp) not in sys.path:
+        sys.path.insert(0, str(sp))
+        log.info(f"SoapySDR: found in conda at {sp}, added to path")
+
+    soapy_roots = [
+        sp / "SoapySDR",
+        conda_root / "Library" / "lib" / "SoapySDR",
+        conda_root / "lib" / "SoapySDR",
+        conda_root / "Library" / "bin",
+    ]
+    if "SOAPY_SDR_ROOT" not in os.environ:
+        for root in soapy_roots:
+            if root.exists():
+                os.environ["SOAPY_SDR_ROOT"] = str(root)
+                log.info(f"SoapySDR: SOAPY_SDR_ROOT -> {root}")
+                break
+
+    if sys.platform == "win32":
+        win_dll_dirs = [
+            conda_root / "Library" / "bin",
+            conda_root / "Library" / "mingw-w64" / "bin",
+            sp,
+        ]
+        current_path = os.environ.get("PATH", "")
+        additions = [str(d) for d in win_dll_dirs
+                     if d.exists() and str(d) not in current_path]
+        if additions:
+            os.environ["PATH"] = (os.pathsep.join(additions)
+                                  + os.pathsep + current_path)
+            log.info(f"SoapySDR: added to PATH: {os.pathsep.join(additions)}")
+
+
 def _try_conda_soapy() -> bool:
     """SoapySDR is often installed in the conda base environment while
     Squelch runs in a separate venv that can't see it. This function
@@ -83,48 +120,7 @@ def _try_conda_soapy() -> bool:
         if sp.exists() and (sp / "SoapySDR.py").exists() or \
                 sp.exists() and any(sp.glob("SoapySDR*.so")) or \
                 sp.exists() and any(sp.glob("SoapySDR*.pyd")):
-            if str(sp) not in sys.path:
-                sys.path.insert(0, str(sp))
-                log.info(f"SoapySDR: found in conda at {sp}, added to path")
-
-            # SoapySDR needs SOAPY_SDR_ROOT so device plugins load correctly
-            # when running from a venv instead of the conda environment.
-            conda_root = sp.parent.parent
-            soapy_roots = [
-                sp / "SoapySDR",
-                conda_root / "Library" / "lib" / "SoapySDR",
-                conda_root / "lib" / "SoapySDR",
-                conda_root / "Library" / "bin",
-            ]
-            if "SOAPY_SDR_ROOT" not in os.environ:
-                for root in soapy_roots:
-                    if root.exists():
-                        os.environ["SOAPY_SDR_ROOT"] = str(root)
-                        log.info(f"SoapySDR: SOAPY_SDR_ROOT -> {root}")
-                        break
-
-            # Windows: SoapySDR DLLs live in conda/Library/bin.
-            # That dir is in PATH when conda is active, but NOT when
-            # running from a venv. Add it explicitly so the DLLs load.
-            if sys.platform == "win32":
-                win_dll_dirs = [
-                    conda_root / "Library" / "bin",
-                    conda_root / "Library" / "mingw-w64" / "bin",
-                    sp,  # site-packages itself (some builds put DLLs here)
-                ]
-                current_path = os.environ.get("PATH", "")
-                additions = []
-                for d in win_dll_dirs:
-                    if d.exists() and str(d) not in current_path:
-                        additions.append(str(d))
-                if additions:
-                    os.environ["PATH"] = (
-                        os.pathsep.join(additions)
-                        + os.pathsep + current_path)
-                    log.info(
-                        f"SoapySDR: added to PATH: "
-                        f"{os.pathsep.join(additions)}")
-
+            _inject_soapy_from_path(sp, sp.parent.parent)
             return importlib.util.find_spec("SoapySDR") is not None
 
     return False

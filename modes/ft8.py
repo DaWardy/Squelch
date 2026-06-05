@@ -374,59 +374,56 @@ class FT8Engine:
         except Exception as e:
             log.debug(f"Decode parse error: {e}")
 
+    @staticmethod
+    def _parse_cq_fields(parts: list) -> "tuple[str, str]":
+        """Return (callsign, grid) from a split CQ message (parts[0] == 'CQ')."""
+        idx = 1
+        if len(parts) > idx and not _looks_like_call(parts[idx]):
+            idx += 1
+        callsign = parts[idx] if len(parts) > idx else ""
+        grid     = parts[idx + 1] if len(parts) > idx + 1 else ""
+        return callsign, grid
+
+    def _enrich_bearing(self, decode: "DecodedSignal") -> None:
+        if not (decode.grid and self.cfg.grid):
+            return
+        try:
+            from core.location import _grid_to_latlon
+            my_lat, my_lon       = _grid_to_latlon(self.cfg.grid)
+            their_lat, their_lon = _grid_to_latlon(decode.grid)
+            decode.distance_km = _haversine(my_lat, my_lon, their_lat, their_lon)
+            decode.bearing_deg = _bearing(my_lat, my_lon, their_lat, their_lon)
+        except Exception:
+            pass
+
     def _parse_ft8_message(self, msg: str, snr: int,
-                            dt: float, df: int) -> DecodedSignal | None:
+                            dt: float, df: int) -> "DecodedSignal | None":
         """Parse an FT8 message string into a DecodedSignal."""
         parts = msg.strip().split()
         if not parts:
             return None
 
         my_call = self._operating_call()
-        decode  = DecodedSignal(
-            snr=snr, dt=dt, freq_hz=df, message=msg)
+        decode  = DecodedSignal(snr=snr, dt=dt, freq_hz=df, message=msg)
 
-        # CQ call: "CQ [MODE] CALLSIGN GRID" or "CQ CALLSIGN GRID"
         if parts[0] == "CQ":
-            idx = 1
-            if len(parts) > idx and not _looks_like_call(parts[idx]):
-                idx += 1  # skip DX/mode designator
-            if len(parts) > idx:
-                decode.callsign = parts[idx]
-                decode.is_cq    = True
-            if len(parts) > idx + 1:
-                decode.grid = parts[idx + 1]
-
-        # Direct call: "THEIRCALL MYCALL GRID_OR_REPORT"
+            decode.callsign, decode.grid = self._parse_cq_fields(parts)
+            decode.is_cq = True
         elif len(parts) >= 2:
-            decode.callsign   = parts[0]
+            decode.callsign    = parts[0]
             decode.is_reply_to = parts[1]
             if len(parts) > 2:
                 token = parts[2]
                 if len(token) == 4 and token[0].isalpha():
                     decode.grid = token
-                elif token.startswith(("+","-","R+","R-","RR73","73","RRR")):
-                    pass
 
         if not decode.callsign:
             return None
 
-        # Check if this is directed at us
         if decode.is_reply_to == my_call:
             decode.worked = decode.callsign in self._session_qsos
 
-        # Calculate distance/bearing if we have grids
-        if decode.grid and self.cfg.grid:
-            try:
-                from core.location import _grid_to_latlon
-                my_lat, my_lon   = _grid_to_latlon(self.cfg.grid)
-                their_lat, their_lon = _grid_to_latlon(decode.grid)
-                decode.distance_km = _haversine(
-                    my_lat, my_lon, their_lat, their_lon)
-                decode.bearing_deg = _bearing(
-                    my_lat, my_lon, their_lat, their_lon)
-            except Exception:
-                pass
-
+        self._enrich_bearing(decode)
         return decode
 
     def _handle_qso_logged(self, data: bytes, offset: int):
@@ -461,61 +458,50 @@ class FT8Engine:
 
     # ── Auto-sequence state machine ───────────────────────────────────────
 
-    def _auto_sequence_step(self, decode: DecodedSignal):
-        """
-        Drive the auto-sequence state machine on each decode.
-        This is the core of the WSJT-X-equivalent behavior.
-        """
+    def _handle_idle(self, decode: "DecodedSignal", my_call: str) -> None:
+        if decode.is_reply_to == my_call:
+            self._qso = QSOInProgress(
+                their_call=decode.callsign, their_grid=decode.grid,
+                their_snr=decode.snr, their_freq=decode.freq_hz)
+            self._set_state(AutoSeqState.REPLY_DECODED)
+            self._send_report()
+        elif decode.is_cq and self._auto_cq and self._should_call(decode):
+            self._qso = QSOInProgress(
+                their_call=decode.callsign, their_grid=decode.grid,
+                their_snr=decode.snr, their_freq=decode.freq_hz)
+            self._set_state(AutoSeqState.REPLY_DECODED)
+            self._send_report()
+
+    def _handle_cq_sent(self, decode: "DecodedSignal", my_call: str) -> None:
+        if decode.is_reply_to == my_call:
+            self._qso.their_call = decode.callsign
+            self._qso.their_grid = decode.grid
+            self._qso.their_snr  = decode.snr
+            self._set_state(AutoSeqState.REPLY_DECODED)
+            self._send_report()
+
+    def _handle_report_sent(self, decode: "DecodedSignal", my_call: str) -> None:
+        if (decode.callsign == self._qso.their_call
+                and decode.is_reply_to == my_call):
+            if any(x in decode.message.upper() for x in ["RR73", "RRR", "73"]):
+                self._set_state(AutoSeqState.WAITING_RRR)
+                self._send_rrr()
+
+    def _auto_sequence_step(self, decode: "DecodedSignal"):
+        """Drive the auto-sequence state machine on each decode."""
         if not self._auto_seq or self._halted:
             return
-
         my_call = self._operating_call()
         state   = self._state
-
         if state == AutoSeqState.IDLE:
-            # Look for CQ calls to answer or replies to our CQ
-            if decode.is_reply_to == my_call:
-                # Someone answered our CQ
-                self._qso = QSOInProgress(
-                    their_call = decode.callsign,
-                    their_grid = decode.grid,
-                    their_snr  = decode.snr,
-                    their_freq = decode.freq_hz,
-                )
-                self._set_state(AutoSeqState.REPLY_DECODED)
-                self._send_report()
-
-            elif decode.is_cq and self._auto_cq:
-                # Auto-answer CQ based on priority
-                if self._should_call(decode):
-                    self._qso = QSOInProgress(
-                        their_call = decode.callsign,
-                        their_grid = decode.grid,
-                        their_snr  = decode.snr,
-                        their_freq = decode.freq_hz,
-                    )
-                    self._set_state(AutoSeqState.REPLY_DECODED)
-                    self._send_report()
-
+            self._handle_idle(decode, my_call)
         elif state == AutoSeqState.CQ_SENT:
-            if decode.is_reply_to == my_call:
-                self._qso.their_call   = decode.callsign
-                self._qso.their_grid   = decode.grid
-                self._qso.their_snr    = decode.snr
-                self._set_state(AutoSeqState.REPLY_DECODED)
-                self._send_report()
-
+            self._handle_cq_sent(decode, my_call)
         elif state == AutoSeqState.REPORT_SENT:
-            if (decode.callsign == self._qso.their_call and
-                    decode.is_reply_to == my_call):
-                msg = decode.message.upper()
-                if any(x in msg for x in ["RR73","RRR","73"]):
-                    self._set_state(AutoSeqState.WAITING_RRR)
-                    self._send_rrr()
-
+            self._handle_report_sent(decode, my_call)
         elif state == AutoSeqState.RRR_SENT:
-            if (decode.callsign == self._qso.their_call and
-                    "73" in decode.message.upper()):
+            if (decode.callsign == self._qso.their_call
+                    and "73" in decode.message.upper()):
                 self._complete_qso()
 
     def _send_report(self):

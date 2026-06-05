@@ -407,6 +407,20 @@ class MapTab(SquelchPanel, QWidget):
                     5000,   # Batch updates every 5 seconds
                     self._refresh_aprs)
 
+    def _latlon_from_spot(self, spot: "HeardSpot") -> tuple[float, float] | None:
+        """Resolve (lat, lon) from a HeardSpot, trying grid if coords are missing.
+
+        Returns None if no coordinates can be determined.
+        """
+        lat, lon = spot.lat, spot.lon
+        if not lat and not lon and spot.grid:
+            try:
+                from core.location import _grid_to_latlon
+                lat, lon = _grid_to_latlon(spot.grid.upper())
+            except Exception:
+                return None
+        return (lat, lon) if (lat or lon) else None
+
     def add_heard_station(self, callsign: str, spot: "HeardSpot | None" = None):
         """Pin a station heard from any source. Idempotent — same callsign updates.
 
@@ -416,22 +430,16 @@ class MapTab(SquelchPanel, QWidget):
         """
         if spot is None:
             spot = HeardSpot(callsign=callsign)
-        grid     = (spot.grid or "").upper()
-        lat, lon = spot.lat, spot.lon
-        if (not lat and not lon) and grid:
-            try:
-                from core.location import _grid_to_latlon
-                lat, lon = _grid_to_latlon(grid)
-            except Exception:
-                return
-        if not lat and not lon:
+        coords = self._latlon_from_spot(spot)
+        if coords is None:
             return
+        lat, lon = coords
         if not hasattr(self, '_heard_stations'):
             self._heard_stations = {}
         import time
         self._heard_stations[callsign.upper()] = {
             "callsign": callsign.upper(),
-            "grid":     grid,
+            "grid":     (spot.grid or "").upper(),
             "lat":      lat,
             "lon":      lon,
             "source":   spot.source,
@@ -439,7 +447,6 @@ class MapTab(SquelchPanel, QWidget):
             "snr_db":   spot.snr_db,
             "ts":       time.time(),
         }
-        # Throttled refresh — same pattern as APRS
         if not getattr(self, "_heard_refresh_pending", False):
             self._heard_refresh_pending = True
             QTimer.singleShot(2000, self._refresh_heard)
@@ -460,49 +467,42 @@ class MapTab(SquelchPanel, QWidget):
 
     # ── Fallback map (no WebEngine) ──────────────────────────────────────
 
+    def _apply_fallback_terminator(self, now) -> None:
+        """Set or clear the gray-line terminator on the fallback map."""
+        if hasattr(self, "_show_gl") and self._show_gl.isChecked():
+            from network.grayline import terminator_points
+            self._fallback_map.set_terminator(terminator_points(now, steps=120))
+        else:
+            self._fallback_map.set_terminator([])
+
+    def _apply_fallback_qso_paths(self) -> None:
+        """Set or clear QSO great-circle paths on the fallback map."""
+        if hasattr(self, "_show_qso") and self._show_qso.isChecked() and self.log_db:
+            self._fallback_map.set_qso_paths(self._build_qso_paths())
+        else:
+            self._fallback_map.set_qso_paths([])
+
+    def _apply_fallback_satellites(self) -> None:
+        """Set or clear satellite positions on the fallback map."""
+        if hasattr(self, '_show_sats') and self._show_sats.isChecked():
+            self._fallback_map.set_satellite_positions(self._satellites)
+        else:
+            self._fallback_map.set_satellite_positions([])
+
     def _refresh_fallback_map(self):
-        """
-        Refresh the Qt-drawn fallback map.
-        Computes current gray line, draws station + QSO paths.
-        Called on tab show, checkbox toggle, and every 60 s.
-        """
+        """Refresh the Qt-drawn fallback map — gray line, station, QSO paths."""
         if not hasattr(self, "_fallback_map"):
             return
         try:
             from datetime import datetime, timezone
-            from network.grayline import (
-                terminator_points, gray_line_info,
-                format_gray_line_status)
-
             now = datetime.now(timezone.utc)
             lat = float(self.cfg.get("location.lat", 0.0) or 0.0)
             lon = float(self.cfg.get("location.lon", 0.0) or 0.0)
 
-            # Station marker
-            self._fallback_map.set_station(
-                lat, lon, self.cfg.callsign or "")
-
-            # Gray line terminator
-            if hasattr(self, "_show_gl") and                self._show_gl.isChecked():
-                pts = terminator_points(now, steps=120)
-                self._fallback_map.set_terminator(pts)
-            else:
-                self._fallback_map.set_terminator([])
-
-            # QSO paths
-            if hasattr(self, "_show_qso") and                self._show_qso.isChecked() and self.log_db:
-                paths = self._build_qso_paths()
-                self._fallback_map.set_qso_paths(paths)
-            else:
-                self._fallback_map.set_qso_paths([])
-
-            # Satellites
-            if hasattr(self, '_show_sats') and \
-               self._show_sats.isChecked():
-                self._fallback_map.set_satellite_positions(
-                    self._satellites)
-            else:
-                self._fallback_map.set_satellite_positions([])
+            self._fallback_map.set_station(lat, lon, self.cfg.callsign or "")
+            self._apply_fallback_terminator(now)
+            self._apply_fallback_qso_paths()
+            self._apply_fallback_satellites()
 
             self._update_fallback_gl_bar(lat, lon, now)
 

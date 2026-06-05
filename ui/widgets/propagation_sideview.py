@@ -162,6 +162,73 @@ class PropagationSideView(QWidget):
             return "groundwave"
         return "skywave"
 
+    # ── Painting helpers ──────────────────────────────────────────────────
+
+    def _draw_propagation_path(self, p, mode, tx_x, rx_x, tx_y, rx_y,
+                                ground, f_top, f_bot, bulge_px, path,
+                                top) -> str:
+        """Draw the mode-specific signal path arc; return the status message."""
+        if mode == "groundwave":
+            p.setPen(QPen(QColor("#ffcc00"), 2))
+            gw = QPainterPath()
+            gw.moveTo(tx_x, tx_y - 18)
+            gw.quadTo((tx_x + rx_x) / 2, ground + bulge_px - 8,
+                      rx_x, rx_y - 18)
+            p.drawPath(gw)
+            return "Groundwave — short-path, surface-following"
+
+        if mode == "nvis":
+            p.setPen(QPen(QColor("#66ddff"), 2))
+            mid_x  = (tx_x + rx_x) / 2
+            apex_y = (f_top + f_bot) / 2
+            nv = QPainterPath()
+            nv.moveTo(tx_x, tx_y - 18)
+            nv.lineTo(mid_x, apex_y)
+            nv.lineTo(rx_x, rx_y - 18)
+            p.drawPath(nv)
+            return "NVIS — near-vertical bounce, short-path HF"
+
+        if mode == "skywave":
+            hops = 2 if path > 4000 else 1
+            p.setPen(QPen(QColor("#66ddff"), 2))
+            sw = QPainterPath()
+            sw.moveTo(tx_x, tx_y - 18)
+            for hop in range(hops):
+                seg_start = tx_x + (rx_x - tx_x) * hop / hops
+                seg_end   = tx_x + (rx_x - tx_x) * (hop + 1) / hops
+                apex_x    = (seg_start + seg_end) / 2
+                apex_y    = (f_top + f_bot) / 2
+                sw.quadTo(apex_x, apex_y - 30,
+                          seg_end,
+                          rx_y - 18 if hop == hops - 1 else ground - 4)
+            p.drawPath(sw)
+            hop_str = "1-hop" if hops == 1 else f"{hops}-hop"
+            return f"Skywave — {hop_str} F-layer refraction"
+
+        if mode == "beyond":
+            p.setPen(QPen(QColor("#ff5555"), 2, Qt.PenStyle.DashLine))
+            esc = QPainterPath()
+            esc.moveTo(tx_x, tx_y - 18)
+            esc.quadTo((tx_x + rx_x) / 2 - 60, top + 10,
+                       (tx_x + rx_x) / 2, top + 5)
+            p.drawPath(esc)
+            p.setPen(QColor("#ff7777"))
+            p.drawText(int((tx_x + rx_x) / 2 + 8), top + 12, "→ space")
+            return (f"Above MUF ({self._muf_mhz:.1f} MHz) — "
+                    "signal escapes ionosphere")
+
+        if mode == "absorbed":
+            p.setPen(QPen(QColor("#aa4422"), 2, Qt.PenStyle.DotLine))
+            ab = QPainterPath()
+            ab.moveTo(tx_x, tx_y - 18)
+            ab.quadTo((tx_x + rx_x) / 4, ground - 25,
+                      (tx_x + rx_x) / 3, ground - 5)
+            p.drawPath(ab)
+            return (f"Below LUF ({self._luf_mhz:.1f} MHz) — "
+                    "D-layer absorption")
+
+        return "Set an operating frequency in Rig tab to see propagation mode"
+
     # ── Painting ──────────────────────────────────────────────────────────
 
     def paintEvent(self, event):
@@ -354,84 +421,9 @@ class PropagationSideView(QWidget):
 
         # ── Draw the propagation path(s) ──────────────────────────────
         mode = self._propagation_mode()
-        msg  = ""
-
-        if mode == "groundwave":
-            # Hugs the surface (use the same curve as ground but offset
-            # slightly up so it's visible)
-            p.setPen(QPen(QColor("#ffcc00"), 2))
-            gw = QPainterPath()
-            gw.moveTo(tx_x, tx_y - 18)
-            gw.quadTo(
-                (tx_x + rx_x) / 2,
-                ground + bulge_px - 8,
-                rx_x, rx_y - 18)
-            p.drawPath(gw)
-            msg = "Groundwave — short-path, surface-following"
-
-        elif mode == "nvis":
-            # Near-vertical incidence skywave: almost straight up, off the
-            # F-layer, almost straight down. Drawn as a steep V.
-            p.setPen(QPen(QColor("#66ddff"), 2))
-            mid_x = (tx_x + rx_x) / 2
-            apex_y = (f_top + f_bot) / 2
-            nv = QPainterPath()
-            nv.moveTo(tx_x, tx_y - 18)
-            nv.lineTo(mid_x, apex_y)
-            nv.lineTo(rx_x, rx_y - 18)
-            p.drawPath(nv)
-            msg = "NVIS — near-vertical bounce, short-path HF"
-
-        elif mode == "skywave":
-            # One- or two-hop skywave. For paths > 4000 km, draw 2 hops.
-            hops = 2 if path > 4000 else 1
-            p.setPen(QPen(QColor("#66ddff"), 2))
-            sw = QPainterPath()
-            sw.moveTo(tx_x, tx_y - 18)
-            for hop in range(hops):
-                # x of this hop's apex
-                seg_start = tx_x + (rx_x - tx_x) * hop / hops
-                seg_end   = tx_x + (rx_x - tx_x) * (hop + 1) / hops
-                apex_x    = (seg_start + seg_end) / 2
-                apex_y    = (f_top + f_bot) / 2
-                sw.quadTo(
-                    apex_x, apex_y - 30,
-                    seg_end, rx_y - 18 if hop == hops - 1 else ground - 4)
-            p.drawPath(sw)
-            hop_str = "1-hop" if hops == 1 else f"{hops}-hop"
-            msg = f"Skywave — {hop_str} F-layer refraction"
-
-        elif mode == "beyond":
-            # Above MUF: signal punches through ionosphere, no return
-            p.setPen(QPen(QColor("#ff5555"), 2, Qt.PenStyle.DashLine))
-            esc = QPainterPath()
-            esc.moveTo(tx_x, tx_y - 18)
-            esc.quadTo(
-                (tx_x + rx_x) / 2 - 60, top + 10,
-                (tx_x + rx_x) / 2, top + 5)
-            p.drawPath(esc)
-            p.setPen(QColor("#ff7777"))
-            p.drawText(
-                int((tx_x + rx_x) / 2 + 8), top + 12,
-                "→ space")
-            msg = (f"Above MUF ({self._muf_mhz:.1f} MHz) — "
-                   "signal escapes ionosphere")
-
-        elif mode == "absorbed":
-            # Below LUF: D-layer absorbs (especially daytime)
-            p.setPen(QPen(QColor("#aa4422"), 2, Qt.PenStyle.DotLine))
-            ab = QPainterPath()
-            ab.moveTo(tx_x, tx_y - 18)
-            ab.quadTo(
-                (tx_x + rx_x) / 4, ground - 25,
-                (tx_x + rx_x) / 3, ground - 5)
-            p.drawPath(ab)
-            msg = (f"Below LUF ({self._luf_mhz:.1f} MHz) — "
-                   "D-layer absorption")
-
-        else:
-            msg = ("Set an operating frequency in Rig tab "
-                   "to see propagation mode")
+        msg  = self._draw_propagation_path(
+            p, mode, tx_x, rx_x, tx_y, rx_y, ground, f_top, f_bot,
+            bulge_px, path, top)
 
         # ── Top-banner labels (two clear lines) ──────────────────────
         p.setPen(QColor("#cccccc"))

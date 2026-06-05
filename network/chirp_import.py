@@ -59,6 +59,28 @@ def _mode(chirp_mode: str) -> str:
     return m or "FM"
 
 
+def _chirp_duplex(duplex: str, freq: float, offset: float) -> tuple[float, float]:
+    """Return (input_mhz, offset_signed) from CHIRP duplex fields."""
+    if duplex == "-":
+        return freq - offset, -offset
+    if duplex == "+":
+        return freq + offset, offset
+    if duplex.lower() == "split":
+        return offset, offset - freq
+    return freq, 0.0
+
+
+def _chirp_tone(row: dict) -> tuple[str, str]:
+    """Return (tone_str, tone_type) from a CHIRP CSV row."""
+    tone_mode_raw = (row.get("Tone") or "").strip()
+    tone_type, tone_src = _TONE_MODES.get(tone_mode_raw, ("", ""))
+    tone_val = (row.get(tone_src, "") or "").strip() if tone_src else ""
+    if tone_type == "DCS" and tone_val:
+        polarity = (row.get("DtcsPolarity") or "NN")[:1]
+        return f"D{tone_val}{polarity}", tone_type
+    return (tone_val, tone_type) if tone_val else ("", tone_type)
+
+
 def parse_chirp_csv(path: str | Path) -> list[Repeater]:
     """Read a CHIRP-format CSV file and return a list of Repeater records.
 
@@ -86,34 +108,9 @@ def parse_chirp_csv(path: str | Path) -> list[Repeater]:
                 # Duplex: "" / "+" / "-" / "split" (absolute TX freq)
                 duplex = (row.get("Duplex") or "").strip()
                 offset = _parse_float(row.get("Offset", ""))
-                if duplex == "-":
-                    input_mhz = freq - offset
-                    offset_signed = -offset
-                elif duplex == "+":
-                    input_mhz = freq + offset
-                    offset_signed = offset
-                elif duplex.lower() == "split":
-                    # CHIRP stores absolute TX freq in Offset for split
-                    input_mhz = offset
-                    offset_signed = offset - freq
-                else:
-                    # simplex
-                    input_mhz = freq
-                    offset_signed = 0.0
+                input_mhz, offset_signed = _chirp_duplex(duplex, freq, offset)
 
-                # Tone: pick the right field based on the Tone-mode column
-                tone_mode_raw = (row.get("Tone") or "").strip()
-                tone_type, tone_src = _TONE_MODES.get(
-                    tone_mode_raw, ("", ""))
-                tone_val = (row.get(tone_src, "") or "").strip() \
-                    if tone_src else ""
-                if tone_type == "DCS" and tone_val:
-                    polarity = (row.get("DtcsPolarity") or "NN")[:1]
-                    tone_str = f"D{tone_val}{polarity}"
-                elif tone_val:
-                    tone_str = tone_val
-                else:
-                    tone_str = ""
+                tone_str, tone_type = _chirp_tone(row)
 
                 name    = (row.get("Name") or "").strip()
                 comment = (row.get("Comment") or "").strip()

@@ -87,6 +87,36 @@ class CTYData:
         log.error("Could not load CTY.DAT from any source")
         return False
 
+    def _collect_prefix_aliases(self, lines: list, start: int,
+                                entity) -> int:
+        """Scan continuation lines after an entity header; register prefixes.
+        Returns the index of the first unconsumed line."""
+        i = start
+        prefix_str = ""
+        while i < len(lines):
+            pline = lines[i].strip()
+            if not pline:
+                i += 1
+                break
+            if pline.endswith(':') or (not lines[i].startswith(' ')
+                                        and ':' in pline):
+                break
+            prefix_str += pline.rstrip(';').rstrip(',')
+            if pline.endswith(';'):
+                i += 1
+                break
+            i += 1
+        for raw in prefix_str.split(','):
+            raw = raw.strip()
+            if not raw:
+                continue
+            prefix = re.sub(r'[\(\[<][^\)\]>]*[\)\]>]', '', raw).strip().upper()
+            if prefix.startswith('='):
+                prefix = prefix[1:]
+            if prefix:
+                self._prefixes[prefix] = entity.name
+        return i
+
     def _parse(self, content: str) -> bool:
         """Parse CTY.DAT format into lookup tables."""
         self._entities.clear()
@@ -117,38 +147,8 @@ class CTYData:
                             prefix    = parts[7].strip(),
                         )
                         self._entities[entity.name] = entity
-
-                        # Collect prefix aliases from following lines
-                        i += 1
-                        prefix_str = ""
-                        while i < len(lines):
-                            pline = lines[i].strip()
-                            if not pline:
-                                i += 1
-                                break
-                            if (pline.endswith(':') or
-                                    (not lines[i].startswith(' ') and
-                                     ':' in pline)):
-                                break
-                            prefix_str += pline.rstrip(';').rstrip(',')
-                            if pline.endswith(';'):
-                                i += 1
-                                break
-                            i += 1
-
-                        # Parse individual prefixes
-                        for raw in prefix_str.split(','):
-                            raw = raw.strip()
-                            if not raw:
-                                continue
-                            # Strip modifiers like (14) for CQ zone overrides
-                            prefix = re.sub(r'[\(\[<][^\)\]>]*[\)\]>]', '',
-                                            raw).strip().upper()
-                            if prefix.startswith('='):
-                                prefix = prefix[1:]  # exact match marker
-                            if prefix:
-                                self._prefixes[prefix] = entity.name
-
+                        i = self._collect_prefix_aliases(
+                            lines, i + 1, entity)
                         continue
                     except (ValueError, IndexError) as e:
                         log.debug(f"CTY parse error line {i}: {e}")

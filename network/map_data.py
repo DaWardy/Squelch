@@ -56,6 +56,90 @@ LEAFLET_JS  = (
     "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js")
 
 
+def _station_location(config) -> tuple[str, float, float, str]:
+    """Return (grid, lat, lon, callsign) from config, resolving grid→coords if needed."""
+    grid    = config.get("location.grid", "") or config.grid or ""
+    my_lat  = float(config.get("location.lat", 0.0) or 0.0)
+    my_lon  = float(config.get("location.lon", 0.0) or 0.0)
+    my_call = config.callsign or "Station"
+    if not (my_lat or my_lon) and _valid_grid(grid):
+        try:
+            my_lat, my_lon = _grid_to_latlon(grid)
+        except Exception:
+            pass
+    return grid, my_lat, my_lon, my_call
+
+
+def _grayline_data(now_utc, my_lat: float, my_lon: float,
+                   show: bool) -> tuple[str, str]:
+    """Return (grayline_json, grayline_status) strings."""
+    if not show:
+        return "null", ""
+    try:
+        gl = day_night_geojson(now_utc)
+        gj = json.dumps(gl)
+        status = ""
+        if my_lat or my_lon:
+            status = format_gray_line_status(
+                gray_line_info(my_lat, my_lon, now_utc))
+        return gj, status
+    except Exception as e:
+        log.debug(f"Gray line: {e}")
+        return "null", ""
+
+
+def _qso_path_data(log_db, show: bool) -> list[dict]:
+    """Return list of QSO path dicts for map rendering."""
+    if not (show and log_db):
+        return []
+    paths = []
+    try:
+        for q in log_db.recent_qsos(limit=200):
+            my_pt, their_pt = qso_to_map_points(q)
+            if my_pt and their_pt:
+                paths.append({
+                    "from":    [my_pt["lat"], my_pt["lon"]],
+                    "to":      [their_pt["lat"], their_pt["lon"]],
+                    "call":    q.call,   "band": q.band,
+                    "mode":    q.mode,   "time": q.datetime_on[:16],
+                    "my_grid": q.my_grid, "grid": q.grid,
+                })
+    except Exception as e:
+        log.debug(f"QSO paths: {e}")
+    return paths
+
+
+def _repeater_marker_data(repeaters) -> list[dict]:
+    """Return list of repeater marker dicts for map rendering."""
+    if not repeaters:
+        return []
+    return [{"lat": r.lat, "lon": r.lon, "call": r.callsign,
+             "freq": r.output_str, "tone": r.tone_str,
+             "mode": r.mode, "city": r.city, "dist_km": r.distance_km}
+            for r in repeaters[:50]]
+
+
+def _grid_square_data(grid: str, my_lat: float, my_lon: float) -> list[dict]:
+    """Return list of grid square overlay dicts for map rendering."""
+    if not (_valid_grid(grid) and my_lat and my_lon):
+        return []
+    squares = []
+    try:
+        g4_lat, g4_lon = _grid_to_latlon(grid[:4])
+        squares.append({"label": grid[:4], "lat": g4_lat, "lon": g4_lon,
+                         "size": "4char", "dlat": 1.0, "dlon": 2.0})
+    except Exception:
+        pass
+    if len(grid) >= 6:
+        try:
+            g6_lat, g6_lon = _grid_to_latlon(grid)
+            squares.append({"label": grid[:6], "lat": g6_lat, "lon": g6_lon,
+                             "size": "6char", "dlat": 1/24, "dlon": 2/24})
+        except Exception:
+            pass
+    return squares
+
+
 def build_map_html(config,
                    log_db=None,
                    repeaters=None,
@@ -68,152 +152,34 @@ def build_map_html(config,
                    heard_stations: dict | None = None,
                    hearing_me: dict | None = None,
                    ) -> str:
-    """
-    Build self-contained HTML for the Leaflet map.
-    Embeds all data as JavaScript variables.
-    Returns HTML string ready for QWebEngineView.
-    """
+    """Build self-contained Leaflet map HTML for QWebEngineView."""
     now_utc = datetime.now(timezone.utc)
 
-    # Station location
-    grid    = config.get("location.grid", "") or \
-              config.grid or ""
-    my_lat  = config.get("location.lat", 0.0) or 0.0
-    my_lon  = config.get("location.lon", 0.0) or 0.0
-    my_call = config.callsign or "Station"
+    grid, my_lat, my_lon, my_call = _station_location(config)
+    grayline_json, grayline_status = _grayline_data(
+        now_utc, my_lat, my_lon, show_grayline)
 
-    if not (my_lat or my_lon) and _valid_grid(grid):
-        try:
-            my_lat, my_lon = _grid_to_latlon(grid)
-        except Exception:
-            pass
+    center = [my_lat, my_lon] if (center_on_station and (my_lat or my_lon)) else [20, 0]
+    zoom   = 6 if (center_on_station and (my_lat or my_lon)) else 2
 
-    # Gray line GeoJSON
-    grayline_json = "null"
-    grayline_status = ""
-    if show_grayline:
-        try:
-            gl = day_night_geojson(now_utc)
-            grayline_json = json.dumps(gl)
-            if my_lat or my_lon:
-                info = gray_line_info(
-                    my_lat, my_lon, now_utc)
-                grayline_status = format_gray_line_status(
-                    info)
-        except Exception as e:
-            log.debug(f"Gray line: {e}")
-
-    # QSO paths
-    qso_paths = []
-    if show_qso_paths and log_db:
-        try:
-            qsos = log_db.recent_qsos(limit=200)
-            for q in qsos:
-                my_pt, their_pt = qso_to_map_points(q)
-                if my_pt and their_pt:
-                    qso_paths.append({
-                        "from":    [my_pt["lat"],
-                                    my_pt["lon"]],
-                        "to":      [their_pt["lat"],
-                                    their_pt["lon"]],
-                        "call":    q.call,
-                        "band":    q.band,
-                        "mode":    q.mode,
-                        "time":    q.datetime_on[:16],
-                        "my_grid": q.my_grid,
-                        "grid":    q.grid,
-                    })
-        except Exception as e:
-            log.debug(f"QSO paths: {e}")
-
-    # APRS stations from APRS-IS client
-    aprs_stations = aprs_stations or []
-
-    # ADS-B aircraft
-    aircraft = []
-    if show_adsb:
-        aircraft = _fetch_adsb()
-
-    # Repeaters
-    rep_markers = []
-    if repeaters:
-        for r in repeaters[:50]:
-            rep_markers.append({
-                "lat":      r.lat,
-                "lon":      r.lon,
-                "call":     r.callsign,
-                "freq":     r.output_str,
-                "tone":     r.tone_str,
-                "mode":     r.mode,
-                "city":     r.city,
-                "dist_km":  r.distance_km,
-            })
-
-    # Grid square overlays for station
-    grid_squares = []
-    if _valid_grid(grid) and my_lat and my_lon:
-        # 4-char grid square
-        g4 = grid[:4]
-        try:
-            g4_lat, g4_lon = _grid_to_latlon(g4)
-            grid_squares.append({
-                "label":    g4,
-                "lat":      g4_lat,
-                "lon":      g4_lon,
-                "size":     "4char",
-                # 4-char grid = 2° lon × 1° lat
-                "dlat":     1.0,
-                "dlon":     2.0,
-            })
-        except Exception:
-            pass
-        # 6-char grid square
-        if len(grid) >= 6:
-            try:
-                g6_lat, g6_lon = _grid_to_latlon(grid)
-                grid_squares.append({
-                    "label":    grid[:6],
-                    "lat":      g6_lat,
-                    "lon":      g6_lon,
-                    "size":     "6char",
-                    # 6-char grid = 5' lon × 2.5' lat
-                    "dlat":     1/24,
-                    "dlon":     2/24,
-                })
-            except Exception:
-                pass
-
-    # Center map
-    if center_on_station and (my_lat or my_lon):
-        center = [my_lat, my_lon]
-        zoom   = 6
-    else:
-        center = [20, 0]
-        zoom   = 2
-
-    # Resolve grid→lat/lon for heard/hearing_me dicts so JS gets real coords
-    heard_list    = _resolve_station_coords(heard_stations or {})
-    hearing_list  = _resolve_station_coords(hearing_me or {})
-
-    html = _render_html(
-        center         = center,
-        zoom           = zoom,
-        my_lat         = my_lat,
-        my_lon         = my_lon,
-        my_call        = my_call,
-        my_grid        = grid,
-        grayline_json  = grayline_json,
-        grayline_status= grayline_status,
-        qso_paths      = qso_paths,
-        aprs_stations  = aprs_stations,
-        aircraft       = aircraft,
-        repeaters      = rep_markers,
-        grid_squares   = grid_squares,
-        utc_str        = now_utc.strftime("%H:%M UTC"),
-        heard_stations = heard_list,
-        hearing_me     = hearing_list,
+    return _render_html(
+        center          = center,
+        zoom            = zoom,
+        my_lat          = my_lat,
+        my_lon          = my_lon,
+        my_call         = my_call,
+        my_grid         = grid,
+        grayline_json   = grayline_json,
+        grayline_status = grayline_status,
+        qso_paths       = _qso_path_data(log_db, show_qso_paths),
+        aprs_stations   = aprs_stations or [],
+        aircraft        = _fetch_adsb() if show_adsb else [],
+        repeaters       = _repeater_marker_data(repeaters),
+        grid_squares    = _grid_square_data(grid, my_lat, my_lon),
+        utc_str         = now_utc.strftime("%H:%M UTC"),
+        heard_stations  = _resolve_station_coords(heard_stations or {}),
+        hearing_me      = _resolve_station_coords(hearing_me or {}),
     )
-    return html
 
 
 def _resolve_station_coords(stations: dict) -> list[dict]:

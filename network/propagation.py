@@ -225,118 +225,94 @@ class PropagationFeed:
             except Exception:
                 pass
 
+    def _fetch_solar_rt_flux(self) -> None:
+        """Update self._solar.sfi from the NOAA real-time 10.7cm flux endpoint."""
+        try:
+            from core.netlog import record_connection
+            record_connection("services.swpc.noaa.gov",
+                              purpose="solar/band conditions",
+                              user_initiated=False)
+            resp = requests.get(NOAA_SOLAR_RT_URL, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                return
+            data = resp.json()
+            if not isinstance(data, dict):
+                return
+            raw = (data.get("Flux") or data.get("flux") or
+                   data.get("solarflux") or data.get("value"))
+            sfi = api_float(raw, 0.0)
+            if sfi > 50:
+                self._solar.sfi = sfi
+                self._solar.fetched_at = time.time()
+                log.debug(f"Solar RT SFI={sfi}")
+        except Exception as e:
+            log.debug(f"Solar RT: {e}")
+
+    def _fetch_solar_cycle_data(self) -> None:
+        """Update sunspot number and SFI trend from the NOAA 45-day cycle file."""
+        try:
+            resp = requests.get(NOAA_SOLAR_URL, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                return
+            data = resp.json()
+            if not (isinstance(data, list) and len(data) >= 2):
+                return
+            latest, prev = data[-1], data[-2]
+            if self._solar.sfi <= 0:
+                sfi = api_float(
+                    latest.get("flux") or latest.get("f10.7") or
+                    latest.get("smoothed_ssn"), 0.0)
+                if sfi > 50:
+                    self._solar.sfi = sfi
+            ssn = api_int(latest.get("ssn") or latest.get("smoothed_ssn"), 0)
+            if ssn >= 0:
+                self._solar.sunspot_num = ssn
+            prev_sfi = api_float(prev.get("flux") or prev.get("f10.7"), 0.0)
+            if self._solar.sfi > prev_sfi + 2:
+                self._solar.sfi_trend = "rising"
+            elif self._solar.sfi < prev_sfi - 2:
+                self._solar.sfi_trend = "falling"
+            else:
+                self._solar.sfi_trend = "stable"
+            log.debug(f"Solar cycle: SFI={self._solar.sfi} "
+                      f"SSN={self._solar.sunspot_num} trend={self._solar.sfi_trend}")
+        except Exception as e:
+            log.debug(f"Solar cycle: {e}")
+
     def _fetch_solar(self):
         """Fetch real-time solar data from NOAA SWPC."""
         if not HAS_REQUESTS:
             return
+        self._fetch_solar_rt_flux()
+        self._fetch_solar_cycle_data()
 
-        # ── Real-time 10.7cm flux (updates every 3h) ──────────────
-        try:
-            from core.netlog import record_connection
-            record_connection("services.swpc.noaa.gov", purpose="solar/band conditions", user_initiated=False)
-            resp = requests.get(
-                NOAA_SOLAR_RT_URL, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                data = resp.json()
-                # Response: {"Flux": "156.8", "TimeStamp": "..."}
-                if isinstance(data, dict):
-                    raw = (data.get("Flux") or
-                           data.get("flux") or
-                           data.get("solarflux") or
-                           data.get("value"))
-                    sfi = api_float(raw, 0.0)
-                    if sfi > 50:  # sanity check
-                        self._solar.sfi = sfi
-                        self._solar.fetched_at = time.time()
-                        log.debug(f"Solar RT SFI={sfi}")
-        except Exception as e:
-            log.debug(f"Solar RT: {e}")
+    @staticmethod
+    def _kp_to_storm_level(kp: float) -> int:
+        """Return NOAA G-scale storm level (0–5) for a Kp value."""
+        if kp >= 9: return 5
+        if kp >= 8: return 4
+        if kp >= 7: return 3
+        if kp >= 6: return 2
+        if kp >= 5: return 1
+        return 0
 
-        # ── 45-day solar cycle file for sunspot + trend ───────────
-        try:
-            resp = requests.get(
-                NOAA_SOLAR_URL, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and len(data) >= 2:
-                    latest = data[-1]
-                    prev   = data[-2]
-                    # Update SFI only if RT failed
-                    if self._solar.sfi <= 0:
-                        sfi = api_float(
-                            latest.get("flux") or
-                            latest.get("f10.7") or
-                            latest.get("smoothed_ssn"), 0.0)
-                        if sfi > 50:
-                            self._solar.sfi = sfi
-                    # Sunspot number
-                    ssn = api_int(
-                        latest.get("ssn") or
-                        latest.get("smoothed_ssn"), 0)
-                    if ssn >= 0:
-                        self._solar.sunspot_num = ssn
-                    # Trend
-                    prev_sfi = api_float(
-                        prev.get("flux") or
-                        prev.get("f10.7"), 0.0)
-                    if self._solar.sfi > prev_sfi + 2:
-                        self._solar.sfi_trend = "rising"
-                    elif self._solar.sfi < prev_sfi - 2:
-                        self._solar.sfi_trend = "falling"
-                    else:
-                        self._solar.sfi_trend = "stable"
-                    log.debug(
-                        f"Solar cycle: SFI={self._solar.sfi} "
-                        f"SSN={self._solar.sunspot_num} "
-                        f"trend={self._solar.sfi_trend}")
-        except Exception as e:
-            log.debug(f"Solar cycle: {e}")
-
-
-    def _fetch_solar_UNUSED(self):
-        """Old implementation — kept for reference."""
-        if not HAS_REQUESTS:
-            return None
-        resp = requests.get(
-            NOAA_SOLAR_URL, timeout=REQUEST_TIMEOUT)
-        if resp.status_code != 200:
-            return
-        if len(resp.content) > 200_000:
-            return
-
-        data = resp.json()
-        if not isinstance(data, list) or not data:
-            return
-
-        # Most recent entry
-        latest = data[-1]
-        prev   = data[-2] if len(data) > 1 else latest
-
-        sfi_now  = api_float(latest.get("smoothed_ssn") or
-                             latest.get("f10.7"), 0.0)
-        sfi_prev = api_float(prev.get("smoothed_ssn") or
-                             prev.get("f10.7"), 0.0)
-
-        if sfi_now > sfi_prev + 2:
-            trend = "rising"
-        elif sfi_now < sfi_prev - 2:
-            trend = "falling"
-        else:
-            trend = "stable"
-
-        with self._lock:
-            self._solar.sfi         = sfi_now
-            self._solar.sfi_trend   = trend
-            self._solar.sunspot_num = api_int(
-                latest.get("ssn"), 0)
-            self._solar.fetched_at  = time.time()
+    @staticmethod
+    def _parse_kp_readings(data: list) -> list[float]:
+        """Extract float Kp values from the last 4 NOAA API rows."""
+        vals = []
+        for row in data[-4:]:
+            if isinstance(row, list) and len(row) >= 2:
+                try:
+                    vals.append(float(row[1]))
+                except (ValueError, TypeError):
+                    pass
+        return vals
 
     def _fetch_kp(self):
         if not HAS_REQUESTS:
             return None
         try:
-            resp = requests.get(
-                NOAA_KP_URL, timeout=REQUEST_TIMEOUT)
+            resp = requests.get(NOAA_KP_URL, timeout=REQUEST_TIMEOUT)
             if resp.status_code != 200:
                 return
             if len(resp.content) > 50_000:
@@ -348,16 +324,7 @@ class PropagationFeed:
         if not isinstance(data, list) or len(data) < 2:
             return
 
-        # Last few readings
-        readings = data[-4:]  # last 12 hours
-        kp_vals  = []
-        for row in readings:
-            if isinstance(row, list) and len(row) >= 2:
-                try:
-                    kp_vals.append(float(row[1]))
-                except (ValueError, TypeError):
-                    pass
-
+        kp_vals = self._parse_kp_readings(data)
         if not kp_vals:
             return
 
@@ -371,18 +338,12 @@ class PropagationFeed:
         else:
             trend = "stable"
 
-        # G-scale storm level
-        storm = 0
-        if kp_now >= 9:   storm = 5
-        elif kp_now >= 8: storm = 4
-        elif kp_now >= 7: storm = 3
-        elif kp_now >= 6: storm = 2
-        elif kp_now >= 5: storm = 1
+        storm = self._kp_to_storm_level(kp_now)
 
         with self._lock:
-            self._solar.k_index     = kp_now
-            self._solar.k_trend     = trend
-            self._solar.storm_level = storm
+            self._solar.k_index      = kp_now
+            self._solar.k_trend      = trend
+            self._solar.storm_level  = storm
             self._solar.aurora_alert = kp_now >= 5
 
         if storm >= 2 and self._on_alert:
@@ -391,8 +352,7 @@ class PropagationFeed:
                    f"HF propagation may be disrupted.\n"
                    f"Aurora possible at lower latitudes.")
             try:
-                self._on_alert("Geomagnetic Storm", msg,
-                               "warning")
+                self._on_alert("Geomagnetic Storm", msg, "warning")
             except Exception:
                 pass
 

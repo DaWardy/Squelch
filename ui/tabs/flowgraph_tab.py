@@ -626,60 +626,47 @@ class FlowgraphTab(QWidget):
         except Exception as e:
             log.debug(f"Props: {e}")
 
-    def _add_param_row(self, node, param):
-        """Add a parameter editing row."""
-        val = node.param_values.get(
-            param.name, param.default)
-        label = QLabel(f"{param.label}:")
-        label.setToolTip(param.help or "")
-
+    @staticmethod
+    def _make_param_widget(param, node, val):
+        """Build and connect the appropriate editor widget for a block param."""
+        k, n = param.name, node
+        setter = lambda v, _k=k, _n=n: _n.param_values.__setitem__(_k, v)  # noqa: E731
         if param.type == "bool":
             w = QCheckBox()
             w.setChecked(bool(val))
-            w.toggled.connect(
-                lambda v, k=param.name, n=node:
-                    n.param_values.__setitem__(k, v))
+            w.toggled.connect(setter)
         elif param.type == "choice":
             w = QComboBox()
             w.addItems([str(c) for c in param.choices])
             w.setCurrentText(str(val))
-            w.currentTextChanged.connect(
-                lambda v, k=param.name, n=node:
-                    n.param_values.__setitem__(k, v))
+            w.currentTextChanged.connect(setter)
         elif param.type == "float":
             w = QDoubleSpinBox()
             w.setDecimals(3)
-            lo = param.min_val
-            hi = param.max_val
-            if lo is not None: w.setMinimum(lo)
-            if hi is not None: w.setMaximum(hi)
+            if param.min_val is not None: w.setMinimum(param.min_val)
+            if param.max_val is not None: w.setMaximum(param.max_val)
             w.setValue(float(val or 0))
-            if param.units:
-                w.setSuffix(f" {param.units}")
-            w.valueChanged.connect(
-                lambda v, k=param.name, n=node:
-                    n.param_values.__setitem__(k, v))
+            if param.units: w.setSuffix(f" {param.units}")
+            w.valueChanged.connect(setter)
         elif param.type == "int":
             w = QSpinBox()
-            lo = param.min_val
-            hi = param.max_val
-            w.setMinimum(int(lo) if lo is not None
-                          else -2_000_000_000)
-            w.setMaximum(int(hi) if hi is not None
-                          else  2_000_000_000)
+            w.setMinimum(int(param.min_val) if param.min_val is not None else -2_000_000_000)
+            w.setMaximum(int(param.max_val) if param.max_val is not None else  2_000_000_000)
             w.setValue(int(val or 0))
-            if param.units:
-                w.setSuffix(f" {param.units}")
-            w.valueChanged.connect(
-                lambda v, k=param.name, n=node:
-                    n.param_values.__setitem__(k, v))
-        else:   # str
+            if param.units: w.setSuffix(f" {param.units}")
+            w.valueChanged.connect(setter)
+        else:
             w = QLineEdit()
             w.setText(str(val or ""))
-            w.textChanged.connect(
-                lambda v, k=param.name, n=node:
-                    n.param_values.__setitem__(k, v))
+            w.textChanged.connect(setter)
+        return w
 
+    def _add_param_row(self, node, param):
+        """Add a parameter editing row."""
+        val   = node.param_values.get(param.name, param.default)
+        label = QLabel(f"{param.label}:")
+        label.setToolTip(param.help or "")
+        w = self._make_param_widget(param, node, val)
         self._props_layout.addRow(label, w)
 
     def _set_status(self, msg: str):
@@ -887,52 +874,53 @@ class FlowgraphCanvas(QWidget):
 
     # ── Interaction ───────────────────────────────────────────
 
-    def mousePressEvent(self, event: QMouseEvent):
-        x, y = event.position().x(), event.position().y()
-
-        # Check port hit
+    def _try_start_connection(self, x: float, y: float) -> bool:
+        """If click lands on an output port, begin a connection drag. Returns True if handled."""
         for node in self.nodes:
             for port in node.outputs:
                 px, py = node.port_pos(port, False)
                 if abs(px - x) < 8 and abs(py - y) < 8:
-                    self._connecting = {
-                        "node": node,
-                        "port": port}
-                    return
+                    self._connecting = {"node": node, "port": port}
+                    return True
+        return False
 
-        # Check node hit
+    def _try_complete_or_select_node(self, x: float, y: float) -> bool:
+        """Handle a click that may land on a node body. Returns True if handled."""
         for node in reversed(self.nodes):
-            if node.contains(x, y):
-                if self._connecting:
-                    # Complete connection to input port
-                    for inp in node.inputs:
-                        px, py = node.port_pos(inp, True)
-                        if abs(px-x) < 12 and abs(py-y) < 12:
-                            self.connections.append({
-                                "src_id":   self._connecting["node"].node_id,
-                                "src_port": self._connecting["port"],
-                                "dst_id":   node.node_id,
-                                "dst_port": inp,
-                            })
-                            self._connecting = None
-                            self.update()
-                            return
-                    self._connecting = None
-                    return
+            if not node.contains(x, y):
+                continue
+            if self._connecting:
+                for inp in node.inputs:
+                    px, py = node.port_pos(inp, True)
+                    if abs(px - x) < 12 and abs(py - y) < 12:
+                        self.connections.append({
+                            "src_id":   self._connecting["node"].node_id,
+                            "src_port": self._connecting["port"],
+                            "dst_id":   node.node_id,
+                            "dst_port": inp,
+                        })
+                        self._connecting = None
+                        self.update()
+                        return True
+                self._connecting = None
+                return True
+            if self._selected:
+                self._selected.selected = False
+            node.selected = True
+            self._selected = node
+            self.node_selected.emit(node)
+            self._dragging    = node
+            self._drag_offset = (x - node.x, y - node.y)
+            self.update()
+            return True
+        return False
 
-                # Select
-                if self._selected:
-                    self._selected.selected = False
-                node.selected = True
-                self._selected = node
-                self.node_selected.emit(node)
-                # Start drag
-                self._dragging    = node
-                self._drag_offset = (x - node.x,
-                                      y - node.y)
-                self.update()
-                return
-
+    def mousePressEvent(self, event: QMouseEvent):
+        x, y = event.position().x(), event.position().y()
+        if self._try_start_connection(x, y):
+            return
+        if self._try_complete_or_select_node(x, y):
+            return
         # Click on empty → deselect
         self._connecting = None
         if self._selected:

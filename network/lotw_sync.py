@@ -74,155 +74,105 @@ class LoTWSync:
             except Exception:
                 pass
 
-    def _do_upload(self, log_db,
-                   qsos=None) -> LoTWResult:
-        """
-        Upload QSOs to LoTW.
-        1. Export ADIF to temp file
-        2. Sign with TQSL
-        3. Submit signed file to LoTW
-        """
-        # Get TQSL path
-        tqsl_path = self.cfg.get("paths.tqsl", "")
-        if not tqsl_path or not Path(tqsl_path).exists():
-            return LoTWResult(
-                success=False,
-                error="TQSL not found. Install from "
-                      "tqsl.arrl.org and set path in "
-                      "Settings → Paths.")
-
-        # Get credentials
-        try:
-            from core.credentials import get_store
-            store  = get_store(
-                self.cfg.get("profile.name", "default"))
-            lotw_pass = store.retrieve("lotw_password") or ""
-        except Exception:
-            lotw_pass = ""
-
-        callsign = self.cfg.callsign
-        lotw_user = self.cfg.get(
-            "apis.lotw_user", "") or callsign
-        if not lotw_user:
-            return LoTWResult(
-                success=False,
-                error="LoTW username not set. "
-                      "Configure in Settings → APIs.")
-
-        self._notify_progress("Exporting ADIF…", 10)
-
-        # Export ADIF to temp file
+    def _export_adif_to_temp(self, log_db, qsos) -> "tuple[Path | None, LoTWResult | None]":
+        """Write QSOs to a temp ADIF file. Returns (path, None) or (None, error)."""
+        import os
         try:
             fd, adif_path = tempfile.mkstemp(suffix=".adif")
-            import os
             os.close(fd)
             adif_path = Path(adif_path)
-
             if qsos:
-                from core.log_db import _adif_field, _utcnow
-                lines = ["ADIF Export from Squelch\n"
-                         f"<PROGRAMID:7>Squelch\n"
-                         f"<EOH>\n"]
+                lines = ["ADIF Export from Squelch\n<PROGRAMID:7>Squelch\n<EOH>\n"]
                 for q in qsos:
                     from core.log_db import _qso_to_adif
                     lines.append(_qso_to_adif(q))
-                adif_path.write_text(
-                    "".join(lines), encoding="utf-8")
+                adif_path.write_text("".join(lines), encoding="utf-8")
             else:
                 count = log_db.export_adif(adif_path)
                 if not count:
                     adif_path.unlink(missing_ok=True)
-                    return LoTWResult(
-                        success=False,
-                        error="No QSOs to upload.")
-
+                    return None, LoTWResult(success=False, error="No QSOs to upload.")
+            return adif_path, None
         except Exception as e:
-            return LoTWResult(
-                success=False,
-                error=f"ADIF export failed: {e}")
+            return None, LoTWResult(success=False, error=f"ADIF export failed: {e}")
 
-        self._notify_progress("Signing with TQSL…", 30)
-
-        # Sign with TQSL
+    def _sign_adif_with_tqsl(self, tqsl_path: str, callsign: str,
+                              adif_path: "Path") -> "tuple[Path | None, LoTWResult | None]":
+        """Sign an ADIF file with TQSL. Returns (signed_path, None) or (None, error)."""
+        import os
         try:
             fd2, signed_path = tempfile.mkstemp(suffix=".tq8")
-            import os
             os.close(fd2)
             signed_path = Path(signed_path)
-
-            cmd = [
-                tqsl_path,
-                "--batch",
-                "-d",
-                "-s",
-                str(adif_path),
-                "-o", str(signed_path),
-                "-l", callsign,
-            ]
-            result = subprocess.run(  # nosec B603
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=60)
-
+            cmd = [tqsl_path, "--batch", "-d", "-s",
+                   str(adif_path), "-o", str(signed_path), "-l", callsign]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)  # nosec B603
             adif_path.unlink(missing_ok=True)
-
             if result.returncode != 0:
                 signed_path.unlink(missing_ok=True)
-                err = (result.stderr or
-                       result.stdout or
-                       "TQSL failed").strip()[:200]
-                return LoTWResult(
-                    success=False,
-                    error=f"TQSL signing failed: {err}")
-
+                err = (result.stderr or result.stdout or "TQSL failed").strip()[:200]
+                return None, LoTWResult(success=False, error=f"TQSL signing failed: {err}")
+            return signed_path, None
         except subprocess.TimeoutExpired:
-            return LoTWResult(
-                success=False,
-                error="TQSL timed out after 60 seconds.")
+            return None, LoTWResult(success=False, error="TQSL timed out after 60 seconds.")
         except Exception as e:
-            return LoTWResult(
-                success=False,
-                error=f"TQSL error: {e}")
+            return None, LoTWResult(success=False, error=f"TQSL error: {e}")
 
-        self._notify_progress("Uploading to LoTW…", 60)
-
-        # Upload signed file to LoTW
+    def _submit_to_lotw(self, signed_path: "Path",
+                        lotw_user: str, lotw_pass: str) -> LoTWResult:
+        """POST signed TQ8 file to LoTW. Returns LoTWResult."""
         try:
             import requests
-            with open(signed_path, "rb") as f:
-                signed_data = f.read()
-
+            signed_data = signed_path.read_bytes()
             signed_path.unlink(missing_ok=True)
-
-            resp = requests.post(
-                self.LOTW_UPLOAD_URL,
-                data={"upfile": signed_data},
-                auth=(lotw_user, lotw_pass),
-                timeout=30)
-
+            resp = requests.post(self.LOTW_UPLOAD_URL,
+                                 data={"upfile": signed_data},
+                                 auth=(lotw_user, lotw_pass),
+                                 timeout=30)
             if resp.status_code != 200:
-                return LoTWResult(
-                    success=False,
-                    error=(f"LoTW upload failed: "
-                           f"HTTP {resp.status_code}"))
-
-            # LoTW returns text with result
+                return LoTWResult(success=False,
+                                  error=f"LoTW upload failed: HTTP {resp.status_code}")
             response_text = resp.text[:500]
             if "Errors" in response_text:
-                return LoTWResult(
-                    success=False,
-                    error=f"LoTW error: {response_text}")
-
+                return LoTWResult(success=False, error=f"LoTW error: {response_text}")
             self._notify_progress("Upload complete", 100)
-            return LoTWResult(
-                success=True,
-                message=f"Uploaded to LoTW successfully.")
-
+            return LoTWResult(success=True, message="Uploaded to LoTW successfully.")
         except Exception as e:
-            return LoTWResult(
-                success=False,
-                error=f"Upload error: {e}")
+            return LoTWResult(success=False, error=f"Upload error: {e}")
+
+    def _do_upload(self, log_db, qsos=None) -> LoTWResult:
+        """Upload QSOs to LoTW: export ADIF → sign with TQSL → submit."""
+        tqsl_path = self.cfg.get("paths.tqsl", "")
+        if not tqsl_path or not Path(tqsl_path).exists():
+            return LoTWResult(success=False,
+                              error="TQSL not found. Install from "
+                                    "tqsl.arrl.org and set path in Settings → Paths.")
+
+        try:
+            from core.credentials import get_store
+            store     = get_store(self.cfg.get("profile.name", "default"))
+            lotw_pass = store.retrieve("lotw_password") or ""
+        except Exception:
+            lotw_pass = ""
+
+        callsign  = self.cfg.callsign
+        lotw_user = self.cfg.get("apis.lotw_user", "") or callsign
+        if not lotw_user:
+            return LoTWResult(success=False,
+                              error="LoTW username not set. Configure in Settings → APIs.")
+
+        self._notify_progress("Exporting ADIF…", 10)
+        adif_path, err = self._export_adif_to_temp(log_db, qsos)
+        if err:
+            return err
+
+        self._notify_progress("Signing with TQSL…", 30)
+        signed_path, err = self._sign_adif_with_tqsl(tqsl_path, callsign, adif_path)
+        if err:
+            return err
+
+        self._notify_progress("Uploading to LoTW…", 60)
+        return self._submit_to_lotw(signed_path, lotw_user, lotw_pass)
 
     def download_confirmations_async(self) -> None:
         """Download QSL confirmations from LoTW."""

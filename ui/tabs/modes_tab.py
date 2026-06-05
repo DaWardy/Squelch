@@ -219,6 +219,7 @@ class ModesTab(SquelchPanel, QWidget):
         self._build_session_stats(self._left_layout)
         self._left_layout.addStretch()
         self._fldigi_built = False
+        root.addWidget(self._main_splitter)
 
     def _build_band_freq_panel(self, root):
         # ── Band + frequency selector (WSJT-X style) ──────────────────
@@ -430,11 +431,11 @@ class ModesTab(SquelchPanel, QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if not getattr(self, "_fldigi_built", True):
+        if not self._fldigi_built:
             self._fldigi_built = True
-            self._build_fldigi_section(self._left_layout)
+            self._build_fldigi_section()
 
-    def _build_fldigi_section(self, root):
+    def _build_fldigi_section(self):
         # ── Fldigi panel (shown for PSK31/RTTY/CW/SSTV) ──────────────
         self._fldigi_panel = self._build_fldigi_panel()
         self._left_layout.addWidget(self._fldigi_panel)
@@ -522,7 +523,6 @@ class ModesTab(SquelchPanel, QWidget):
         
         self._main_splitter.addWidget(right)
         self._main_splitter.setSizes([300, 700])
-        root.addWidget(self._main_splitter)
         
         # Start cycle timer
 

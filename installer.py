@@ -249,8 +249,37 @@ def setup_venv():
 
 # ── Step 3: Packages ──────────────────────────────────────────────────────
 
-def _install_packages_bulk(pip: str, offline: bool) -> bool:
-    """First attempt: install all packages at once. Returns True on success."""
+def _pip_cmd() -> list:
+    """Return the pip invocation prefix for subprocess calls.
+
+    Always uses 'python -m pip' rather than pip.exe / pip3.exe, because
+    the exact executable name varies across Python versions and venv
+    configurations (e.g. ensurepip on 3.11 creates pip3.exe, not pip.exe).
+    """
+    return [str(VENV_PYTHON), "-m", "pip"]
+
+
+def _bootstrap_pip() -> None:
+    """Ensure pip is available in the venv, bootstrapping via ensurepip if needed."""
+    probe = subprocess.run(
+        [str(VENV_PYTHON), "-m", "pip", "--version"],
+        capture_output=True, text=True)
+    if probe.returncode == 0:
+        return  # already working
+    info("pip not found in venv — bootstrapping via ensurepip...")
+    r = subprocess.run(
+        [str(VENV_PYTHON), "-m", "ensurepip", "--upgrade"],
+        capture_output=True, text=True)
+    if r.returncode != 0:
+        warn(f"ensurepip failed: {r.stderr.strip()[:120]}")
+    # upgrade pip itself to avoid stale ensurepip bundle
+    subprocess.run(
+        [str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip", "--quiet"],
+        capture_output=True)
+
+
+def _bulk_req_without_webengine() -> "Path":
+    """Write a temp requirements file with PyQtWebEngine lines stripped."""
     import tempfile, os
     req_lines = [
         l for l in REQ_FILE.read_text().splitlines()
@@ -258,10 +287,14 @@ def _install_packages_bulk(pip: str, offline: bool) -> bool:
         and not (l.strip().startswith("#") and "PyQtWebEngine" in l)]
     _fd, _tmp = tempfile.mkstemp(suffix=".txt")
     os.close(_fd)
-    tmp_req = Path(_tmp)
-    tmp_req.write_text("\n".join(req_lines))
+    tmp = Path(_tmp)
+    tmp.write_text("\n".join(req_lines))
+    return tmp
 
-    cmd = [pip, "install", "-r", str(tmp_req), *_pip_quiet_flag()]
+
+def _build_bulk_pip_cmd(pip: list, req_file: "Path", offline: bool) -> list:
+    """Build the pip install command, wiring in offline/cache flags as needed."""
+    cmd = pip + ["install", "-r", str(req_file), *_pip_quiet_flag()]
     if offline and OFFLINE_DIR.exists():
         cmd += ["--no-index", "--find-links", str(OFFLINE_DIR)]
         info("Installing from offline cache...")
@@ -271,17 +304,32 @@ def _install_packages_bulk(pip: str, offline: bool) -> bool:
     else:
         info("Installing packages from internet...")
         info("This may take a few minutes on first run.")
+    return cmd
 
-    result = subprocess.run(cmd, capture_output=_pip_capture(), text=True)
+
+def _log_pip_stderr(stderr: str) -> None:
+    """Print the first few lines of pip stderr for user visibility."""
+    for line in stderr.splitlines()[:5]:
+        if line.strip():
+            info(f"  pip: {line.strip()[:80]}")
+
+
+def _install_packages_bulk(pip: list, offline: bool) -> bool:
+    """First attempt: install all packages at once. Returns True on success."""
+    tmp_req = _bulk_req_without_webengine()
     try:
-        tmp_req.unlink()
-    except Exception:
-        pass
+        cmd = _build_bulk_pip_cmd(pip, tmp_req, offline)
+        result = subprocess.run(cmd, capture_output=_pip_capture(), text=True)
+    finally:
+        try:
+            tmp_req.unlink()
+        except Exception:
+            pass
 
     if result.returncode != 0 and offline:
         warn("Offline install incomplete. Trying internet...")
         result = subprocess.run(
-            [pip, "install", "-r", str(REQ_FILE), *_pip_quiet_flag()],
+            pip + ["install", "-r", str(REQ_FILE), *_pip_quiet_flag()],
             capture_output=_pip_capture(), text=True)
 
     if result.returncode == 0:
@@ -290,17 +338,44 @@ def _install_packages_bulk(pip: str, offline: bool) -> bool:
 
     warn("Some packages failed — installing individually...")
     if result.stderr:
-        for line in result.stderr.splitlines()[:5]:
-            if line.strip():
-                info(f"  pip: {line.strip()[:80]}")
+        _log_pip_stderr(result.stderr)
     return False
 
 
-def _install_packages_individual(pip: str):
+def _apply_platform_marker(pkg: str) -> str | None:
+    """Strip or skip a package line that has a '; sys_platform' marker.
+
+    Returns the bare package name if the platform matches, or None to skip.
+    """
+    if "; sys_platform" not in pkg:
+        return pkg
+    import platform as _plat
+    marker = pkg.split(";")[1].strip()
+    if "win32" in marker and _plat.system() != "Windows":
+        return None
+    return pkg.split(";")[0].strip()
+
+
+def _report_individual_results(
+        failed: list, skipped: list, non_critical: set) -> None:
+    """Print summary lines for skipped and failed packages."""
+    if skipped:
+        info(f"Skipped (Python 3.14+): {', '.join(skipped)}")
+    if not failed:
+        return
+    real     = [p for p in failed if p not in non_critical]
+    optional = [p for p in failed if p in non_critical]
+    if real:
+        warn(f"Failed (critical): {', '.join(real)}")
+    if optional:
+        info(f"Not installed (optional, app still works): {', '.join(optional)}")
+
+
+def _install_packages_individual(pip: list):
     """Fallback: install each package individually, skipping non-critical."""
     import sys as _sys
     py_ver = (_sys.version_info.major, _sys.version_info.minor)
-    PY314_SKIP = {"PyQtWebEngine"}
+    PY314_SKIP   = {"PyQtWebEngine"}
     NON_CRITICAL = {
         "PyQtWebEngine", "scipy", "pyqtgraph", "sounddevice",
         "soundfile", "soapysdr", "PyQtWebEngine>=6.4.0"}
@@ -311,38 +386,27 @@ def _install_packages_individual(pip: str):
         and not p.strip().startswith("PyQtWebEngine")]
 
     failed, skipped = [], []
-    for pkg in packages:
-        if "; sys_platform" in pkg:
-            import platform as _plat
-            marker = pkg.split(";")[1].strip()
-            if "win32" in marker and _plat.system() != "Windows":
-                continue
-            pkg = pkg.split(";")[0].strip()
+    for raw_pkg in packages:
+        pkg = _apply_platform_marker(raw_pkg)
+        if pkg is None:
+            continue
         name = pkg.split(">=")[0].split("==")[0].split("[")[0].strip()
         if py_ver >= (3, 14) and name in PY314_SKIP:
             warn(f"  {name} — skipped (no Python 3.14 wheel)")
             skipped.append(name)
             continue
         r = subprocess.run(
-            [pip, "install", pkg, "--quiet", "--no-cache-dir"],
+            pip + ["install", pkg, "--quiet", "--no-cache-dir"],
             capture_output=True, text=True)
         (ok if r.returncode == 0 else warn)(
             f"  {name}" if r.returncode == 0 else f"  {name} — FAILED")
         if r.returncode != 0:
             failed.append(name)
 
-    if skipped:
-        info(f"Skipped (Python 3.14+): {', '.join(skipped)}")
-    if failed:
-        real = [p for p in failed if p not in NON_CRITICAL]
-        optional = [p for p in failed if p in NON_CRITICAL]
-        if real:
-            warn(f"Failed (critical): {', '.join(real)}")
-        if optional:
-            info(f"Not installed (optional, app still works): {', '.join(optional)}")
+    _report_individual_results(failed, skipped, NON_CRITICAL)
 
 
-def _verify_pyqt6(pip: str):
+def _verify_pyqt6(pip: list):
     """Verify PyQt6 works; attempt matched-version reinstall if not."""
     check = subprocess.run(
         [str(VENV_PYTHON), "-c", "from PyQt6.QtCore import QT_VERSION_STR"],
@@ -352,11 +416,11 @@ def _verify_pyqt6(pip: str):
         return
     warn("PyQt6 not working — attempting matched-version reinstall...")
     subprocess.run(
-        [pip, "uninstall", "-y", "PyQt6", "PyQt6-Qt6", "PyQt6-sip"],
+        pip + ["uninstall", "-y", "PyQt6", "PyQt6-Qt6", "PyQt6-sip"],
         capture_output=True)
     subprocess.run(
-        [pip, "install", "--no-cache-dir",
-         "PyQt6==6.6.1", "PyQt6-Qt6==6.6.1", "PyQt6-sip==13.6.0"],
+        pip + ["install", "--no-cache-dir",
+               "PyQt6==6.6.1", "PyQt6-Qt6==6.6.1", "PyQt6-sip==13.6.0"],
         capture_output=_pip_capture())
     check2 = subprocess.run(
         [str(VENV_PYTHON), "-c",
@@ -367,7 +431,7 @@ def _verify_pyqt6(pip: str):
         return
     # Last resort: install pyqt6-qt6 separately
     info("Trying separate pyqt6-qt6 install...")
-    subprocess.run([pip, "install", "pyqt6-qt6", "--no-cache-dir", "--quiet"],
+    subprocess.run(pip + ["install", "pyqt6-qt6", "--no-cache-dir", "--quiet"],
                    capture_output=True)
     check3 = subprocess.run(
         [str(VENV_PYTHON), "-c", "from PyQt6.QtCore import QT_VERSION_STR"],
@@ -393,16 +457,15 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         warn("requirements.txt not found — skipping.")
         return
 
-    pip = str(VENV_PIP)
-    subprocess.run([pip, "install", "--upgrade", "pip", "--quiet"],
-                   capture_output=True)
+    _bootstrap_pip()
+    pip = _pip_cmd()
 
     if cache_only:
         info(f"Downloading packages to {OFFLINE_DIR}...")
         OFFLINE_DIR.mkdir(parents=True, exist_ok=True)
         r = subprocess.run(
-            [pip, "download", "-r", str(REQ_FILE),
-             "-d", str(OFFLINE_DIR), "--quiet"],
+            pip + ["download", "-r", str(REQ_FILE),
+                   "-d", str(OFFLINE_DIR), "--quiet"],
             capture_output=True, text=True)
         count = len(list(OFFLINE_DIR.glob("*.whl")))
         (ok if r.returncode == 0 else warn)(f"Cached {count} packages")
@@ -419,8 +482,8 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         info("Caching packages for offline use...")
         OFFLINE_DIR.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            [pip, "download", "-r", str(REQ_FILE),
-             "-d", str(OFFLINE_DIR), "--quiet"],
+            pip + ["download", "-r", str(REQ_FILE),
+                   "-d", str(OFFLINE_DIR), "--quiet"],
             capture_output=True)
         count = len(list(OFFLINE_DIR.glob("*.whl")))
         if count > 0:
@@ -602,31 +665,39 @@ def _check_serial_ports():
     sep()
 
 
+def _check_tool_by_cmd(tool: dict) -> bool:
+    """Try to find the tool via PATH lookup. Returns True and prints if found."""
+    path = shutil.which(tool.get("cmd", ""))
+    if not path:
+        return False
+    result = subprocess.run(
+        [path] + tool.get("args", []),
+        capture_output=True, text=True)
+    ver = (result.stdout or result.stderr or "").strip().split("\n")[0]
+    ok(f"{tool['name']} — {ver[:60]}")
+    return True
+
+
+def _check_tool_by_paths(tool: dict) -> bool:
+    """Try known install paths for the tool. Returns True and prints if found."""
+    for candidate in tool.get("paths", []):
+        if Path(candidate).exists():
+            ok(f"{tool['name']} — {candidate}")
+            return True
+    return False
+
+
 def _check_tool(tool: dict):
     """Check one external tool entry; print ok/warn/err and a sep."""
-    found = False
-    if "cmd" in tool:
-        path = shutil.which(tool["cmd"])
-        if path:
-            result = subprocess.run(
-                [path] + tool.get("args", []),
-                capture_output=True, text=True)
-            ver = (result.stdout or result.stderr or "").strip().split("\n")[0]
-            ok(f"{tool['name']} — {ver[:60]}")
-            found = True
-    if not found:
-        for candidate in tool.get("paths", []):
-            if Path(candidate).exists():
-                ok(f"{tool['name']} — {candidate}")
-                found = True
-                break
-    if not found:
-        (err if tool.get("required") else warn)(
-            f"{tool['name']} — {'NOT FOUND' if tool.get('required') else 'not found'}"
-            + (f" ({tool['note']})" if not tool.get("required") else ""))
-        info(f"Download: {tool['dl']}")
-        info("If installed but not detected, set the path in:")
-        info("  Squelch → File → Paths & Executables")
+    if _check_tool_by_cmd(tool) or _check_tool_by_paths(tool):
+        sep()
+        return
+    (err if tool.get("required") else warn)(
+        f"{tool['name']} — {'NOT FOUND' if tool.get('required') else 'not found'}"
+        + (f" ({tool['note']})" if not tool.get("required") else ""))
+    info(f"Download: {tool['dl']}")
+    info("If installed but not detected, set the path in:")
+    info("  Squelch → File → Paths & Executables")
     sep()
 
 
@@ -991,6 +1062,24 @@ def _soapy_already_works() -> bool:
     return False
 
 
+def _find_matching_conda_python(
+        pyd_maj: int, pyd_min: int) -> "Path | None":
+    """Search conda roots for a Python whose version matches the .pyd ABI tag."""
+    import re as _re
+    for root in [Path.home() / "miniforge3", Path.home() / "miniconda3",
+                 Path(r"C:/miniforge3"), Path(r"C:/miniconda3")]:
+        py = root / "python.exe"
+        if not py.exists():
+            py = root / "bin" / "python3"
+        if not py.exists():
+            continue
+        rv = subprocess.run([str(py), "--version"], capture_output=True, text=True)
+        m = _re.search(r"Python (\d+)\.(\d+)", rv.stdout + rv.stderr)
+        if m and (int(m.group(1)), int(m.group(2))) == (pyd_maj, pyd_min):
+            return py
+    return None
+
+
 def _soapy_version_compatible(src_dir: Path) -> bool:
     """Check venv Python vs SoapySDR .pyd ABI tag.
     Returns True if compatible (proceed to copy).
@@ -1011,19 +1100,11 @@ def _soapy_version_compatible(src_dir: Path) -> bool:
         return True  # compatible or unknown — proceed
     warn(f"Python version mismatch: venv={venv_maj}.{venv_min}  "
          f"SoapySDR .pyd=cp{pyd_maj}{pyd_min}")
-    for root in [Path.home() / "miniforge3", Path.home() / "miniconda3",
-                 Path(r"C:/miniforge3"), Path(r"C:/miniconda3")]:
-        py = root / "python.exe"
-        if not py.exists():
-            py = root / "bin" / "python3"
-        if py.exists():
-            rv2 = subprocess.run([str(py), "--version"],
-                                 capture_output=True, text=True)
-            m3 = _re.search(r"Python (\d+)\.(\d+)", rv2.stdout + rv2.stderr)
-            if m3 and (int(m3.group(1)), int(m3.group(2))) == (pyd_maj, pyd_min):
-                ok(f"Found matching Python {pyd_maj}.{pyd_min}: {py}")
-                _recreate_venv(py)
-                return False
+    py = _find_matching_conda_python(pyd_maj, pyd_min)
+    if py:
+        ok(f"Found matching Python {pyd_maj}.{pyd_min}: {py}")
+        _recreate_venv(py)
+        return False
     info(f"Install Python {pyd_maj}.{pyd_min} from python.org, or:")
     info("  conda install -c conda-forge soapysdr  (matches your venv Python)")
     return False
@@ -1192,6 +1273,19 @@ def _select_sdr_drivers():
         _install_sdr_packages(conda_exe, pkgs)
 
 
+def _run_install_steps(args) -> None:
+    """Run the full install sequence (skipped when --check is passed)."""
+    setup_venv()
+    if args.cache:
+        install_packages(cache_only=True)
+    else:
+        install_packages(offline=args.offline)
+    setup_config()
+    create_launch_scripts()
+    if not args.no_av_prompt:
+        _select_sdr_drivers()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Squelch installer and dependency checker")
@@ -1212,7 +1306,6 @@ def main():
         help="Show full pip output (for debugging install failures)")
     args = parser.parse_args()
 
-    # Make verbosity available to install_packages via module global
     global VERBOSE
     VERBOSE = args.verbose
 
@@ -1230,19 +1323,9 @@ def main():
     check_python()
 
     if not args.check:
-        setup_venv()
-        if args.cache:
-            install_packages(cache_only=True)
-        else:
-            install_packages(offline=args.offline)
-        setup_config()
-        create_launch_scripts()
-        # Interactive SDR driver selection (skip if --no-av-prompt = automation mode)
-        if not args.no_av_prompt:
-            _select_sdr_drivers()
+        _run_install_steps(args)
 
     check_external_tools()
-    # Final banner — always visible regardless of what happened above
     _print_final_status()
     print_summary(0, 0)
 

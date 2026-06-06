@@ -323,11 +323,22 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         self._dev_combo = QComboBox()
         self._dev_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._dev_combo.setMinimumWidth(160)
+        self._dev_combo.setMinimumWidth(200)
         self._dev_combo.addItem(self.tr("— Scanning… —"))
         self._dev_combo.currentIndexChanged.connect(
             self._on_device_select)
         lay.addWidget(self._dev_combo)
+
+        rescan_btn = QPushButton(self.tr("⟳"))
+        rescan_btn.setFixedSize(26, 26)
+        rescan_btn.setToolTip(self.tr("Rescan for SDR hardware"))
+        rescan_btn.clicked.connect(self._enumerate_devices)
+        lay.addWidget(rescan_btn)
+
+        self._dev_type_lbl = QLabel("")
+        self._dev_type_lbl.setStyleSheet(
+            "color:#888;font-size:10px;font-family:'Courier New';")
+        lay.addWidget(self._dev_type_lbl)
 
         self._connect_btn = QPushButton(self.tr("Connect"))
         self._connect_btn.setFixedWidth(80)
@@ -810,40 +821,83 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
     # ── Device management ─────────────────────────────────────────────────
 
     def _enumerate_devices(self):
+        """Enumerate SDR devices in background; always calls _populate_devices."""
         def _do():
             if not HAS_SOAPY:
                 QTimer.singleShot(0, lambda: self._populate_devices([]))
                 return
-            log.info("SDR: enumerating devices via SoapySDR")
-            devs = SoapyManager.enumerate()
-            log.info(f"SDR: found {len(devs)} device(s)")
-            QTimer.singleShot(0,
-                lambda d=devs: self._populate_devices(d))
-        threading.Thread(target=_do, daemon=True).start()
+            try:
+                log.info("SDR: enumerating devices via SoapySDR")
+                devs = SoapyManager.enumerate()
+                log.info(f"SDR: found {len(devs)} device(s)")
+            except Exception as e:
+                log.warning(f"SDR: enumerate failed: {e}")
+                devs = []
+            QTimer.singleShot(0, lambda d=devs: self._populate_devices(d))
+        # Update status so user can see a scan is in progress
+        if hasattr(self, "_dev_combo"):
+            self._dev_combo.clear()
+            self._dev_combo.addItem(self.tr("— Scanning… —"))
+        threading.Thread(target=_do, daemon=True, name="SDREnum").start()
 
-    def _populate_devices(self, devices: list[SDRDevice]):
+    def _populate_devices(self, devices: list):
         self._devices = devices
         self._dev_combo.clear()
-        # If SoapySDR returned no devices but rtl_tcp is running locally,
-        # expose it as a selectable virtual device. This is the common
-        # case where the user has an RTL-SDR but it's already claimed by
-        # rtl_tcp (so SoapySDR can't see it).
-        if not devices and rtltcp_is_running():
+        if hasattr(self, "_dev_type_lbl"):
+            self._dev_type_lbl.setText("")
+        # Fallback: RTL-TCP running but SoapySDR can't claim the device
+        if not devices and HAS_RTLTCP and rtltcp_is_running():
             self._dev_combo.addItem(
                 self.tr("RTL-TCP server  (127.0.0.1:1234)"))
-            # Sentinel: store None marker so _connect_sdr knows to use rtl_tcp
             self._devices = [None]
             self._dev_combo.setCurrentIndex(0)
-            log.info("SDR: SoapySDR found 0 devices, rtl_tcp is running "
-                     "— offered RTL-TCP server as device")
+            if hasattr(self, "_dev_type_lbl"):
+                self._dev_type_lbl.setText("RTL-TCP")
+            log.info("SDR: SoapySDR found 0 devices, rtl_tcp running — using RTL-TCP")
             return
         if not devices:
-            self._dev_combo.addItem(
-                self.tr("No SDR devices found"))
+            self._dev_combo.addItem(self.tr("No SDR devices found — click ⟳ to rescan"))
+            if hasattr(self, "_dev_type_lbl"):
+                self._dev_type_lbl.setText("none")
             return
         for dev in devices:
             self._dev_combo.addItem(dev.display_name)
         self._dev_combo.setCurrentIndex(0)
+        # Show driver type for first device
+        self._update_dev_type_label(0)
+
+    def _update_dev_type_label(self, index: int) -> None:
+        """Show driver/hardware type for selected device."""
+        if not hasattr(self, "_dev_type_lbl"):
+            return
+        if not self._devices or index < 0 or index >= len(self._devices):
+            self._dev_type_lbl.setText("")
+            return
+        dev = self._devices[index]
+        if dev is None:
+            self._dev_type_lbl.setText("RTL-TCP")
+            return
+        # SDRDevice has a 'driver' or 'hardware' attribute from SoapySDR
+        driver = (getattr(dev, "driver", "")
+                  or getattr(dev, "hardware", "")
+                  or "").upper()
+        # Map common driver keys to friendly names
+        _DRIVER_NAMES = {
+            "RTL":    "RTL-SDR",
+            "RTLSDR": "RTL-SDR",
+            "AIRSPY": "Airspy",
+            "SDRPLAY": "SDRplay RSP",
+            "RSP": "SDRplay RSP",
+            "UHD": "USRP (UHD)",
+            "HACKRF": "HackRF",
+            "LIME": "LimeSDR",
+            "XTRX": "XTRX",
+            "AUDIO": "Audio IQ",
+            "REMOTE": "SoapyRemote",
+        }
+        label = next((v for k, v in _DRIVER_NAMES.items()
+                      if k in driver), driver or "Unknown")
+        self._dev_type_lbl.setText(label)
 
     def _build_audio_mode_group(self):
         """Build Input Mode GroupBox; sets self._audio_mode_btns. Returns group."""
@@ -984,15 +1038,18 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             self._audio_src = None
 
     def _on_device_select(self, idx: int):
+        self._update_dev_type_label(idx)
         if 0 <= idx < len(self._devices):
             dev = self._devices[idx]
+            if dev is None:
+                return   # RTL-TCP sentinel — no SoapySDR device object
             # Show TX controls only for TX hardware
-            self._tx_grp.setVisible(dev.can_tx)
-            self._tx_indicator.setVisible(dev.can_tx)
+            self._tx_grp.setVisible(getattr(dev, "can_tx", False))
+            self._tx_indicator.setVisible(getattr(dev, "can_tx", False))
             # Adjust span to hardware limits
-            self._span_hz = dev.recommended_span
-            self._manager.set_sample_rate(
-                dev.recommended_span)
+            if hasattr(dev, "recommended_span"):
+                self._span_hz = dev.recommended_span
+                self._manager.set_sample_rate(dev.recommended_span)
             # Show device-specific settings panel
             self._build_device_panel(dev)
 

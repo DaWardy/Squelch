@@ -165,6 +165,10 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             self._lotw_user.setText(cfg.get("apis.lotw_user", ""))
             self._clublog_email.setText(cfg.get("apis.clublog_email", ""))
             self._rb_token.setText(store.retrieve("repeaterbook_token") or "")
+            self._hamalert_user.setText(cfg.get("apis.hamalert_user", ""))
+            self._hamalert_url_secret.setText(cfg.get("apis.hamalert_url_secret", ""))
+            self._hamalert_key.setText(store.retrieve("hamalert_password") or "")
+            self._hamalert_sms_token.setText(store.retrieve("hamalert_sms_token") or "")
         except Exception:
             pass
 
@@ -398,20 +402,24 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         cfg.set("advanced.grayline_interval_s", self._grayline_interval.value())
 
     def _save_apis(self, cfg):
-        cfg.set("apis.qrz_user",      self._qrz_user.text().strip())
-        cfg.set("apis.hamqth_user",   self._hamqth_user.text().strip())
-        cfg.set("apis.rr_user",       self._rr_user.text().strip())
-        cfg.set("apis.lotw_user",     self._lotw_user.text().strip())
-        cfg.set("apis.clublog_email", self._clublog_email.text().strip())
+        cfg.set("apis.qrz_user",           self._qrz_user.text().strip())
+        cfg.set("apis.hamqth_user",        self._hamqth_user.text().strip())
+        cfg.set("apis.rr_user",            self._rr_user.text().strip())
+        cfg.set("apis.lotw_user",          self._lotw_user.text().strip())
+        cfg.set("apis.clublog_email",      self._clublog_email.text().strip())
+        cfg.set("apis.hamalert_user",      self._hamalert_user.text().strip())
+        cfg.set("apis.hamalert_url_secret", self._hamalert_url_secret.text().strip())
         try:
             from core.credentials import get_store
             store = get_store(cfg.get("profile.name", "default"))
             for attr, key in [
-                (self._qrz_pass,     "qrz_password"),
-                (self._hamqth_pass,  "hamqth_password"),
-                (self._lotw_pass,    "lotw_password"),
-                (self._clublog_pass, "clublog_password"),
-                (self._rb_token,     "repeaterbook_token"),
+                (self._qrz_pass,          "qrz_password"),
+                (self._hamqth_pass,       "hamqth_password"),
+                (self._lotw_pass,         "lotw_password"),
+                (self._clublog_pass,      "clublog_password"),
+                (self._rb_token,          "repeaterbook_token"),
+                (self._hamalert_key,      "hamalert_password"),
+                (self._hamalert_sms_token, "hamalert_sms_token"),
             ]:
                 if attr.text():
                     store.store(key, attr.text())

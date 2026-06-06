@@ -261,6 +261,79 @@ APPS: list[AppDef] = [
     ),
 
     AppDef(
+        key          = "paths.sdrangel",
+        name         = "SDRangel",
+        description  = "Multi-mode SDR: P25, DMR, D-STAR, YSF, AIS, ADS-B — Windows/Linux",
+        category     = "digital",
+        exe_name     = "sdrangel",
+        common_paths = [
+            r"C:\Program Files\SDRangel\sdrangel.exe",
+            r"C:\Program Files (x86)\SDRangel\sdrangel.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/sdrangel",
+            "/usr/local/bin/sdrangel",
+            "/opt/sdrangel/bin/sdrangel",
+        ],
+        download_url  = "https://github.com/f4exb/sdrangel/releases",
+        download_note = "Supports RTL-SDR, HackRF, SDRplay, USRP, LimeSDR and more.",
+        tab           = "digital",
+    ),
+
+    AppDef(
+        key          = "paths.trunk_recorder",
+        name         = "Trunk Recorder",
+        description  = "P25/DMR trunked scanner — records calls, Linux/macOS",
+        category     = "digital",
+        exe_name     = "trunk-recorder",
+        common_paths = [],
+        linux_paths  = [
+            "/usr/local/bin/trunk-recorder",
+            "/usr/bin/trunk-recorder",
+            str(Path.home() / "trunk-recorder/trunk-recorder"),
+        ],
+        download_url  = "https://github.com/robotastic/trunk-recorder",
+        download_note = "Linux/macOS. Requires config.json for your system.",
+        tab           = "digital",
+    ),
+
+    AppDef(
+        key          = "paths.rtl433",
+        name         = "rtl_433",
+        description  = "Decode 433/868/315/915 MHz sensors — weather, IoT, tire pressure",
+        category     = "digital",
+        exe_name     = "rtl_433",
+        common_paths = [
+            r"C:\Program Files\rtl_433\rtl_433.exe",
+            r"C:\rtl_433\rtl_433.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/rtl_433",
+            "/usr/local/bin/rtl_433",
+        ],
+        download_url  = "https://github.com/merbanan/rtl_433",
+        download_note = "Requires RTL-SDR. Over 1000 supported device protocols.",
+        tab           = "digital",
+    ),
+
+    AppDef(
+        key          = "paths.unitrunker",
+        name         = "Unitrunker",
+        description  = "P25/EDACS/LTR trunked scanner controller (Windows)",
+        category     = "digital",
+        exe_name     = "Unitrunker.exe",
+        common_paths = [
+            r"C:\Program Files\Unitrunker\Unitrunker.exe",
+            r"C:\Program Files (x86)\Unitrunker\Unitrunker.exe",
+            str(Path.home() / "Unitrunker" / "Unitrunker.exe"),
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.unitrunker.com/",
+        download_note = "Windows only. Works with RTL-SDR via SDR# plugin or VB-Cable.",
+        tab           = "digital",
+    ),
+
+    AppDef(
         key          = "paths.dump1090",
         name         = "dump1090-fa",
         description  = "ADS-B aircraft tracking decoder",

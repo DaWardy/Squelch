@@ -832,24 +832,8 @@ def print_summary(errors: int, warnings: int):
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
-def _print_final_status():
-    """Big visible final status banner — cannot be missed."""
-    import sys
-    print()
-    print()
-    print(BOLD + "=" * 60 + RESET)
-    print(f"{BOLD}{WHITE}  INSTALLATION COMPLETE{RESET}")
-    print(BOLD + "=" * 60 + RESET)
-    print()
-    # Verify the venv has what it needs
-    if VENV_DIR.exists() and VENV_PYTHON.exists():
-        ok(f"Virtual environment: {VENV_DIR}")
-    else:
-        warn("Virtual environment was not created")
-        return
-
-    # Quick package check — use the REAL import statement for each
-    # (Python imports are case-sensitive: it's PyQt6, not pyqt6)
+def _check_critical_packages() -> "tuple[list[str], bool]":
+    """Probe critical packages in the venv. Returns (missing_names, pyqt6_dll_error)."""
     import subprocess as sp
     critical = {
         "PyQt6":     "from PyQt6.QtWidgets import QApplication",
@@ -857,8 +841,7 @@ def _print_final_status():
         "requests":  "import requests",
         "pyqtgraph": "import pyqtgraph",
     }
-    missing = []
-    pyqt6_dll_error = False
+    missing, pyqt6_dll_error = [], False
     for pkg, import_stmt in critical.items():
         r = sp.run([str(VENV_PYTHON), "-c", import_stmt],
                    capture_output=True, text=True)
@@ -866,6 +849,24 @@ def _print_final_status():
             missing.append(pkg)
             if pkg == "PyQt6" and "DLL load failed" in (r.stderr or ""):
                 pyqt6_dll_error = True
+    return missing, pyqt6_dll_error
+
+
+def _print_final_status():
+    """Big visible final status banner — cannot be missed."""
+    print()
+    print()
+    print(BOLD + "=" * 60 + RESET)
+    print(f"{BOLD}{WHITE}  INSTALLATION COMPLETE{RESET}")
+    print(BOLD + "=" * 60 + RESET)
+    print()
+    if VENV_DIR.exists() and VENV_PYTHON.exists():
+        ok(f"Virtual environment: {VENV_DIR}")
+    else:
+        warn("Virtual environment was not created")
+        return
+
+    missing, pyqt6_dll_error = _check_critical_packages()
     if missing:
         warn(f"Missing or broken: {', '.join(missing)}")
         if pyqt6_dll_error:
@@ -979,6 +980,29 @@ def _install_soapy_plugins(site_pkgs: Path):
         info("Then re-run: python installer.py")
 
 
+def _copy_soapy_to_venv(soapy_src: str, site: "Path") -> None:
+    """Copy SoapySDR core module + device plugins into the venv site-packages."""
+    import shutil
+    src_dir = Path(soapy_src)
+    if src_dir.name == "SoapySDR":
+        src_dir = src_dir.parent
+    spy = src_dir / "SoapySDR.py"
+    if spy.exists():
+        shutil.copy2(spy, site / "SoapySDR.py")
+        ok("Copied SoapySDR.py")
+    soapy_folder = src_dir / "SoapySDR"
+    if soapy_folder.exists():
+        dst = site / "SoapySDR"
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(soapy_folder, dst)
+        ok("Copied SoapySDR/")
+    for pyd in src_dir.glob("_SoapySDR*.pyd"):
+        shutil.copy2(pyd, site / pyd.name)
+        ok(f"Copied {pyd.name}")
+    _install_soapy_plugins(site)
+
+
 def _recreate_venv(python_exe: Path):
     """Delete and recreate venv with the given Python, reinstall packages,
     then copy SoapySDR and device plugins."""
@@ -1018,31 +1042,7 @@ def _recreate_venv(python_exe: Path):
     if not soapy_src:
         warn("SoapySDR not found — run fix_soapysdr.bat after install.")
         return
-
-    import shutil
-    site = _get_venv_site_packages()
-    src_dir = Path(soapy_src)
-    if src_dir.name == "SoapySDR":
-        src_dir = src_dir.parent
-
-    spy = src_dir / "SoapySDR.py"
-    if spy.exists():
-        shutil.copy2(spy, site / "SoapySDR.py")
-        ok("Copied SoapySDR.py")
-
-    soapy_folder = src_dir / "SoapySDR"
-    if soapy_folder.exists():
-        dst = site / "SoapySDR"
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(soapy_folder, dst)
-        ok("Copied SoapySDR/")
-
-    for pyd in src_dir.glob("_SoapySDR*.pyd"):
-        shutil.copy2(pyd, site / pyd.name)
-        ok(f"Copied {pyd.name}")
-
-    _install_soapy_plugins(site)
+    _copy_soapy_to_venv(soapy_src, _get_venv_site_packages())
 
 
 _SOAPY_PROBE = (
@@ -1205,6 +1205,18 @@ def _find_conda() -> str | None:
     return None
 
 
+def _sdr_tokens_to_pkgs(tokens: list[str]) -> list[str]:
+    """Resolve user token list (e.g. ['1','3']) to deduplicated conda pkg names."""
+    pkgs: list[str] = []
+    for token in tokens:
+        for num, _name, pkg, _note in _SDR_DRIVERS:
+            if token == num and pkg:
+                for p in pkg.split():
+                    if p not in pkgs:
+                        pkgs.append(p)
+    return pkgs
+
+
 def _prompt_sdr_selection() -> list[str]:
     """Display SDR driver menu; return list of conda package names to install."""
     print()
@@ -1224,13 +1236,7 @@ def _prompt_sdr_selection() -> list[str]:
     if not choice or choice.strip() == "0":
         info("Skipped. Install drivers later via Settings > SDR Hardware.")
         return []
-    pkgs: list[str] = []
-    for token in choice.split():
-        for num, _name, pkg, _note in _SDR_DRIVERS:
-            if token == num and pkg:
-                for p in pkg.split():
-                    if p not in pkgs:
-                        pkgs.append(p)
+    pkgs = _sdr_tokens_to_pkgs(choice.split())
     if not pkgs:
         info("No valid selection — skipped.")
     return pkgs
@@ -1286,29 +1292,7 @@ def _run_install_steps(args) -> None:
         _select_sdr_drivers()
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Squelch installer and dependency checker")
-    parser.add_argument(
-        "--check", action="store_true",
-        help="Check dependencies only, do not install")
-    parser.add_argument(
-        "--offline", action="store_true",
-        help="Install from offline cache only")
-    parser.add_argument(
-        "--cache", action="store_true",
-        help="Download packages for offline use")
-    parser.add_argument(
-        "--no-av-prompt", action="store_true",
-        help="Skip antivirus reminder (for automation)")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Show full pip output (for debugging install failures)")
-    args = parser.parse_args()
-
-    global VERBOSE
-    VERBOSE = args.verbose
-
+def _print_installer_header() -> None:
     print()
     print(f"{BOLD}{'='*54}")
     print(f"  Squelch — Amateur Radio Operations Platform")
@@ -1316,6 +1300,63 @@ def main():
     print(f"  github.com/dawardy/squelch")
     print(f"{'='*54}{RESET}")
     sep()
+
+
+def _show_user_data_location() -> None:
+    try:
+        import sys as _sys, os as _os
+        if _sys.platform == "win32":
+            _udir = Path(_os.environ.get(
+                "APPDATA", Path.home() / "AppData" / "Roaming")) / "Squelch"
+        else:
+            _udir = Path.home() / ".config" / "squelch"
+        info(f"User data stored at: {_udir}")
+        info("This location persists through Squelch updates.")
+    except Exception:
+        pass
+
+
+def _offer_launch() -> None:
+    """Ask user whether to launch Squelch now; spawn if yes."""
+    try:
+        launch = input("  Launch Squelch now? [Y/N]: ").strip().upper()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if launch != 'Y':
+        return
+    python_exe = str(VENV_PYTHON)
+    main_py    = str(BASE_DIR / "main.py")
+    try:
+        subprocess.Popen(
+            [python_exe, main_py],
+            cwd=str(BASE_DIR),
+            creationflags=(subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0),
+            close_fds=True)
+        print("  Squelch launched.")
+    except Exception as e:
+        print(f"  Launch failed: {e}")
+        print(f"  Run manually: {python_exe} main.py")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Squelch installer and dependency checker")
+    parser.add_argument("--check",      action="store_true",
+                        help="Check dependencies only, do not install")
+    parser.add_argument("--offline",    action="store_true",
+                        help="Install from offline cache only")
+    parser.add_argument("--cache",      action="store_true",
+                        help="Download packages for offline use")
+    parser.add_argument("--no-av-prompt", action="store_true",
+                        help="Skip antivirus reminder (for automation)")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Show full pip output (for debugging install failures)")
+    args = parser.parse_args()
+
+    global VERBOSE
+    VERBOSE = args.verbose
+
+    _print_installer_header()
 
     if not args.check and not args.no_av_prompt:
         print_av_reminder()
@@ -1328,43 +1369,11 @@ def main():
     check_external_tools()
     _print_final_status()
     print_summary(0, 0)
-
-    # Show where user data is stored
-    try:
-        import sys as _sys
-        import os as _os
-        if _sys.platform == "win32":
-            _udir = Path(_os.environ.get(
-                "APPDATA",
-                Path.home() / "AppData" / "Roaming")) / "Squelch"
-        else:
-            _udir = Path.home() / ".config" / "squelch"
-        info(f"User data stored at: {_udir}")
-        info("This location persists through Squelch updates.")
-    except Exception:
-        pass
+    _show_user_data_location()
     sep()
 
     if not args.check:
-        launch = input(
-            "  Launch Squelch now? [Y/N]: ").strip().upper()
-        if launch == 'Y':
-            python_exe = str(VENV_PYTHON)
-            main_py    = str(BASE_DIR / "main.py")
-            try:
-                subprocess.Popen(
-                    [python_exe, main_py],
-                    cwd=str(BASE_DIR),
-                    creationflags=(
-                        subprocess.CREATE_NO_WINDOW
-                        if IS_WINDOWS else 0),
-                    close_fds=True)
-                print("  Squelch launched.")
-                # Don't show "Press Enter to close" — window can close now.
-                return
-            except Exception as e:
-                print(f"  Launch failed: {e}")
-                print(f"  Run manually: {python_exe} main.py")
+        _offer_launch()
 
 
 if __name__ == "__main__":

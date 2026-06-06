@@ -323,11 +323,19 @@ class DigitalTab(SquelchPanel, QWidget):
 
         lay.addStretch()
 
-        # Audio routing indicator
-        self._route_lbl = QLabel("Audio: Not routed")
-        self._route_lbl.setStyleSheet(
-            "")
-        lay.addWidget(self._route_lbl)
+        # Audio device indicator — shows configured decode input, clickable to settings
+        audio_in = (self.cfg.get("audio.digital_input", "") or "not set") if self.cfg else "—"
+        self._audio_lbl = QLabel(f"🎙 {audio_in}")
+        self._audio_lbl.setStyleSheet(
+            "font-size:10px;font-family:'Courier New';"
+            "color:#888;text-decoration:underline;cursor:pointer;")
+        self._audio_lbl.setToolTip(
+            "Decode audio input device\n"
+            "Click to open Audio Settings")
+        self._audio_lbl.mousePressEvent = lambda _: self._open_audio_settings()
+        lay.addWidget(self._audio_lbl)
+
+        lay.addWidget(_vsep())
 
         # Clear button
         clear_btn = QPushButton("Clear")
@@ -510,17 +518,27 @@ class DigitalTab(SquelchPanel, QWidget):
     def _apply_dsd_status(self, status: str):
         if status == "running":
             self._active_backend = "dsdplus"
+            audio_in = self.cfg.get("audio.digital_input", "") or "system default"
             self._set_decoder_status(
-                "DSD+ running", "#3fbe6f")
+                f"DSD+ running  ·  input: {audio_in}", "#3fbe6f")
             self._no_decoder_msg.hide()
         elif status == "stopped":
             if self._active_backend == "dsdplus":
                 self._active_backend = None
-            self._set_decoder_status(
-                "DSD+ stopped", "#888")
+            self._set_decoder_status("DSD+ stopped", "#888")
+            # Show helpful hint on unexpected stop
+            self._no_decoder_msg.setText(
+                "DSD+ stopped.\n\n"
+                "Common causes:\n"
+                "  • Wrong audio device — set in Settings → Audio → Decode Input\n"
+                "  • Missing Visual C++ Redistributable (Windows)\n"
+                "  • DSDPlus.cfg audio device index mismatch\n\n"
+                "Check DSDPlus FMP/FMP folder for error logs.\n"
+                "Audio routing: Settings → Audio → Decode Input")
+            self._no_decoder_msg.show()
         elif status == "error":
             self._set_decoder_status(
-                "DSD+ error — check path", "#cc4444")
+                "DSD+ error — verify path in Settings → Paths", "#cc4444")
 
     def _on_op25_status(self, status):
         QTimer.singleShot(0,
@@ -623,6 +641,20 @@ class DigitalTab(SquelchPanel, QWidget):
                  row_proto != proto) or
                 (hide_enc and is_enc))
             self._table.setRowHidden(row, hide)
+
+    def _open_audio_settings(self):
+        """Open Settings dialog scrolled to Audio tab."""
+        try:
+            from ui.dialogs.settings_dialog import SettingsDialog
+            dlg = SettingsDialog(self.cfg, parent=self.window())
+            dlg._tabs.setCurrentIndex(1)   # Audio tab is index 1
+            if dlg.exec():
+                # Refresh audio label with new setting
+                audio_in = self.cfg.get("audio.digital_input", "") or "not set"
+                self._audio_lbl.setText(f"🎙 {audio_in}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Open audio settings: {e}")
 
     def _clear_log(self):
         self._table.setRowCount(0)

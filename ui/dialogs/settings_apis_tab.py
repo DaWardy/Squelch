@@ -96,9 +96,38 @@ class _SettingsApisTab:
         f.addRow(_sep())
         _section(f, "HamAlert")
 
+        ha_note = QLabel(
+            "HamAlert has no general-purpose API key.\n"
+            "Telnet uses your full account login (stored in keyring).\n"
+            "URL callbacks: append ?key=<secret> to your endpoint URL.\n"
+            "SMS alerts: requires a TextAnywhere (Clockwork) API token.")
+        ha_note.setWordWrap(True)
+        ha_note.setStyleSheet("color:#888;font-size:10px;")
+        f.addRow("", ha_note)
+
+        self._hamalert_user = QLineEdit()
+        self._hamalert_user.setPlaceholderText("HamAlert callsign/username")
+        f.addRow("Username:", self._hamalert_user)
+
         self._hamalert_key = QLineEdit()
-        self._hamalert_key.setPlaceholderText("API key from hamalert.org")
-        f.addRow("API Key:", self._hamalert_key)
+        self._hamalert_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._hamalert_key.setPlaceholderText("HamAlert password (stored in keyring)")
+        f.addRow("Password:", self._hamalert_key)
+
+        self._hamalert_url_secret = QLineEdit()
+        self._hamalert_url_secret.setPlaceholderText("URL callback secret (e.g. abc123 → ?key=abc123)")
+        self._hamalert_url_secret.setToolTip(
+            "Append this value as ?key=<secret> to your HamAlert URL notification endpoint.\n"
+            "Your receiver script can validate incoming alerts by checking this shared secret.")
+        f.addRow("URL Secret:", self._hamalert_url_secret)
+
+        self._hamalert_sms_token = QLineEdit()
+        self._hamalert_sms_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._hamalert_sms_token.setPlaceholderText("TextAnywhere (Clockwork) API token for SMS alerts")
+        self._hamalert_sms_token.setToolTip(
+            "Generate at textanywhere.net → Account Settings → API Keys.\n"
+            "Required only if you use HamAlert SMS notifications.")
+        f.addRow("SMS Token:", self._hamalert_sms_token)
 
         f.addRow(_sep())
         _section(f, "RadioReference Premium")

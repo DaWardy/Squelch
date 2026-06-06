@@ -17,7 +17,7 @@ from modes.ft8 import FT8Engine, AutoSeqState
 def cfg(tmp_path):
     from core.config import Config
     c = Config(tmp_path / "config.json")
-    c.callsign = "NR6U"
+    c.callsign = "W1AW"
     c.grid     = "DM79rr"
     return c
 
@@ -55,7 +55,7 @@ class TestFT8EngineCQGuard:
 
     def test_cq_fires_when_connected(self, engine):
         engine._wsjtx_connected = True
-        engine.cfg.callsign = "NR6U"
+        engine.cfg.callsign = "W1AW"
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr(engine, "_queue_tx",
                        lambda msg: None)

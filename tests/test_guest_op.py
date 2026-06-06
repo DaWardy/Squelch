@@ -14,16 +14,16 @@ def test_phonetic_spelling():
 
 def test_script_includes_guest_call_phonetically():
     from core.guest_op import voice_contact_script
-    s = voice_contact_script("KE2XYZ", "NR6U", "FM18GS", supervised=True)
+    s = voice_contact_script("KE2XYZ", "W1AW", "EM73", supervised=True)
     assert "Kilo Echo Two" in s          # guest call in phonetics
-    assert "NR6U" in s                    # station call for ID
+    assert "W1AW" in s                    # station call for ID
     assert "CQ" in s                      # has a calling-CQ section
     assert "73" in s                      # has an ending
 
 def test_script_supervised_note():
     from core.guest_op import voice_contact_script
-    sup = voice_contact_script("KE2XYZ", "NR6U", supervised=True)
-    unsup = voice_contact_script("KE2XYZ", "NR6U", supervised=False)
+    sup = voice_contact_script("KE2XYZ", "W1AW", supervised=True)
+    unsup = voice_contact_script("KE2XYZ", "W1AW", supervised=False)
     assert "control operator" in sup
     assert "control operator" not in unsup
 
@@ -43,12 +43,12 @@ def test_operating_callsign_all_modes():
     """operating_callsign() is the single source of truth for every mode."""
     from core.guest_op import operating_callsign
     class Cfg:
-        callsign = "NR6U"
+        callsign = "W1AW"
         def __init__(self): self._d = {}
         def get(self, k, d=None): return self._d.get(k, d)
     cfg = Cfg()
     # No guest -> station call
-    assert operating_callsign(cfg) == "NR6U"
+    assert operating_callsign(cfg) == "W1AW"
     # Guest active -> guest call (applies to ALL modes, not just FT8)
     cfg._d["guest.active"] = True
     cfg._d["guest.callsign"] = "ke2xyz"

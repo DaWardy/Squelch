@@ -39,28 +39,28 @@ class TestLatLonToAPRS:
 
 class TestBuildPositionPacket:
     def test_returns_string(self):
-        pkt = build_position_packet("NR6U", 39.7, -104.9)
+        pkt = build_position_packet("W1AW", 39.7, -104.9)
         assert isinstance(pkt, str)
         assert len(pkt) > 0
 
     def test_starts_with_exclaim(self):
-        pkt = build_position_packet("NR6U", 39.7, -104.9)
+        pkt = build_position_packet("W1AW", 39.7, -104.9)
         assert pkt.startswith("!")
 
     def test_comment_included(self):
         pkt = build_position_packet(
-            "NR6U", 39.7, -104.9, comment="Hello")
+            "W1AW", 39.7, -104.9, comment="Hello")
         assert "Hello" in pkt
 
     def test_altitude_included(self):
         pkt = build_position_packet(
-            "NR6U", 39.7, -104.9, altitude_m=1600)
+            "W1AW", 39.7, -104.9, altitude_m=1600)
         assert "/A=" in pkt
 
     def test_comment_truncated(self):
         long_comment = "X" * 100
         pkt = build_position_packet(
-            "NR6U", 39.7, -104.9, comment=long_comment)
+            "W1AW", 39.7, -104.9, comment=long_comment)
         # Comment should be max 43 chars
         after_pos = pkt.split(" ", 1)
         if len(after_pos) > 1:
@@ -69,17 +69,17 @@ class TestBuildPositionPacket:
     def test_different_symbols(self):
         for symbol in ["house", "car", "portable"]:
             pkt = build_position_packet(
-                "NR6U", 39.7, -104.9, symbol=symbol)
+                "W1AW", 39.7, -104.9, symbol=symbol)
             assert pkt.startswith("!")
 
 
 class TestParsePacket:
     def test_position_packet(self):
-        raw = ("NR6U>APRS,TCPIP*,qAC,T2US:"
+        raw = ("W1AW>APRS,TCPIP*,qAC,T2US:"
                "!3942.75N/10459.65W-Test comment")
         pkt = parse_packet(raw)
         assert pkt is not None
-        assert pkt.callsign == "NR6U"
+        assert pkt.callsign == "W1AW"
         assert pkt.is_position
 
     def test_comment_only(self):
@@ -92,7 +92,7 @@ class TestParsePacket:
         assert pkt is None
 
     def test_no_colon(self):
-        pkt = parse_packet("NR6U>APRS")
+        pkt = parse_packet("W1AW>APRS")
         assert pkt is None
 
     def test_callsign_extracted(self):
@@ -103,15 +103,15 @@ class TestParsePacket:
         assert pkt.callsign == "W4XYZ"
 
     def test_ssid_extracted(self):
-        raw = ("NR6U-9>APRS,WIDE1-1:"
+        raw = ("W1AW-9>APRS,WIDE1-1:"
                "!3942.75N/10459.65W>Mobile")
         pkt = parse_packet(raw)
         if pkt:
             # May or may not extract SSID depending on impl
-            assert pkt.callsign == "NR6U"
+            assert pkt.callsign == "W1AW"
 
     def test_lat_lon_range(self):
-        raw = ("NR6U>APRS,TCPIP*:"
+        raw = ("W1AW>APRS,TCPIP*:"
                "!3942.75N/10459.65W-Test")
         pkt = parse_packet(raw)
         if pkt and pkt.lat:
@@ -135,12 +135,12 @@ class TestAPRSPasscode:
 
     def test_range(self):
         from aprs.aprs_client import APRSClient
-        for cs in ["W4XYZ", "NR6U", "K4ABC", "VK2XYZ"]:
+        for cs in ["W4XYZ", "W1AW", "K4ABC", "VK2XYZ"]:
             code = APRSClient.compute_passcode(cs)
             assert 0 <= code <= 32767
 
     def test_ssid_ignored(self):
         from aprs.aprs_client import APRSClient
         # SSID should not affect passcode
-        assert (APRSClient.compute_passcode("NR6U") ==
-                APRSClient.compute_passcode("NR6U-9"))
+        assert (APRSClient.compute_passcode("W1AW") ==
+                APRSClient.compute_passcode("W1AW-9"))

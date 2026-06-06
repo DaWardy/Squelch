@@ -33,14 +33,14 @@ class TestCallsignValidation:
 
     def test_valid_us_callsigns(self):
         assert callsign_soft("W4XYZ")  == "W4XYZ"
-        assert callsign_soft("NR6U")   == "NR6U"
+        assert callsign_soft("W1AW")   == "W1AW"
         assert callsign_soft("K4ABC")  == "K4ABC"
         assert callsign_soft("AA1AA")  == "AA1AA"
         assert callsign_soft("WB4GHT") == "WB4GHT"
 
     def test_lowercase_normalized(self):
         assert callsign_soft("w4xyz")  == "W4XYZ"
-        assert callsign_soft("nr6u")   == "NR6U"
+        assert callsign_soft("w1aw")   == "W1AW"
 
     def test_portable_suffix(self):
         assert callsign_soft("W4XYZ/P")  == "W4XYZ/P"

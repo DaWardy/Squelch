@@ -46,6 +46,10 @@ desktop.ini
 htmlcov/
 .tox/
 
+# AI agent context — internal working docs, not for public repo
+CLAUDE.md
+CLAUDE_CODE_HANDOFF.md
+
 # Security — never commit these
 *.pem
 *.key

@@ -245,7 +245,7 @@ New core/terrain.py provides an elevation_profile() API with two backends:
 - Falls back to deterministic-noise terrain if unavailable
 
 **What you see:**
-For Manassas → Sacramento (3,782 km, bearing 284°) the real terrain
+For Virginia → California (3,782 km, bearing 284°) the real terrain
 shows: Appalachians (~1200m) just past TX, flat Ohio plains, Rockies
 (~4000m) at ~70% of the path, then the Sierras (~2600m) before RX.
 Terrain is bilinear-interpolated from the HGT tile grid.
@@ -635,7 +635,7 @@ Result: 429 tests, 0 skipped (was 423 with 1 skip).
 
 ### Help — RTL-SDR + Miniforge quickstart
 - New article "RTL-SDR Quick Start (miniforge/conda)" in the SDR section.
-  Covers exactly NR6U's setup: Zadig driver, conda install command, verify
+  Covers exactly operator's setup: Zadig driver, conda install command, verify
   command, troubleshooting if device shows [] after install, and the
   SDRplay RSP2Pro/RSP1A install order (API first, then soapysdr-module-sdrplay).
 

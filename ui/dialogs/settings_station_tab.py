@@ -50,7 +50,7 @@ class _SettingsStationTab:
         # Callsign
         self._callsign = QLineEdit()
         self._callsign.setMaxLength(12)
-        self._callsign.setPlaceholderText("e.g. NR6U")
+        self._callsign.setPlaceholderText("e.g. W1AW")
         self._callsign.setToolTip(
             "Your FCC callsign. Used in all transmissions.")
         f.addRow("Callsign:", self._callsign)
@@ -98,7 +98,7 @@ class _SettingsStationTab:
             "Leave blank to use main callsign")
         self._station_call.setToolTip(
             "Station callsign if different from operator "
-            "(e.g. club station K4ABC with op NR6U)")
+            "(e.g. club station K4ABC with op W1AW)")
         f.addRow("Station Callsign:", self._station_call)
 
         self._contest_exchange = QLineEdit()

@@ -20,7 +20,7 @@ from core.config import Config
 @pytest.fixture
 def cfg(tmp_path):
     cfg = Config(tmp_path / "config.json")
-    cfg.callsign = "NR6U"
+    cfg.callsign = "W1AW"
     cfg.set("rig.hamlib_model", 370)
     cfg.set("rig.poll_interval_ms", 9999)  # disable polling
     return cfg
@@ -102,13 +102,13 @@ class TestCWSanitizer:
         assert _sanitize_cw_text("hello") == "HELLO"
 
     def test_numbers_allowed(self):
-        assert "73" in _sanitize_cw_text("73 DE NR6U")
+        assert "73" in _sanitize_cw_text("73 DE W1AW")
 
     def test_strip_invalid_chars(self):
-        result = _sanitize_cw_text("CQ CQ #$% DE NR6U")
+        result = _sanitize_cw_text("CQ CQ #$% DE W1AW")
         assert "#" not in result
         assert "$" not in result
-        assert "NR6U" in result
+        assert "W1AW" in result
 
     def test_max_length(self):
         long_text = "A" * 300
@@ -119,7 +119,7 @@ class TestCWSanitizer:
         assert _sanitize_cw_text("") == ""
 
     def test_spaces_preserved(self):
-        result = _sanitize_cw_text("CQ DE NR6U")
+        result = _sanitize_cw_text("CQ DE W1AW")
         assert " " in result
 
 

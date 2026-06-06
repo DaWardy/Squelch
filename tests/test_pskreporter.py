@@ -26,11 +26,11 @@ class TestReceptionReport:
 
     def test_timestamp_auto_set(self):
         before = time.time()
-        r = ReceptionReport("NR6U", 14074000, "FT8")
+        r = ReceptionReport("W1AW", 14074000, "FT8")
         assert r.timestamp >= before
 
     def test_default_snr(self):
-        r = ReceptionReport("NR6U", 14074000, "FT8")
+        r = ReceptionReport("W1AW", 14074000, "FT8")
         assert r.snr_db == -99
 
 
@@ -41,7 +41,7 @@ class TestPSKReporterXML:
         self._tmp = tempfile.mkdtemp()
         self.cfg  = Config(
             Path(self._tmp) / "config.json")
-        self.cfg.callsign = "NR6U"
+        self.cfg.callsign = "W1AW"
         self.cfg.grid     = "DM79rr"
         self.psk = PSKReporter(self.cfg)
 
@@ -52,14 +52,14 @@ class TestPSKReporterXML:
         xml = self.psk._build_xml_payload(spots)
         assert "receptionReport" in xml
         assert "W4XYZ" in xml
-        assert "NR6U" in xml
+        assert "W1AW" in xml
         assert "14074000" in xml
 
     def test_xml_has_receiver(self):
         spots = []
         xml = self.psk._build_xml_payload(spots)
         assert "receiverInfo" in xml
-        assert "NR6U" in xml
+        assert "W1AW" in xml
 
     def test_xml_well_formed(self):
         import defusedxml.ElementTree as ET
@@ -98,7 +98,7 @@ class TestXMLEscape:
         assert "&quot;" in _xml_escape('"hello"')
 
     def test_clean_string(self):
-        assert _xml_escape("NR6U") == "NR6U"
+        assert _xml_escape("W1AW") == "W1AW"
 
 
 class TestUTCStr:

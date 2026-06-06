@@ -17,11 +17,11 @@ class TestDXSpot:
         spot = DXSpot(
             callsign="W4XYZ",
             freq_hz=14074000,
-            spotter="NR6U",
+            spotter="W1AW",
             mode="FT8")
         assert spot.callsign == "W4XYZ"
         assert spot.freq_hz == 14074000
-        assert spot.spotter == "NR6U"
+        assert spot.spotter == "W1AW"
 
     def test_band_from_freq(self):
         from core.band_plan import band_at_freq
@@ -33,7 +33,7 @@ class TestDXSpot:
     def test_defaults(self):
         spot = DXSpot(callsign="W4XYZ",
                       freq_hz=14074000,
-                      spotter="NR6U")
+                      spotter="W1AW")
         assert spot.is_new_dxcc is False
         assert spot.is_wanted is False
         assert spot.timestamp > 0
@@ -41,6 +41,6 @@ class TestDXSpot:
     def test_source_field(self):
         spot = DXSpot(callsign="W4XYZ",
                       freq_hz=14074000,
-                      spotter="NR6U",
+                      spotter="W1AW",
                       source="PSKReporter")
         assert spot.source == "PSKReporter"

@@ -62,7 +62,7 @@ class TestLoTWSyncNoCredentials:
     def test_upload_no_tqsl(self, tmp_path):
         from core.config import Config
         cfg = Config(tmp_path / "config.json")
-        cfg.callsign = "NR6U"
+        cfg.callsign = "W1AW"
         sync = LoTWSync(cfg)
         # No TQSL path set → should fail gracefully
         result = sync._do_upload(None)

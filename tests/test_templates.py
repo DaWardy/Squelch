@@ -32,12 +32,12 @@ class TestWinlinkMessage:
 
 class TestICS213:
     def test_returns_message(self):
-        msg = ics213(incident="TEST", my_callsign="NR6U")
+        msg = ics213(incident="TEST", my_callsign="W1AW")
         assert isinstance(msg, WinlinkMessage)
 
     def test_contains_callsign(self):
-        msg = ics213(my_callsign="NR6U")
-        assert "NR6U" in msg.body
+        msg = ics213(my_callsign="W1AW")
+        assert "W1AW" in msg.body
 
     def test_contains_incident(self):
         msg = ics213(incident="FIRE 2024")
@@ -87,7 +87,7 @@ class TestRadiogram:
         assert "Hello world" in msg.body
 
     def test_subject_has_radiogram(self):
-        msg = radiogram(my_callsign="NR6U")
+        msg = radiogram(my_callsign="W1AW")
         assert "RADIOGRAM" in msg.subject.upper()
 
 
@@ -111,8 +111,8 @@ class TestWinlinkWednesday:
         assert isinstance(msg, WinlinkMessage)
 
     def test_contains_callsign(self):
-        msg = winlink_wednesday(my_callsign="NR6U")
-        assert "NR6U" in msg.body
+        msg = winlink_wednesday(my_callsign="W1AW")
+        assert "W1AW" in msg.body
 
     def test_contains_grid(self):
         msg = winlink_wednesday(grid="DM79")
@@ -126,7 +126,7 @@ class TestWinlinkWednesday:
 class TestP2PMessage:
     def test_returns_message(self):
         msg = p2p_message(to_callsign="W4XYZ",
-                          my_callsign="NR6U")
+                          my_callsign="W1AW")
         assert isinstance(msg, WinlinkMessage)
 
     def test_p2p_type(self):
@@ -140,7 +140,7 @@ class TestP2PMessage:
 
 class TestPositionReport:
     def test_returns_message(self):
-        msg = position_report(my_callsign="NR6U",
+        msg = position_report(my_callsign="W1AW",
                                grid="DM79")
         assert isinstance(msg, WinlinkMessage)
 

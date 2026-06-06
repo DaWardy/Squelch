@@ -1,7 +1,7 @@
 # Squelch tests — network activity log (consumer req C-12, Priya)
 # Licensed under GNU GPL v3
-"""Verify the network activity logger records and classifies connections."""
 from __future__ import annotations
+"""Verify the network activity logger records and classifies connections."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """PanelShell — workspace-mode window.
 
 Runs alongside MainWindow. When the user activates workspace mode
@@ -12,7 +13,6 @@ Key features:
   • View menu controls which panels are shown.
   • Falls back to MainWindow tab-mode if something breaks.
 """
-from __future__ import annotations
 
 import json
 import logging

@@ -1,5 +1,5 @@
-"""MainWindow firstrun mixin — extracted from main_window.py."""
 from __future__ import annotations
+"""MainWindow firstrun mixin — extracted from main_window.py."""
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.config import Config

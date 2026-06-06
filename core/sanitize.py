@@ -1,6 +1,7 @@
 # Squelch — core/sanitize.py
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
+from __future__ import annotations
 """
 Pure-Python sanitization and redaction helpers.
 No GUI or network imports — safe to unit-test in isolation.
@@ -9,7 +10,6 @@ These implement security rules from docs/DESIGN_REVIEW.md:
   S4 — credentials never logged (redact_url)
   S6 — CSV/XLSX formula-injection prevention (csv_safe)
 """
-from __future__ import annotations
 import re
 
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")

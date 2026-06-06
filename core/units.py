@@ -1,6 +1,7 @@
 # Squelch — core/units.py
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
+from __future__ import annotations
 """
 UI-wide unit handling (metric vs imperial).
 
@@ -9,7 +10,6 @@ The preference lives in config under "ui.units" ("metric" or "imperial").
 Internally Squelch always stores SI (km, meters); these helpers format for
 display only.
 """
-from __future__ import annotations
 
 KM_PER_MILE = 1.609344
 M_PER_FOOT  = 0.3048

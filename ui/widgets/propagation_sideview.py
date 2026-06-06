@@ -1,3 +1,4 @@
+from __future__ import annotations
 """2D side-view propagation visualization widget.
 
 Shows a curved-Earth cross-section between two stations with:
@@ -12,7 +13,6 @@ and the current MUF estimate from network.propagation. The goal is for the
 operator to SEE why a frequency may or may not work for a given path —
 something a static "band conditions" panel can't convey.
 """
-from __future__ import annotations
 import math
 from typing import Optional
 

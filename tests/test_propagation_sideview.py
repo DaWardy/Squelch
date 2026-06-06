@@ -1,5 +1,5 @@
-"""Tests for the side-view propagation mode classifier."""
 from __future__ import annotations
+"""Tests for the side-view propagation mode classifier."""
 import os, sys
 from pathlib import Path
 import pytest

@@ -1,6 +1,7 @@
 # Squelch — core/netlog.py
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
+from __future__ import annotations
 """
 Network activity log (consumer requirement C-12, Priya the pentester).
 
@@ -19,7 +20,6 @@ Usage (from a network module, before making a request):
     record_connection("services.swpc.noaa.gov", purpose="band conditions",
                        user_initiated=False)
 """
-from __future__ import annotations
 import threading
 import time
 from collections import deque

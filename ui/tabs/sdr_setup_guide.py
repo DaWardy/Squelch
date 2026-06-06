@@ -1,5 +1,5 @@
-"""SDR setup-guide mixin."""
 from __future__ import annotations
+"""SDR setup-guide mixin."""
 import subprocess, sys, webbrowser
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QScrollArea, QPushButton, QFrame)

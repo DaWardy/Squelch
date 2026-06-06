@@ -1,7 +1,7 @@
 # Squelch tests — CSV formula-injection sanitizer (security rule S6)
 # Licensed under GNU GPL v3
-"""Verify CSV export sanitizes formula-injection vectors."""
 from __future__ import annotations
+"""Verify CSV export sanitizes formula-injection vectors."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

@@ -1,6 +1,7 @@
 # Squelch — core/guest_op.py
 # Copyright (C) 2026  github.com/dawardy/squelch
 # Licensed under GNU GPL v3 — see LICENSE
+from __future__ import annotations
 """
 Guest Operator support.
 
@@ -18,7 +19,6 @@ station callsign at least every 10 minutes and at the end of a contact. When a
 guest operates, the licensed control operator is responsible. Squelch keeps
 both calls so logs and IDs are correct; it does not give legal advice.
 """
-from __future__ import annotations
 from dataclasses import dataclass
 
 # NATO phonetic alphabet for reading a callsign aloud

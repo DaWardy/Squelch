@@ -1,8 +1,8 @@
 # Squelch tests — smoke tests for untested modules
 # Licensed under GNU GPL v3
+from __future__ import annotations
 """Smoke tests: import + basic instantiation for modules that lacked
 explicit test coverage."""
-from __future__ import annotations
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

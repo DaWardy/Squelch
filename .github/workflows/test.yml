@@ -23,21 +23,23 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
+      - name: Install system deps (Linux only)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2 libegl1
+
+      - name: Install Python dependencies
         run: |
-          python -m sudo apt-get update && sudo apt-get install -y libportaudio2 libegl1
-          pip install pyflakes --upgrade pip
+          python -m pip install --upgrade pip
+          pip install pyflakes
           pip install -r requirements.txt
-          pip install -r requirements-dev.txt
 
       - name: QA gate (undefined names)
-
-
         run: python -m pyflakes ui core modes network || true
 
-
       - name: Run tests
-        run: QT_QPA_PLATFORM=offscreen pytest tests/ -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests/ -q
 
       - name: Syntax check all .py files
         run: |

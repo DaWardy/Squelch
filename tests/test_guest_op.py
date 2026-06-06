@@ -1,7 +1,7 @@
 # Squelch tests — guest operator support (students/visitors)
 # Licensed under GNU GPL v3
-"""Guest operator: callsign handling + contact script. TX is NOT blocked."""
 from __future__ import annotations
+"""Guest operator: callsign handling + contact script. TX is NOT blocked."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

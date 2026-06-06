@@ -1,5 +1,5 @@
-"""SquelchPanel base class for all dockable panels."""
 from __future__ import annotations
+"""SquelchPanel base class for all dockable panels."""
 from typing import Any
 
 

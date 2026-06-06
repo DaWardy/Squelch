@@ -1,5 +1,5 @@
-"""SettingsDialog advanced tab — extracted from settings_dialog.py."""
 from __future__ import annotations
+"""SettingsDialog advanced tab — extracted from settings_dialog.py."""
 from PyQt6.QtWidgets import (QWidget, QFormLayout, QScrollArea, QFrame,
     QLabel, QLineEdit, QComboBox, QSpinBox, QCheckBox, QHBoxLayout,
     QVBoxLayout, QPushButton, QGroupBox, QDoubleSpinBox)

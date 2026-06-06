@@ -315,7 +315,7 @@ class MainWindow(
 
 
     def _tab_context_menu(self, pos):
-        """Right-click on a tab bar item → pop-out / hide / reorder hint."""
+        """Right-click on a tab bar item → pop-out / move / hide / lock."""
         from PyQt6.QtWidgets import QMenu
         bar = self.tabs.tabBar()
         idx = bar.tabAt(pos)
@@ -329,15 +329,25 @@ class MainWindow(
                 lambda: self._undock_tab(idx))
 
             menu.addSeparator()
+            if idx > 0:
+                ml = menu.addAction("← Move left")
+                ml.triggered.connect(
+                    lambda: self.tabs.tabBar().moveTab(idx, idx - 1))
+            if idx < self.tabs.count() - 1:
+                mr = menu.addAction("→ Move right")
+                mr.triggered.connect(
+                    lambda: self.tabs.tabBar().moveTab(idx, idx + 1))
+
+            menu.addSeparator()
             hide_act = menu.addAction(f"✕  Hide  '{label}'")
             hide_act.triggered.connect(
                 lambda: self._hide_tab(idx))
 
         menu.addSeparator()
-        hint = menu.addAction(
-            "↔  Drag tabs to reorder  (unlock in View → Layout)")
-        hint.setEnabled(False)
+        show_all = menu.addAction("Show all tabs")
+        show_all.triggered.connect(self._show_all_tabs)
 
+        menu.addSeparator()
         locked = self.cfg.get("ui.layout_locked", False)
         lock_act = menu.addAction(
             "🔒 Lock layout" if not locked else "🔓 Unlock layout")
@@ -1052,31 +1062,6 @@ class MainWindow(
         self.cfg.set(f"ui.tab_visible.{key}", visible)
         self.cfg.save()
 
-    def _tab_context_menu(self, pos):
-        idx = self.tabs.tabBar().tabAt(pos)
-        if idx < 0:
-            return
-        menu = QMenu(self)
-        if idx > 0:
-            ml = menu.addAction("← Move left")
-            ml.triggered.connect(
-                lambda: self.tabs.tabBar().moveTab(idx, idx-1))
-        if idx < self.tabs.count() - 1:
-            mr = menu.addAction("→ Move right")
-            mr.triggered.connect(
-                lambda: self.tabs.tabBar().moveTab(idx, idx+1))
-        menu.addSeparator()
-        hide = menu.addAction("Hide this tab")
-        tab_key = list(self._tab_map.keys())[idx] \
-            if idx < len(self._tab_map) else None
-        if tab_key:
-            hide.triggered.connect(
-                lambda: self._set_tab_visible(tab_key, False))
-        menu.addSeparator()
-        show_all = menu.addAction("Show all tabs")
-        show_all.triggered.connect(self._show_all_tabs)
-        menu.exec(self.tabs.tabBar().mapToGlobal(pos))
-
     def _show_all_tabs(self):
         for key in self._tab_map:
             self._set_tab_visible(key, True)
@@ -1092,13 +1077,13 @@ class MainWindow(
         self.cfg.save()
 
     def _set_font_size(self, size: int):
+        """Change application font size globally — theme QSS + app font + tooltips."""
         size = max(8, min(20, size))
         theme = self.cfg.get("ui.theme", "Dark")
         self.setStyleSheet(get_stylesheet(theme, size))
         # QSS font-size is overridden by inline widget stylesheets, so also
         # set the application default font — this cascades to every widget
-        # that doesn't explicitly set its own font, making the size setting
-        # actually take effect app-wide.
+        # that doesn't explicitly set its own font.
         try:
             from PyQt6.QtWidgets import QApplication
             from PyQt6.QtGui import QFont
@@ -1107,10 +1092,16 @@ class MainWindow(
                 f = app.font()
                 f.setPointSize(size)
                 app.setFont(f)
+                app.setStyleSheet(
+                    app.styleSheet() +
+                    f"QToolTip{{font-size:{size}pt;"
+                    f"padding:6px;border:1px solid #333;"
+                    f"background:#1a1a1a;}}")
         except Exception:
             pass
         self.cfg.set("ui.font_size", size)
         self.cfg.save()
+        log.info(f"Font size set to {size}pt")
 
 
     def _update_spectrum_action(self, index: int = -1):
@@ -1139,28 +1130,6 @@ class MainWindow(
                 sw.setVisible(visible)
                 if hasattr(rig_tab, '_spec_toggle'):
                     rig_tab._spec_toggle.setChecked(visible)
-
-    def _set_font_size(self, size: int):
-        """
-        Change application font size globally.
-        Affects tooltips, labels, help text, everything.
-        Persisted to config.
-        """
-        from PyQt6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app:
-            f = app.font()
-            f.setPointSize(size)
-            app.setFont(f)
-            # Also update tooltip font
-            app.setStyleSheet(
-                app.styleSheet() +
-                f"QToolTip{{font-size:{size}pt;"
-                f"padding:6px;border:1px solid #333;"
-                f"background:#1a1a1a;}}")
-        self.cfg.set("ui.font_size", size)
-        self.cfg.save()
-        log.info(f"Font size set to {size}pt")
 
     def _toggle_ui_lock(self, locked: bool):
         """Lock/unlock UI layout — prevent accidental tab moves."""

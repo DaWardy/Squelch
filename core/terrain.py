@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Terrain elevation for the propagation side-view.
 
 Two backends behind a single elevation_profile() API:
@@ -13,7 +14,6 @@ Two backends behind a single elevation_profile() API:
 Both return a list of elevation values (metres) along the path.
 Returns None if unavailable (network error, tile not yet downloaded).
 """
-from __future__ import annotations
 import gzip
 import logging
 import math

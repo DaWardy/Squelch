@@ -1,3 +1,4 @@
+from __future__ import annotations
 """CHIRP CSV import — no token, no scraping, fully offline.
 
 CHIRP (chirpmyradio.com) is the de-facto open-source radio programming
@@ -15,7 +16,6 @@ CHIRP CSV header (radio-independent generic format):
 
 Reference: chirpmyradio.com/projects/chirp/wiki/CSV_HowTo
 """
-from __future__ import annotations
 import csv
 import logging
 from pathlib import Path

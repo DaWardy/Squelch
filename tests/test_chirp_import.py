@@ -1,5 +1,5 @@
-"""Unit tests for network/chirp_import — CHIRP CSV parser."""
 from __future__ import annotations
+"""Unit tests for network/chirp_import — CHIRP CSV parser."""
 import tempfile
 from pathlib import Path
 import pytest

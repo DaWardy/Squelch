@@ -1,5 +1,6 @@
 # Squelch QA gate — headless tab smoke test (DevSecOps QA/QC)
 # Licensed under GNU GPL v3
+from __future__ import annotations
 """
 Instantiates the MainWindow and every tab under an offscreen Qt platform and
 fails if any tab raises. This is the feature test that should run before
@@ -9,7 +10,6 @@ winlink/_vsep crashes that reached the user.
 Skips automatically where PyQt6 is unavailable (e.g. a headless CI image
 without Qt); CI installs PyQt6 so it runs there and locally on the dev box.
 """
-from __future__ import annotations
 import os
 import sys
 from pathlib import Path

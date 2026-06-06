@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Squelch — qa_check.py  (DevSecOps QA/QC gate, run before packaging)
 # Licensed under GNU GPL v3
+from __future__ import annotations
 """
 Pre-package quality gate. Run `python qa_check.py` before building a release.
 Fails (non-zero exit) if any check fails, so a broken build is never shipped.
@@ -12,7 +13,6 @@ Checks:
   4. Connected method references exist (self._x in .connect()).
   5. (If PyQt6 present) every tab builds headless.
 """
-from __future__ import annotations
 import ast
 import subprocess
 import sys

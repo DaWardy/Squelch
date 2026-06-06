@@ -1,12 +1,12 @@
 # Squelch QA gate — static undefined-name check (DevSecOps QA/QC)
 # Licensed under GNU GPL v3
+from __future__ import annotations
 """
 Catches the #1 recurring bug class: a NameError from a missing import or a
 'self.' that was dropped (e.g. _hold_tx_cb, _sep, _vsep). Runs pyflakes over
 the source and fails if any 'undefined name' is reported. This gate must pass
 before packaging.
 """
-from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path

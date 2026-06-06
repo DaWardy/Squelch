@@ -1,5 +1,5 @@
-"""SDR device-specific control panels — mixin for SDRTab."""
 from __future__ import annotations
+"""SDR device-specific control panels — mixin for SDRTab."""
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGroupBox, QCheckBox, QComboBox, QSlider, QSpinBox, QPushButton, QLineEdit)

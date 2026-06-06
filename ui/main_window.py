@@ -181,6 +181,8 @@ from ui.main_window_profile   import _MainWindowProfileMixin
 from ui.main_window_network   import _MainWindowNetworkMixin
 from ui.main_window_guest_demo import _MainWindowGuestDemoMixin
 from ui.main_window_firstrun  import _MainWindowFirstrunMixin
+from ui.main_window_view      import _MainWindowViewMixin
+from ui.main_window_location  import _MainWindowLocationMixin
 
 
 class MainWindow(
@@ -188,6 +190,8 @@ class MainWindow(
         _MainWindowNetworkMixin,
         _MainWindowGuestDemoMixin,
         _MainWindowFirstrunMixin,
+        _MainWindowViewMixin,
+        _MainWindowLocationMixin,
         QMainWindow):
     # Thread-safe signals — emit() from any thread, slot runs on GUI thread
     _location_found  = pyqtSignal(str, str, float, float)  # grid, display, lat, lon
@@ -857,187 +861,6 @@ class MainWindow(
         self._sb_rig.setText(
             f"Rig: {state.status.value}{freq_str}")
 
-    # ── Location ──────────────────────────────────────────────────────────
-
-    def _on_loc(self, loc, _rr_refresh):
-        QTimer.singleShot(0,
-            lambda l=loc: self._apply_loc(l))
-
-    def _apply_loc(self, loc):
-        disp = loc.display if loc.is_valid else "—"
-        self._loc_lbl.setText(disp)
-        self._sb_loc.setText(f"Location: {disp}")
-        # Update dump1090 station marker whenever location changes
-        if loc.is_valid:
-            import threading
-            threading.Thread(
-                target=self.location.write_dump1090_receiver_json,
-                daemon=True).start()
-        # Always show Maidenhead grid in the grid label
-        if loc.grid:
-            self._grid_lbl.setText(loc.grid)
-            self._grid_lbl.setStyleSheet(
-                "color:#3fbe6f;"
-                "font-family:'Courier New';")
-        elif loc.is_valid:
-            # Have lat/lon, compute grid
-            from core.location import _latlon_to_grid
-            try:
-                grid = _latlon_to_grid(loc.lat, loc.lon)
-                self._grid_lbl.setText(grid)
-                self._grid_lbl.setStyleSheet(
-                    "color:#3fbe6f;"
-                    "font-family:'Courier New';")
-            except Exception:
-                pass
-
-    # ── Callsign / Grid edits ─────────────────────────────────────────────
-
-    def _on_callsign_edit(self, val: str):
-        """Save inline callsign edit to cfg AND the active profile so a
-        profile switch does not overwrite what the user just typed."""
-        self.cfg.callsign = val
-        self.cfg.save()
-        # Also update the profile record so switch_to() doesn't overwrite
-        try:
-            from core.profiles import get_profile_manager
-            pm = get_profile_manager()
-            cur = pm.current   # @property — access without ()
-            if cur:
-                cur.callsign = val
-                pm.save()
-        except Exception:
-            pass
-        # Keep the label in sync (belt + braces — _commit already calls setText)
-        try:
-            self._cs_lbl.setText(val)
-        except Exception:
-            pass
-        log.info(f"Callsign updated to: {val}")
-
-    def _on_location_found(self, grid: str, display: str,
-                            lat: float, lon: float):
-        """Slot — always called on main thread via signal."""
-        if not grid:
-            return
-        grid = grid.upper()
-        self._grid_lbl.setText(grid)
-        self._grid_lbl.setStyleSheet(
-            "color:#3fbe6f;"
-            "font-family:'Courier New';")
-        if display and hasattr(self, "_loc_lbl"):
-            self._loc_lbl.setText(display)
-        self.cfg.grid = grid
-        if lat:
-            self.cfg.set("location.lat", lat)
-            self.cfg.set("location.lon", lon)
-        self.cfg.save()
-        for tab in self._tab_map.values():
-            if hasattr(tab, "on_location_change"):
-                try:
-                    tab.on_location_change(self.location)
-                except Exception:
-                    pass
-
-    def _on_location_failed(self, msg: str):
-        """Slot — location search failed, update label."""
-        self._grid_lbl.setText(msg)
-        self._grid_lbl.setStyleSheet(
-            "color:#cc6644;"
-            "font-family:'Courier New';")
-
-    def _on_grid_edit(self, val: str):
-        """
-        Handle grid/ZIP/city/MGRS entry from top bar.
-        All inputs resolve to Maidenhead grid square.
-        Label always settles on a grid — never stays as
-        a ZIP code or city name.
-        """
-        from core.location import _valid_grid, _latlon_to_grid
-        import threading
-
-        val = val.strip()
-        if not val:
-            return
-
-        def _set_grid(grid: str, display: str = "",
-                       lat: float = 0.0, lon: float = 0.0):
-            """Final step — always show Maidenhead grid."""
-            if not grid:
-                return
-            grid = grid.upper()
-            self._grid_lbl.setText(grid)
-            self._grid_lbl.setStyleSheet(
-                "color:#3fbe6f;"
-                "font-family:'Courier New';")
-            if display:
-                if hasattr(self, "_loc_lbl"):
-                    self._loc_lbl.setText(display)
-                if hasattr(self, "_sb_loc"):
-                    self._sb_loc.setText(
-                        f"Location: {display}")
-            self.cfg.grid = grid
-            if lat:
-                self.cfg.set("location.lat", lat)
-                self.cfg.set("location.lon", lon)
-            self.cfg.save()
-            # Notify all tabs of location change
-            for key, tab in self._tab_map.items():
-                if hasattr(tab, "on_location_change"):
-                    try:
-                        tab.on_location_change(
-                            self.location)
-                    except Exception:
-                        pass
-
-        if _valid_grid(val):
-            # Already a valid grid square
-            self.location.set_from_grid(val.upper())
-            QTimer.singleShot(0,
-                lambda g=val.upper(): _set_grid(g))
-        else:
-            # ZIP, city, address — search via Nominatim
-            self._grid_lbl.setText("Searching…")
-            self._grid_lbl.setStyleSheet(
-                ""
-                "font-family:'Courier New';")
-
-            def _search(q=val):
-                try:
-                    loc = self.location.search(q)
-                    if loc and loc.is_valid:
-                        grid = loc.grid or ""
-                        if not grid and loc.lat:
-                            try:
-                                grid = _latlon_to_grid(
-                                    loc.lat, loc.lon)
-                            except Exception:
-                                pass
-                        if grid:
-                            self.location.apply(loc)
-                            city  = getattr(loc, "city",  "") or ""
-                            state = getattr(loc, "state", "") or ""
-                            disp  = ", ".join(
-                                filter(None, [city, state]))
-                            lat_v = float(
-                                getattr(loc, "lat", 0.0) or 0.0)
-                            lon_v = float(
-                                getattr(loc, "lon", 0.0) or 0.0)
-                            # Thread-safe: emit signal, not QTimer
-                            self._location_found.emit(
-                                grid, disp, lat_v, lon_v)
-                        else:
-                            self._location_failed.emit(
-                                "Not found — try grid square")
-                    else:
-                        self._location_failed.emit("Not found")
-                except Exception as e:
-                    log.debug(f"Location search: {e}")
-                    self._location_failed.emit("Search failed")
-            import threading
-            threading.Thread(
-                target=_search, daemon=True).start()
-
     def _on_safety_alert(self, title: str,
                           message: str, severity: str):
         QTimer.singleShot(0, lambda t=title, m=message,
@@ -1067,85 +890,6 @@ class MainWindow(
             self._set_tab_visible(key, True)
             if key in self._tab_actions:
                 self._tab_actions[key].setChecked(True)
-
-    # ── View actions ──────────────────────────────────────────────────────
-
-    def _set_theme(self, name: str):
-        fs = max(8, min(20, self.cfg.get("ui.font_size", 11)))
-        self.setStyleSheet(get_stylesheet(name, fs))
-        self.cfg.set("ui.theme", name)
-        self.cfg.save()
-
-    def _set_font_size(self, size: int):
-        """Change application font size globally — theme QSS + app font + tooltips."""
-        size = max(8, min(20, size))
-        theme = self.cfg.get("ui.theme", "Dark")
-        self.setStyleSheet(get_stylesheet(theme, size))
-        # QSS font-size is overridden by inline widget stylesheets, so also
-        # set the application default font — this cascades to every widget
-        # that doesn't explicitly set its own font.
-        try:
-            from PyQt6.QtWidgets import QApplication
-            from PyQt6.QtGui import QFont
-            app = QApplication.instance()
-            if app:
-                f = app.font()
-                f.setPointSize(size)
-                app.setFont(f)
-                app.setStyleSheet(
-                    app.styleSheet() +
-                    f"QToolTip{{font-size:{size}pt;"
-                    f"padding:6px;border:1px solid #333;"
-                    f"background:#1a1a1a;}}")
-        except Exception:
-            pass
-        self.cfg.set("ui.font_size", size)
-        self.cfg.save()
-        log.info(f"Font size set to {size}pt")
-
-
-    def _update_spectrum_action(self, index: int = -1):
-        """Enable the Spectrum/Waterfall toggle only on tabs that have one."""
-        act = getattr(self, '_spectrum_action', None)
-        if act is None:
-            return
-        # Only Rig and SDR tabs have a spectrum/waterfall display
-        widget = self.tabs.currentWidget()
-        has_spectrum = False
-        if widget is not None:
-            has_spectrum = (
-                hasattr(widget, '_spectrum') or
-                hasattr(widget, '_waterfall') or
-                hasattr(widget, 'toggle_spectrum') or
-                hasattr(widget, '_toggle_spectrum'))
-        act.setEnabled(has_spectrum)
-        act.setVisible(has_spectrum)
-
-    def _toggle_spectrum(self):
-        rig_tab = self._tab_map.get("rig")
-        if rig_tab and hasattr(rig_tab, '_spectrum_widget'):
-            sw = rig_tab._spectrum_widget
-            if sw:
-                visible = not sw.isVisible()
-                sw.setVisible(visible)
-                if hasattr(rig_tab, '_spec_toggle'):
-                    rig_tab._spec_toggle.setChecked(visible)
-
-    def _toggle_ui_lock(self, locked: bool):
-        """Lock/unlock UI layout — prevent accidental tab moves."""
-        self.cfg.set("ui.layout_locked", locked)
-        self.cfg.save()
-        # Enable/disable tab drag reordering
-        self.tabs.tabBar().setMovable(not locked)
-        # Lock/unlock splitters
-        from PyQt6.QtWidgets import QSplitter
-        for splitter in self.findChildren(QSplitter):
-            for i in range(splitter.count()):
-                splitter.handle(i).setEnabled(not locked)
-        icon = "🔒" if locked else "🔓"
-        self._lock_action.setText(
-            f"{icon} {'Lock' if not locked else 'Unlock'} UI Layout")
-
 
     # ── Workspace mode ────────────────────────────────────────────────────
 
@@ -1421,44 +1165,6 @@ class MainWindow(
 
 
 
-
-    def _restore_location(self):
-        """
-        Show previously saved location on startup.
-        Fires after UI is fully ready.
-        """
-        grid = self.cfg.get("location.grid_square", "") or                self.cfg.grid or ""
-        if grid:
-            self._grid_lbl.setText(grid)
-            self._grid_lbl.setStyleSheet(
-                "color:#3fbe6f;"
-                "font-family:'Courier New';")
-            # Restore full location display
-            city  = self.cfg.get("location.city", "")
-            state = self.cfg.get("location.state", "")
-            if city and state:
-                disp = f"{grid}  |  {city}, {state}"
-            elif city:
-                disp = f"{grid}  |  {city}"
-            else:
-                disp = grid
-            self._loc_lbl.setText(disp)
-            self._sb_loc.setText(f"Location: {disp}")
-        elif self.cfg.get("callsign"):
-            # Have callsign but no location — prompt
-            self._loc_lbl.setText("No location set — click grid to set")
-            self._loc_lbl.setStyleSheet("")
-
-
-
-
-
-
-    def _apply_saved_font_size(self):
-        """Apply saved font size preference on startup."""
-        size = self.cfg.get("ui.font_size", 0)
-        if size and isinstance(size, int) and 8 <= size <= 24:
-            self._set_font_size(size)
 
     def _auto_detect_software(self):
         """Silent startup scan for external programs."""

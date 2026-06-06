@@ -62,15 +62,15 @@ class TestGridToLatLon:
 
     def test_known_dxcc_locations(self):
         """Test grids for known ham radio locations."""
-        # London area — IO91
+        # London area — IO91 (grid extends -2° to 0° lon, 51°-52° lat)
         lat, lon = _grid_to_latlon("IO91")
         assert 50 < lat < 53
-        assert -2 < lon < 1
+        assert -2 <= lon < 1
 
-        # Sydney area — QF56
+        # Sydney area — QF56 (grid extends 150°-152° lon, -35°--34° lat)
         lat, lon = _grid_to_latlon("QF56")
         assert -35 < lat < -32
-        assert 150 < lon < 152
+        assert 150 <= lon < 152
 
 
 class TestLatLonToGrid:

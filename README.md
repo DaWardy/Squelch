@@ -321,6 +321,59 @@ Airspy, LimeSDR, BladeRF, PlutoSDR
 
 ---
 
+## Plugin / Add-on Modules
+
+Squelch supports first- and third-party add-on modules loaded from the
+`plugins/` directory. Modules can add new tabs, panels, data sources,
+hardware drivers, or processing pipelines without modifying core code.
+
+### Installing a module
+
+```
+plugins/
+  my_module/
+    __init__.py     ← must expose MODULE_META, register(), unregister()
+    ...
+```
+
+Drop the module folder into `plugins/` and restart Squelch.
+Modules are sandboxed to their own directory and cannot write outside it.
+
+### Writing a module
+
+```python
+MODULE_META = {
+    "name":        "My Module",
+    "version":     "0.1.0",
+    "author":      "[CALLSIGN]",
+    "description": "One sentence.",
+    "squelch_min": "0.11.0",
+}
+
+def register(app) -> list:
+    """Return list of (panel_id, widget) tuples to add to the UI."""
+    ...
+
+def unregister(app) -> None:
+    """Stop threads, release hardware, clean up."""
+    ...
+```
+
+Full module API contract: see `MODULE_API.md`.
+
+Security requirements are the same as core: no `shell=True`, `eval()`,
+`exec()`, or `pickle`. All network calls require `timeout=`.
+
+---
+
+## Contributing
+
+See `CONTRIBUTING.md`. Run `python qa_check.py` before every PR.
+CI must be green (lint, undefined-name scan, 430+ tests, security pentest)
+before a pull request will be reviewed.
+
+---
+
 ## License
 
 GNU General Public License v3.0 or later.

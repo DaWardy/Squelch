@@ -71,3 +71,8 @@ Squelch_Setup*
 # Bandit reports
 bandit_report*
 .bandit
+
+# Internal docs — personas, operational context, bootstrap templates
+docs/Squelch_Bootstrap_Template_INTERNAL.docx
+docs/Squelch_Setup_Walkthrough.docx
+docs/_gen_docs.py

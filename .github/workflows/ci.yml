@@ -23,6 +23,10 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Install system deps (Linux only)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y libportaudio2 libegl1
+
     - name: Cache pip
       uses: actions/cache@v4
       with:
@@ -34,10 +38,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pytest pytest-cov
-        pip install requests defusedxml python-dateutil maidenhead adif-io
-        pip install keyring appdirs psutil
+        pip install -r requirements.txt
 
     - name: Run tests
+      env:
+        QT_QPA_PLATFORM: offscreen
       run: |
         python -m pytest tests/ -v --tb=short \
           --cov=core --cov=network --cov=modes \

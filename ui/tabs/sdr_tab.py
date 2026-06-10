@@ -534,33 +534,33 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet(
             "QScrollArea{border:none;background:transparent;}")
-
         inner = QWidget()
         lay   = QVBoxLayout(inner)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
         scroll.setWidget(inner)
+        lay.addWidget(self._build_gain_group())
+        lay.addWidget(self._build_display_group())
+        lay.addWidget(self._build_span_group())
+        lay.addWidget(self._build_demod_group())
+        lay.addStretch()
+        return scroll
 
-        # ── Gain ──────────────────────────────────────────
+    def _build_gain_group(self) -> QGroupBox:
         gain_grp = QGroupBox(self.tr("Gain"))
         gl = QGridLayout(gain_grp)
         gl.setSpacing(4)
-
         gl.addWidget(QLabel(self.tr("RF Gain:")), 0, 0)
-        self._gain_slider = QSlider(
-            Qt.Orientation.Horizontal)
+        self._gain_slider = QSlider(Qt.Orientation.Horizontal)
         self._gain_slider.setRange(0, 60)
         self._gain_slider.setValue(30)
-        self._gain_slider.valueChanged.connect(
-            self._on_gain)
+        self._gain_slider.valueChanged.connect(self._on_gain)
         gl.addWidget(self._gain_slider, 0, 1)
         self._gain_lbl = QLabel("30 dB")
         self._gain_lbl.setStyleSheet(
-            "color:#3fbe6f;"
-            "font-family:'Courier New';")
+            "color:#3fbe6f;font-family:'Courier New';")
         self._gain_lbl.setFixedWidth(45)
         gl.addWidget(self._gain_lbl, 0, 2)
-
         gl.addWidget(QLabel(self.tr("PPM Corr:")), 1, 0)
         self._ppm_spin = QSpinBox()
         self._ppm_spin.setRange(-100, 100)
@@ -570,13 +570,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         self._ppm_spin.valueChanged.connect(
             lambda v: self._manager.set_ppm(v))
         gl.addWidget(self._ppm_spin, 1, 1, 1, 2)
-        lay.addWidget(gain_grp)
+        return gain_grp
 
-        # ── Display ───────────────────────────────────────
+    def _build_display_group(self) -> QGroupBox:
         disp_grp = QGroupBox(self.tr("Display"))
         dl = QGridLayout(disp_grp)
         dl.setSpacing(4)
-
         dl.addWidget(QLabel(self.tr("Floor:")), 0, 0)
         self._floor_spin = QDoubleSpinBox()
         self._floor_spin.setRange(-160, 0)
@@ -584,10 +583,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         self._floor_spin.setSuffix(" dB")
         self._floor_spin.setSingleStep(5)
         self._floor_spin.setFixedWidth(90)
-        self._floor_spin.valueChanged.connect(
-            self._on_floor_ceiling)
+        self._floor_spin.valueChanged.connect(self._on_floor_ceiling)
         dl.addWidget(self._floor_spin, 0, 1)
-
         dl.addWidget(QLabel(self.tr("Ceiling:")), 1, 0)
         self._ceil_spin = QDoubleSpinBox()
         self._ceil_spin.setRange(-120, 20)
@@ -595,102 +592,80 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         self._ceil_spin.setSuffix(" dB")
         self._ceil_spin.setSingleStep(5)
         self._ceil_spin.setFixedWidth(90)
-        self._ceil_spin.valueChanged.connect(
-            self._on_floor_ceiling)
+        self._ceil_spin.valueChanged.connect(self._on_floor_ceiling)
         dl.addWidget(self._ceil_spin, 1, 1)
-
         auto_btn = QPushButton(self.tr("Auto"))
         auto_btn.setFixedHeight(24)
-        auto_btn.setToolTip(
-            self.tr("Auto-set floor and ceiling"))
+        auto_btn.setToolTip(self.tr("Auto-set floor and ceiling"))
         auto_btn.clicked.connect(self._auto_range_set)
         dl.addWidget(auto_btn, 0, 2, 2, 1)
-
         dl.addWidget(QLabel(self.tr("Palette:")), 2, 0)
         self._palette_combo = QComboBox()
         self._palette_combo.addItems(list(PALETTES.keys()))
         self._palette_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._palette_combo.currentTextChanged.connect(
-            self._on_palette)
+        self._palette_combo.currentTextChanged.connect(self._on_palette)
         dl.addWidget(self._palette_combo, 2, 1, 1, 2)
-
         self._peak_cb = QCheckBox(self.tr("Peak hold"))
         self._peak_cb.toggled.connect(self._on_peak_hold)
         dl.addWidget(self._peak_cb, 3, 0, 1, 3)
-        lay.addWidget(disp_grp)
+        return disp_grp
 
-        # ── Span ──────────────────────────────────────────
+    def _build_span_group(self) -> QGroupBox:
         span_grp = QGroupBox(self.tr("Span"))
         sl = QHBoxLayout(span_grp)
         self._span_combo = QComboBox()
-        spans = ["100 kHz","500 kHz","1 MHz","2.4 MHz",
-                 "5 MHz","10 MHz","20 MHz"]
-        self._span_combo.addItems(spans)
+        self._span_combo.addItems([
+            "100 kHz", "500 kHz", "1 MHz", "2.4 MHz",
+            "5 MHz", "10 MHz", "20 MHz"])
         self._span_combo.setCurrentText("2.4 MHz")
         self._span_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._span_combo.currentIndexChanged.connect(
-            self._on_span)
+        self._span_combo.currentIndexChanged.connect(self._on_span)
         sl.addWidget(self._span_combo)
-        lay.addWidget(span_grp)
+        return span_grp
 
-        # ── Demodulator ───────────────────────────────────
+    def _build_demod_group(self) -> QGroupBox:
+        """Build demodulator group + TX sub-group (hidden for RX-only devices)."""
         demod_grp = QGroupBox(self.tr("Demodulator"))
         deml = QGridLayout(demod_grp)
         deml.setSpacing(4)
-
         deml.addWidget(QLabel(self.tr("Mode:")), 0, 0)
         self._demod_combo = QComboBox()
         self._demod_combo.addItems([
-            "AM", "NFM", "WFM", "USB", "LSB", "CW",
-            "Raw IQ"])
+            "AM", "NFM", "WFM", "USB", "LSB", "CW", "Raw IQ"])
         self._demod_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         deml.addWidget(self._demod_combo, 0, 1)
-
         deml.addWidget(QLabel(self.tr("BW:")), 1, 0)
         self._demod_bw = QComboBox()
         self._demod_bw.addItems([
-            "200 Hz","500 Hz","1 kHz","2.5 kHz",
-            "5 kHz","10 kHz","15 kHz","200 kHz"])
+            "200 Hz", "500 Hz", "1 kHz", "2.5 kHz",
+            "5 kHz", "10 kHz", "15 kHz", "200 kHz"])
         self._demod_bw.setCurrentText("10 kHz")
         self._demod_bw.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         deml.addWidget(self._demod_bw, 1, 1)
-
-        # Route to Digital tab
-        self._route_cb = QCheckBox(
-            self.tr("Route to Digital tab"))
-        self._route_cb.setToolTip(
-            self.tr(
-                "Pipe demodulated audio to the Digital "
-                "Monitor tab for P25/DMR/NXDN decode"))
+        self._route_cb = QCheckBox(self.tr("Route to Digital tab"))
+        self._route_cb.setToolTip(self.tr(
+            "Pipe demodulated audio to the Digital "
+            "Monitor tab for P25/DMR/NXDN decode"))
         self._route_cb.toggled.connect(
-            lambda c: setattr(
-                self, '_route_to_digital', c))
+            lambda c: setattr(self, '_route_to_digital', c))
         deml.addWidget(self._route_cb, 2, 0, 1, 2)
-        lay.addWidget(demod_grp)
-
-        # ── TX controls (hidden for RX-only devices) ──────
+        # TX sub-group — hidden until TX-capable hardware is detected
         self._tx_grp = QGroupBox(self.tr("Transmit"))
         txl = QVBoxLayout(self._tx_grp)
-        tx_warn = QLabel(
-            self.tr(
-                "⚠ Ensure you have appropriate\n"
-                "license before transmitting."))
-        tx_warn.setStyleSheet(
-            "color:#eeaa22;")
+        tx_warn = QLabel(self.tr(
+            "⚠ Ensure you have appropriate\nlicense before transmitting."))
+        tx_warn.setStyleSheet("color:#eeaa22;")
         txl.addWidget(tx_warn)
-
         tx_btn = QPushButton(self.tr("TX IQ File…"))
         tx_btn.clicked.connect(self._tx_iq_file)
         txl.addWidget(tx_btn)
-        self._tx_grp.hide()   # shown only for TX hardware
-        lay.addWidget(self._tx_grp)
-
-        lay.addStretch()
-        return scroll
+        self._tx_grp.hide()
+        deml.addWidget(self._tx_grp, 3, 0, 1, 2)
+        return demod_grp
 
     def _build_bottom_bar(self) -> QFrame:
         bar = QFrame()
@@ -701,12 +676,17 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(8)
+        lay.addWidget(self._build_recorder_group())
+        lay.addWidget(self._build_scanner_group())
+        lay.addWidget(self._build_recordings_group())
+        lay.addStretch()
+        self._refresh_recordings()
+        return bar
 
-        # ── IQ Recorder ───────────────────────────────────
+    def _build_recorder_group(self) -> QGroupBox:
         rec_grp = QGroupBox(self.tr("IQ Recorder"))
         rl = QVBoxLayout(rec_grp)
         rl.setSpacing(2)
-
         rec_btn_row = QHBoxLayout()
         self._rec_btn = QPushButton("⏺ Record")
         self._rec_btn.setFixedHeight(26)
@@ -714,7 +694,6 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             "background:#3a1a1a;color:#cc4444;"
             "border:1px solid #cc4444;border-radius:4px;")
         self._rec_btn.clicked.connect(self._toggle_record)
-
         self._play_btn = QPushButton("▶ Play")
         self._play_btn.setFixedHeight(26)
         self._play_btn.clicked.connect(self._toggle_play)
@@ -722,43 +701,35 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         self._stop_btn.setFixedHeight(26)
         self._stop_btn.clicked.connect(self._stop_playback)
         self._stop_btn.setEnabled(False)
-
         rec_btn_row.addWidget(self._rec_btn)
         rec_btn_row.addWidget(self._play_btn)
         rec_btn_row.addWidget(self._stop_btn)
         rl.addLayout(rec_btn_row)
-
         self._rec_status = QLabel(self.tr("Idle"))
-        self._rec_status.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._rec_status.setStyleSheet("font-family:'Courier New';")
         rl.addWidget(self._rec_status)
-
         self._play_bar = QProgressBar()
         self._play_bar.setRange(0, 100)
         self._play_bar.setValue(0)
         self._play_bar.setFixedHeight(6)
         self._play_bar.setTextVisible(False)
         rl.addWidget(self._play_bar)
-        lay.addWidget(rec_grp)
+        return rec_grp
 
-        # ── Scanner ───────────────────────────────────────
+    def _build_scanner_group(self) -> QGroupBox:
         scan_grp = QGroupBox(self.tr("Scanner"))
         scl = QGridLayout(scan_grp)
         scl.setSpacing(3)
-
         scl.addWidget(QLabel(self.tr("From:")), 0, 0)
         self._scan_from = QLineEdit("100.0")
         self._scan_from.setFixedWidth(70)
         scl.addWidget(self._scan_from, 0, 1)
         scl.addWidget(QLabel("MHz"), 0, 2)
-
         scl.addWidget(QLabel(self.tr("To:")), 0, 3)
         self._scan_to = QLineEdit("108.0")
         self._scan_to.setFixedWidth(70)
         scl.addWidget(self._scan_to, 0, 4)
         scl.addWidget(QLabel("MHz"), 0, 5)
-
         scl.addWidget(QLabel(self.tr("Dwell:")), 1, 0)
         self._scan_dwell = QDoubleSpinBox()
         self._scan_dwell.setRange(0.1, 10.0)
@@ -766,14 +737,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         self._scan_dwell.setSuffix(" s")
         self._scan_dwell.setFixedWidth(70)
         scl.addWidget(self._scan_dwell, 1, 1, 1, 2)
-
         scan_btns = QHBoxLayout()
         self._scan_start = QPushButton(self.tr("▶ Scan"))
         self._scan_start.setFixedHeight(24)
         self._scan_start.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
-            "border:1px solid #3fbe6f;border-radius:3px;"
-            "")
+            "border:1px solid #3fbe6f;border-radius:3px;")
         self._scan_start.clicked.connect(self._start_scan)
         self._scan_stop = QPushButton(self.tr("■ Stop"))
         self._scan_stop.setFixedHeight(24)
@@ -782,9 +751,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         scan_btns.addWidget(self._scan_start)
         scan_btns.addWidget(self._scan_stop)
         scl.addLayout(scan_btns, 1, 3, 1, 3)
-        lay.addWidget(scan_grp)
+        return scan_grp
 
-        # ── Recordings list ───────────────────────────────
+    def _build_recordings_group(self) -> QGroupBox:
+        """Build the recordings library group (combo + load + browse buttons)."""
         lib_grp = QGroupBox(self.tr("Recordings"))
         ll = QVBoxLayout(lib_grp)
         self._rec_combo = QComboBox()
@@ -792,31 +762,20 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._rec_combo.setMinimumWidth(200)
         ll.addWidget(self._rec_combo)
-        self._load_rec_btn = QPushButton(
-            self.tr("Load selected"))
+        self._load_rec_btn = QPushButton(self.tr("Load selected"))
         self._load_rec_btn.setFixedHeight(24)
         self._load_rec_btn.setToolTip(
             "Load the selected recording from Squelch's recordings folder")
-        self._load_rec_btn.clicked.connect(
-            self._load_recording)
+        self._load_rec_btn.clicked.connect(self._load_recording)
         ll.addWidget(self._load_rec_btn)
-
-        # File picker for arbitrary files anywhere on disk — recordings
-        # combo only shows files already in Squelch's recordings folder,
-        # so this is the path for everything else (.wav, .iq, etc.).
-        self._browse_rec_btn = QPushButton(
-            self.tr("Browse…"))
+        # Browse picks arbitrary .wav/.iq files outside the recordings folder
+        self._browse_rec_btn = QPushButton(self.tr("Browse…"))
         self._browse_rec_btn.setFixedHeight(24)
         self._browse_rec_btn.setToolTip(
             "Open a .wav or .iq file from anywhere on disk")
-        self._browse_rec_btn.clicked.connect(
-            self._browse_recording)
+        self._browse_rec_btn.clicked.connect(self._browse_recording)
         ll.addWidget(self._browse_rec_btn)
-        lay.addWidget(lib_grp)
-
-        lay.addStretch()
-        self._refresh_recordings()
-        return bar
+        return lib_grp
 
     # ── Device management ─────────────────────────────────────────────────
 

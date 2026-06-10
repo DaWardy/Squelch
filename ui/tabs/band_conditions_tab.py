@@ -106,25 +106,27 @@ class BandConditionsTab(SquelchPanel, QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
+        root.addLayout(self._build_header_bar(), 0)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setStyleSheet(
+            "QSplitter::handle{background:#1a1a1a;width:3px;}")
+        splitter.addWidget(self._build_solar_pane())
+        splitter.addWidget(self._build_bands_pane())
+        splitter.setSizes([280, 600])
+        root.addWidget(splitter, 1)
 
-        # ── Header bar ────────────────────────────────────────────────────
+    def _build_header_bar(self) -> QHBoxLayout:
+        from PyQt6.QtWidgets import QLineEdit, QPushButton, QComboBox, QDoubleSpinBox
         hdr = QHBoxLayout()
-        self._summary_lbl = QLabel(
-            self.tr("Fetching solar data…"))
-        self._summary_lbl.setStyleSheet(
-            "font-weight:bold;color:#3fbe6f;")
+        self._summary_lbl = QLabel(self.tr("Fetching solar data…"))
+        self._summary_lbl.setStyleSheet("font-weight:bold;color:#3fbe6f;")
         hdr.addWidget(self._summary_lbl)
-
         self._muf_lbl = QLabel("")
-        self._muf_lbl.setStyleSheet(
-            "color:#888888; font-size:10px;")
+        self._muf_lbl.setStyleSheet("color:#888888; font-size:10px;")
         self._muf_lbl.setToolTip(
             "Estimated Maximum Usable Frequency for a ~3000 km F2 path "
             "based on current SFI. Updates with solar data.")
         hdr.addWidget(self._muf_lbl)
-
-        # ── Path-to target for per-path MUF (VOACAP-style) ────────────
-        from PyQt6.QtWidgets import QLineEdit
         path_lbl = QLabel("Path to:")
         path_lbl.setStyleSheet("color:#888888; font-size:10px;")
         hdr.addWidget(path_lbl)
@@ -138,20 +140,13 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._path_edit.setStyleSheet("font-size:10px;")
         self._path_edit.returnPressed.connect(self._on_path_changed)
         hdr.addWidget(self._path_edit)
-
-        # Go button — user needs to see a clear "apply" affordance, not
-        # just press Enter (which they may not realize works).
-        from PyQt6.QtWidgets import QPushButton, QComboBox
+        # Go button — user needs a visible "apply" affordance besides Enter
         self._path_go = QPushButton("Go")
         self._path_go.setMaximumWidth(40)
         self._path_go.setToolTip("Calculate path-specific MUF/distance/bearing")
         self._path_go.clicked.connect(self._on_path_changed)
         hdr.addWidget(self._path_go)
-
-        # HAM-band quick filter — when set, the side-view uses the
-        # band's center frequency as the operator's TX freq, so the user
-        # can see how 80m vs 20m vs 10m behaves on the same path without
-        # tuning the rig. "Auto" defers to the rig's actual freq.
+        # Band filter — side-view uses band centre freq instead of rig freq
         self._band_filter = QComboBox()
         self._band_filter.addItems([
             "Auto", "160m", "80m", "60m", "40m", "30m", "20m",
@@ -163,9 +158,7 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._band_filter.currentTextChanged.connect(
             lambda *_: self._on_path_changed())
         hdr.addWidget(self._band_filter)
-
-        from PyQt6.QtWidgets import QDoubleSpinBox as _QDSB
-        self._eirp_spin = _QDSB()
+        self._eirp_spin = QDoubleSpinBox()
         self._eirp_spin.setRange(-30.0, 60.0)
         self._eirp_spin.setSingleStep(1.0)
         self._eirp_spin.setSuffix(" dBW")
@@ -179,26 +172,16 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._eirp_spin.valueChanged.connect(self._on_eirp_changed)
         hdr.addWidget(QLabel("EIRP:"))
         hdr.addWidget(self._eirp_spin)
-
         hdr.addStretch()
-
         refresh_btn = QPushButton(self.tr("↺ Refresh"))
         refresh_btn.setFixedWidth(90)
         refresh_btn.clicked.connect(self._manual_refresh)
         hdr.addWidget(refresh_btn)
-
         self._age_lbl = QLabel("")
-        self._age_lbl.setStyleSheet(
-            "")
         hdr.addWidget(self._age_lbl)
-        root.addLayout(hdr, 0)   # stretch=0 — thin top band
+        return hdr
 
-        # ── Splitter: left=solar, right=bands ─────────────────────────────
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setStyleSheet(
-            "QSplitter::handle{background:#1a1a1a;width:3px;}")
-
-        # ── Left: Solar indices ───────────────────────────────────────────
+    def _build_solar_pane(self) -> QWidget:
         left = QWidget()
         ll   = QVBoxLayout(left)
         ll.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -206,124 +189,103 @@ class BandConditionsTab(SquelchPanel, QWidget):
         ll.setSpacing(6)
         left.setMinimumWidth(260)
         left.setMaximumWidth(320)
-
-        solar_grp = QGroupBox(self.tr("Solar Indices"))
-        sg = QGridLayout(solar_grp)
-        sg.setSpacing(4)
-
-        self._solar_widgets = {}
-        indices = [
-            ("sfi",    self.tr("Solar Flux (SFI)"),   "0",   "10.7cm emission"),
-            ("sn",     self.tr("Sunspot Number"),       "0",   "Daily count"),
-            ("k",      self.tr("K-Index"),              "0",   "3-hour geomag"),
-            ("a",      self.tr("A-Index"),              "0",   "Daily geomag"),
-            ("xray",   self.tr("X-Ray Class"),          "A",   "Solar flare class"),
-            ("storm",  self.tr("Storm Level"),          "G0",  "Geomagnetic"),
-        ]
-        for row, (key, label, default, tip) in enumerate(indices):
-            lbl = QLabel(label)
-            lbl.setStyleSheet("")
-            lbl.setToolTip(tip)
-            sg.addWidget(lbl, row, 0)
-
-            val = QLabel(default)
-            val.setStyleSheet(
-                "color:#3fbe6f;"
-                "font-weight:bold;font-family:'Courier New';")
-            val.setAlignment(Qt.AlignmentFlag.AlignRight)
-            sg.addWidget(val, row, 1)
-
-            trend = QLabel("")
-            trend.setStyleSheet("")
-            trend.setFixedWidth(20)
-            sg.addWidget(trend, row, 2)
-
-            self._solar_widgets[key] = (val, trend)
-
-        ll.addWidget(solar_grp)
-
-        # Recommendations
+        ll.addWidget(self._build_solar_indices_group())
         rec_grp = QGroupBox(self.tr("Band Recommendations"))
         rl      = QVBoxLayout(rec_grp)
         self._rec_labels = []
         for _ in range(4):
             lbl = QLabel("—")
-            lbl.setStyleSheet("")
             lbl.setWordWrap(True)
             rl.addWidget(lbl)
             self._rec_labels.append(lbl)
         ll.addWidget(rec_grp)
-
-        # Aurora alert
         self._aurora_widget = QGroupBox("")
         aw = QVBoxLayout(self._aurora_widget)
         self._aurora_lbl = QLabel("")
         self._aurora_lbl.setWordWrap(True)
-        self._aurora_lbl.setStyleSheet(
-            "color:#ffaa00;")
+        self._aurora_lbl.setStyleSheet("color:#ffaa00;")
         aw.addWidget(self._aurora_lbl)
         self._aurora_widget.hide()
         ll.addWidget(self._aurora_widget)
-
         ll.addStretch()
-        splitter.addWidget(left)
+        return left
 
-        # ── Right: Band conditions grid ────────────────────────────────────
+    def _build_solar_indices_group(self) -> QGroupBox:
+        solar_grp = QGroupBox(self.tr("Solar Indices"))
+        sg = QGridLayout(solar_grp)
+        sg.setSpacing(4)
+        self._solar_widgets = {}
+        indices = [
+            ("sfi",   self.tr("Solar Flux (SFI)"),  "0",  "10.7cm emission"),
+            ("sn",    self.tr("Sunspot Number"),      "0",  "Daily count"),
+            ("k",     self.tr("K-Index"),             "0",  "3-hour geomag"),
+            ("a",     self.tr("A-Index"),             "0",  "Daily geomag"),
+            ("xray",  self.tr("X-Ray Class"),         "A",  "Solar flare class"),
+            ("storm", self.tr("Storm Level"),         "G0", "Geomagnetic"),
+        ]
+        for row, (key, label, default, tip) in enumerate(indices):
+            lbl = QLabel(label)
+            lbl.setToolTip(tip)
+            sg.addWidget(lbl, row, 0)
+            val = QLabel(default)
+            val.setStyleSheet(
+                "color:#3fbe6f;font-weight:bold;font-family:'Courier New';")
+            val.setAlignment(Qt.AlignmentFlag.AlignRight)
+            sg.addWidget(val, row, 1)
+            trend = QLabel("")
+            trend.setFixedWidth(20)
+            sg.addWidget(trend, row, 2)
+            self._solar_widgets[key] = (val, trend)
+        return solar_grp
+
+    def _build_bands_pane(self) -> QWidget:
         right = QWidget()
         rl2   = QVBoxLayout(right)
         rl2.setAlignment(Qt.AlignmentFlag.AlignTop)
         rl2.setContentsMargins(4, 0, 0, 0)
         rl2.setSpacing(4)
+        rl2.addWidget(self._build_bands_group())
+        rl2.addWidget(self._build_muf_chart_group())
+        rl2.addWidget(self._build_sideview_group())
+        rl2.addWidget(self._build_pskreporter_group())
+        rl2.addStretch()
+        return right
 
+    def _build_bands_group(self) -> QGroupBox:
         bands_grp = QGroupBox(self.tr("Band Conditions"))
         bg = QGridLayout(bands_grp)
         bg.setSpacing(6)
-
-        headers = [self.tr("Band"), self.tr("Condition"),
-                   self.tr("Indicator")]
-        for col, h in enumerate(headers):
+        for col, h in enumerate([self.tr("Band"), self.tr("Condition"),
+                                  self.tr("Indicator")]):
             lbl = QLabel(h)
-            lbl.setStyleSheet(
-                "font-weight:bold;")
+            lbl.setStyleSheet("font-weight:bold;")
             bg.addWidget(lbl, 0, col)
-
         self._band_rows = {}
-        bands = ["160m","80m","40m","30m","20m",
-                 "17m","15m","12m","10m","6m"]
-
-        for row, band in enumerate(bands, 1):
+        for row, band in enumerate(
+                ["160m", "80m", "40m", "30m", "20m",
+                 "17m", "15m", "12m", "10m", "6m"], 1):
             band_lbl = QLabel(band)
-            band_lbl.setStyleSheet(
-                ""
-                "font-family:'Courier New';")
+            band_lbl.setStyleSheet("font-family:'Courier New';")
             bg.addWidget(band_lbl, row, 0)
-
             cond_lbl = QLabel("—")
-            cond_lbl.setStyleSheet(
-                "")
             bg.addWidget(cond_lbl, row, 1)
-
             bar = QProgressBar()
             bar.setRange(0, 4)
             bar.setValue(0)
             bar.setTextVisible(False)
             bar.setFixedHeight(12)
             bar.setStyleSheet(
-                "QProgressBar{background:#111;"
-                "border:1px solid #222;border-radius:3px;}"
-                "QProgressBar::chunk{"
-                "background:#3fbe6f;border-radius:2px;}")
+                "QProgressBar{background:#111;border:1px solid #222;"
+                "border-radius:3px;}"
+                "QProgressBar::chunk{background:#3fbe6f;border-radius:2px;}")
             bg.addWidget(bar, row, 2)
-
             self._band_rows[band] = (cond_lbl, bar)
+        return bands_grp
 
-        rl2.addWidget(bands_grp)
-
-        # ── Hourly MUF chart (VOACAP-style reliability) ───────────────────
+    def _build_muf_chart_group(self) -> QGroupBox:
         hourly_grp = QGroupBox(self.tr("Hourly MUF Estimate (UTC)"))
         hl = QVBoxLayout(hourly_grp)
         hl.setContentsMargins(4, 4, 4, 4)
-
         self._muf_chart = QGraphicsView()
         self._muf_chart.setFixedHeight(90)
         self._muf_chart.setFrameShape(QFrame.Shape.NoFrame)
@@ -336,26 +298,23 @@ class BandConditionsTab(SquelchPanel, QWidget):
             "Based on solar flux and ionospheric day/night model.\n"
             "Bars show which bands are likely open each hour.")
         hl.addWidget(self._muf_chart)
-        rl2.addWidget(hourly_grp)
+        return hourly_grp
 
-        # ── Propagation side-view (educational cross-section) ──────
+    def _build_sideview_group(self) -> QGroupBox:
         from ui.widgets.propagation_sideview import PropagationSideView
+        from PyQt6.QtWidgets import QPushButton as _PB, QComboBox as _CB
         sv_grp = QGroupBox(self.tr("Path side-view (educational)"))
         sv_grp.setToolTip(
-            "Side-view of the great-circle path between you and the "
-            "target. Shows whether the current frequency will groundwave, "
-            "go skywave (1- or 2-hop), do NVIS, get absorbed below LUF, "
-            "or punch through the ionosphere above MUF.")
+            "Side-view of the great-circle path between you and the target. "
+            "Shows whether the current frequency will groundwave, go skywave "
+            "(1- or 2-hop), do NVIS, get absorbed below LUF, or punch through "
+            "the ionosphere above MUF.")
         svl = QVBoxLayout(sv_grp)
         svl.setContentsMargins(4, 4, 4, 4)
         svl.setSpacing(4)
-
-        # Terrain mode controls
-        from PyQt6.QtWidgets import (QPushButton as _PB,
-            QComboBox as _CB, QLabel as _QL)
         ctrl_row = QHBoxLayout()
         ctrl_row.setSpacing(6)
-        ctrl_row.addWidget(_QL("Terrain:"))
+        ctrl_row.addWidget(QLabel("Terrain:"))
         self._terrain_combo = _CB()
         self._terrain_combo.addItems(["Off", "Online (SRTM)", "Offline (cached)"])
         self._terrain_combo.setMaximumWidth(145)
@@ -368,7 +327,6 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._terrain_combo.currentTextChanged.connect(
             self._on_terrain_mode_changed)
         ctrl_row.addWidget(self._terrain_combo)
-
         self._terrain_dl_btn = _PB("Download tiles")
         self._terrain_dl_btn.setMaximumWidth(120)
         self._terrain_dl_btn.setToolTip(
@@ -377,49 +335,36 @@ class BandConditionsTab(SquelchPanel, QWidget):
             "Source: Amazon open terrain data (NASA SRTM, public domain).")
         self._terrain_dl_btn.clicked.connect(self._download_terrain_tiles)
         ctrl_row.addWidget(self._terrain_dl_btn)
-
         self._terrain_status = QLabel("")
         self._terrain_status.setStyleSheet("color:#888;font-size:10px;")
         ctrl_row.addWidget(self._terrain_status, 1)
         svl.addLayout(ctrl_row)
-
         self._prop_sideview = PropagationSideView()
         svl.addWidget(self._prop_sideview)
-        rl2.addWidget(sv_grp)
-        spots_grp = QGroupBox(
-            self.tr("PSKReporter — Hearing You"))
-        spl = QVBoxLayout(spots_grp)
+        return sv_grp
 
+    def _build_pskreporter_group(self) -> QGroupBox:
+        spots_grp = QGroupBox(self.tr("PSKReporter — Hearing You"))
+        spl = QVBoxLayout(spots_grp)
         self._spots_table = QTableWidget(0, 4)
         self._spots_table.setHorizontalHeaderLabels([
-            self.tr("Spotter"),
-            self.tr("Band"),
-            self.tr("SNR"),
-            self.tr("Location"),
+            self.tr("Spotter"), self.tr("Band"),
+            self.tr("SNR"), self.tr("Location"),
         ])
-        self._spots_table.horizontalHeader()\
-            .setSectionResizeMode(
-                QHeaderView.ResizeMode.ResizeToContents)
-        self._spots_table.horizontalHeader()\
-            .setSectionResizeMode(
-                3, QHeaderView.ResizeMode.Stretch)
+        self._spots_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents)
+        self._spots_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch)
         self._spots_table.setMaximumHeight(160)
         self._spots_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
         self._spots_table.setStyleSheet(
-            "QTableWidget{background:#0d0d0d;"
-            "gridline-color:#1a1a1a;"
+            "QTableWidget{background:#0d0d0d;gridline-color:#1a1a1a;"
             "alternate-background-color:#111;}"
-            "QHeaderView::section{background:#141414;"
-            "border:none;}")
+            "QHeaderView::section{background:#141414;border:none;}")
         self._spots_table.setAlternatingRowColors(True)
         spl.addWidget(self._spots_table)
-        rl2.addWidget(spots_grp)
-
-        rl2.addStretch()
-        splitter.addWidget(right)
-        splitter.setSizes([280, 600])
-        root.addWidget(splitter, 1)   # stretch=1 so it fills below the header
+        return spots_grp
 
     # ── Callbacks ─────────────────────────────────────────────────────────
 
@@ -683,9 +628,9 @@ class BandConditionsTab(SquelchPanel, QWidget):
 
     def _on_path_changed(self):
         """Recalculate band conditions for a specific path target."""
+        import threading
         target = self._path_edit.text().strip()
         if not target:
-            # Revert to default 3000 km model
             try:
                 from network.propagation import get_prop_feed
                 get_prop_feed().set_path_km(0)
@@ -694,81 +639,71 @@ class BandConditionsTab(SquelchPanel, QWidget):
             except Exception:
                 pass
             return
-
-        # Immediate feedback — the user said "no enter button" / "doesn't
-        # update". The geocode round-trip can take a couple of seconds, so
-        # paint a status RIGHT NOW so they know input was accepted.
+        # Immediate feedback — geocode round-trip can take ~2s
         self._muf_lbl.setText(f"  Resolving '{target}'…")
-
-        # Resolve target grid/call/city/ZIP to lat/lon
-        import threading
-        def _resolve():
-            from core.location import _grid_to_latlon, geocode_place
-            import re as _re
-            err_reason = ""
-            km = 0.0
-            bearing = 0.0
-            ok = False
-            try:
-                # Grid square: e.g. JO01, FN20rr — 2 letters + 2 digits
-                if _re.match(r'^[A-Ra-r]{2}[0-9]{2}', target):
-                    tlat, tlon = _grid_to_latlon(target.upper())
-                else:
-                    # ZIP/city/state/anything Nominatim understands.
-                    # If looks like a bare US ZIP (5 digits), help Nominatim.
-                    q = target
-                    if _re.match(r'^\d{5}$', target):
-                        q = f"{target}, USA"
-                    try:
-                        tlat, tlon = geocode_place(q)
-                    except Exception as e:
-                        err_reason = (
-                            "Geocoder unreachable (check internet)"
-                            if "resolve" in str(e).lower() or
-                               "Max retries" in str(e)
-                            else f"Could not find '{target}'")
-                        import logging
-                        logging.getLogger(__name__).warning(
-                            f"Path-to geocode failed for '{target}': {e}")
-                        raise
-                # My location
-                mlat = self.cfg.get("location.lat", 0.0)
-                mlon = self.cfg.get("location.lon", 0.0)
-                if not mlat and not mlon:
-                    mlat, mlon = _grid_to_latlon(
-                        self.cfg.get("location.grid_square", "FN20") or "FN20")
-                # Great-circle distance + bearing
-                import math
-                R = 6371.0
-                p1, p2 = math.radians(mlat), math.radians(tlat)
-                dp = math.radians(tlat - mlat)
-                dl = math.radians(tlon - mlon)
-                a = (math.sin(dp/2)**2 +
-                     math.cos(p1) * math.cos(p2) *
-                     math.sin(dl/2)**2)
-                km = R * 2 * math.asin(min(1.0, math.sqrt(a)))
-                # Initial bearing (great-circle), 0=N 90=E
-                y = math.sin(dl) * math.cos(p2)
-                x = (math.cos(p1) * math.sin(p2)
-                     - math.sin(p1) * math.cos(p2) * math.cos(dl))
-                bearing = (math.degrees(math.atan2(y, x)) + 360) % 360
-                ok = True
-            except Exception:
-                if not err_reason:
-                    err_reason = f"Could not resolve '{target}'"
-            # Store resolved coordinates for terrain fetch.
-            self.__terrain_tx_lat = mlat if 'mlat' in vars() else 0.0
-            self.__terrain_tx_lon = mlon if 'mlon' in vars() else 0.0
-            self.__terrain_rx_lat = tlat if 'tlat' in vars() else 0.0
-            self.__terrain_rx_lon = tlon if 'tlon' in vars() else 0.0
-            # pyqtSignal crosses thread boundaries safely
-            self._path_resolved.emit(km, bearing, target, ok, err_reason)
         try:
             self._path_resolved.disconnect()
         except TypeError:
             pass
         self._path_resolved.connect(self._apply_path_km)
-        threading.Thread(target=_resolve, daemon=True).start()
+        threading.Thread(
+            target=self._resolve_path_target,
+            args=(target,),
+            daemon=True,
+        ).start()
+
+    def _resolve_path_target(self, target: str) -> None:
+        """Worker thread: geocode *target*, compute great-circle km/bearing,
+        store terrain coords, then emit _path_resolved signal."""
+        from core.location import _grid_to_latlon, geocode_place
+        import re as _re
+        import math
+        import logging
+        err_reason = ""
+        km = bearing = 0.0
+        mlat = mlon = tlat = tlon = 0.0
+        ok = False
+        try:
+            if _re.match(r'^[A-Ra-r]{2}[0-9]{2}', target):
+                tlat, tlon = _grid_to_latlon(target.upper())
+            else:
+                q = f"{target}, USA" if _re.match(r'^\d{5}$', target) else target
+                try:
+                    tlat, tlon = geocode_place(q)
+                except Exception as e:
+                    err_reason = (
+                        "Geocoder unreachable (check internet)"
+                        if "resolve" in str(e).lower() or "Max retries" in str(e)
+                        else f"Could not find '{target}'")
+                    logging.getLogger(__name__).warning(
+                        f"Path-to geocode failed for '{target}': {e}")
+                    raise
+            mlat = self.cfg.get("location.lat", 0.0)
+            mlon = self.cfg.get("location.lon", 0.0)
+            if not mlat and not mlon:
+                mlat, mlon = _grid_to_latlon(
+                    self.cfg.get("location.grid_square", "FN20") or "FN20")
+            R = 6371.0
+            p1, p2 = math.radians(mlat), math.radians(tlat)
+            dp = math.radians(tlat - mlat)
+            dl = math.radians(tlon - mlon)
+            a = (math.sin(dp / 2) ** 2
+                 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2)
+            km = R * 2 * math.asin(min(1.0, math.sqrt(a)))
+            y = math.sin(dl) * math.cos(p2)
+            x = (math.cos(p1) * math.sin(p2)
+                 - math.sin(p1) * math.cos(p2) * math.cos(dl))
+            bearing = (math.degrees(math.atan2(y, x)) + 360) % 360
+            ok = True
+        except Exception:
+            if not err_reason:
+                err_reason = f"Could not resolve '{target}'"
+        # Store resolved coordinates for terrain tile fetch
+        self.__terrain_tx_lat = mlat
+        self.__terrain_tx_lon = mlon
+        self.__terrain_rx_lat = tlat
+        self.__terrain_rx_lon = tlon
+        self._path_resolved.emit(km, bearing, target, ok, err_reason)
 
 
 

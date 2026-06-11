@@ -625,44 +625,38 @@ class MainWindow(
 
     def _build_menu(self):
         mb = self.menuBar()
+        self._build_file_menu(mb)
+        self._build_rig_menu(mb)
+        self._build_view_menu(mb)
+        self._build_help_menu(mb)
 
-        # ── File ──────────────────────────────────────────────────────────
+    def _build_file_menu(self, mb) -> None:
         fm = mb.addMenu(self.tr("&File"))
-
         sa = QAction(self.tr("Settings…"), self)
         sa.setShortcut("Ctrl+,")
         sa.triggered.connect(self._open_settings)
         fm.addAction(sa)
-
         pa = QAction(self.tr("Paths && Executables…"), self)
         pa.triggered.connect(self._open_paths)
         fm.addAction(pa)
         fm.addSeparator()
-
         qa = QAction(self.tr("Quit"), self)
         qa.setShortcut("Ctrl+Q")
         qa.triggered.connect(self.close)
         fm.addAction(qa)
 
-        # ── Rig ───────────────────────────────────────────────────────────
+    def _build_rig_menu(self, mb) -> None:
         rm = mb.addMenu(self.tr("&Rig"))
-
-        select_rig = QAction(
-            self.tr("Select Radio Model…"), self)
+        select_rig = QAction(self.tr("Select Radio Model…"), self)
         select_rig.triggered.connect(self._select_rig_model)
         rm.addAction(select_rig)
-
-        connect_rig = QAction(
-            self.tr("Connect Rig"), self)
+        connect_rig = QAction(self.tr("Connect Rig"), self)
         connect_rig.triggered.connect(
-            lambda: self.tabs.setCurrentWidget(
-                self._tab_map["rig"]))
+            lambda: self.tabs.setCurrentWidget(self._tab_map["rig"]))
         rm.addAction(connect_rig)
 
-        # ── View ──────────────────────────────────────────────────────────
+    def _build_view_menu(self, mb) -> None:
         vm = mb.addMenu(self.tr("&View"))
-
-        # Workspace mode toggle
         ws_act = QAction(self.tr("🖥  Workspace Mode"), self)
         ws_act.setToolTip(
             "Switch to free-form workspace layout.\n"
@@ -672,8 +666,34 @@ class MainWindow(
         ws_act.triggered.connect(self._enter_workspace_mode)
         vm.addAction(ws_act)
         vm.addSeparator()
+        self._build_theme_submenu(vm)
+        self._build_font_submenu(vm)
+        vm.addSeparator()
+        spec_a = QAction(self.tr("Toggle Spectrum / Waterfall"), self)
+        spec_a.setShortcut("Ctrl+W")
+        spec_a.triggered.connect(self._toggle_spectrum)
+        self._spectrum_action = spec_a
+        vm.addAction(spec_a)
+        vm.addSeparator()
+        self._build_tabs_submenu(vm)
+        vm.addSeparator()
+        clock_a = QAction(self.tr("Toggle UTC / Local Time"), self)
+        clock_a.triggered.connect(lambda: self._toggle_clock(None))
+        vm.addAction(clock_a)
+        vm.addSeparator()
+        # Demo Mode — disables ALL transmit (C-06 Elena classroom use)
+        demo_a = QAction(self.tr("Demo Mode (disable transmit)"), self)
+        demo_a.setCheckable(True)
+        demo_a.setChecked(self.cfg.get("demo.mode", False))
+        demo_a.triggered.connect(self._toggle_demo_mode)
+        self._demo_action = demo_a
+        vm.addAction(demo_a)
+        # Guest Operator — visitor transmits with their own callsign (C-15 Sam)
+        guest_a = QAction(self.tr("Guest Operator…"), self)
+        guest_a.triggered.connect(self._open_guest_operator)
+        vm.addAction(guest_a)
 
-        # Theme submenu
+    def _build_theme_submenu(self, vm) -> None:
         theme_menu = vm.addMenu(self.tr("Theme"))
         theme_group = QActionGroup(self)
         theme_group.setExclusive(True)
@@ -682,12 +702,11 @@ class MainWindow(
             a = QAction(theme_name, self)
             a.setCheckable(True)
             a.setChecked(theme_name == current_theme)
-            a.triggered.connect(
-                lambda _, n=theme_name: self._set_theme(n))
+            a.triggered.connect(lambda _, n=theme_name: self._set_theme(n))
             theme_group.addAction(a)
             theme_menu.addAction(a)
 
-        # Font size submenu
+    def _build_font_submenu(self, vm) -> None:
         font_menu = vm.addMenu(self.tr("Font Size"))
         current_fs = self.cfg.get("ui.font_size", 11)
         fs_group = QActionGroup(self)
@@ -696,80 +715,36 @@ class MainWindow(
             a = QAction(f"{size}pt", self)
             a.setCheckable(True)
             a.setChecked(size == current_fs)
-            a.triggered.connect(
-                lambda _, s=size: self._set_font_size(s))
+            a.triggered.connect(lambda _, s=size: self._set_font_size(s))
             fs_group.addAction(a)
             font_menu.addAction(a)
 
-        vm.addSeparator()
-
-        # Spectrum toggle
-        spec_a = QAction(
-            self.tr("Toggle Spectrum / Waterfall"), self)
-        spec_a.setShortcut("Ctrl+W")
-        spec_a.triggered.connect(self._toggle_spectrum)
-        self._spectrum_action = spec_a
-        vm.addAction(spec_a)
-
-        vm.addSeparator()
-
-        # Tab visibility submenu
+    def _build_tabs_submenu(self, vm) -> None:
         tabs_menu = vm.addMenu(self.tr("Show / Hide Tabs"))
         self._tab_actions: dict[str, QAction] = {}
         for key, label, _ in TABS:
-            clean_label = label.split("  ", 1)[-1] \
-                if "  " in label else label
+            clean_label = label.split("  ", 1)[-1] if "  " in label else label
             a = QAction(clean_label, self)
             a.setCheckable(True)
             a.setChecked(self._tab_visibility.get(key, True))
             a.triggered.connect(
-                lambda checked, k=key: self._set_tab_visible(
-                    k, checked))
+                lambda checked, k=key: self._set_tab_visible(k, checked))
             self._tab_actions[key] = a
             tabs_menu.addAction(a)
 
-        vm.addSeparator()
-
-        # Clock toggle
-        clock_a = QAction(
-            self.tr("Toggle UTC / Local Time"), self)
-        clock_a.triggered.connect(
-            lambda: self._toggle_clock(None))
-        vm.addAction(clock_a)
-
-        vm.addSeparator()
-
-        # Demo Mode — disables ALL transmit (for lectures/demos, C-06 Elena)
-        demo_a = QAction(self.tr("Demo Mode (disable transmit)"), self)
-        demo_a.setCheckable(True)
-        demo_a.setChecked(self.cfg.get("demo.mode", False))
-        demo_a.triggered.connect(self._toggle_demo_mode)
-        self._demo_action = demo_a
-        vm.addAction(demo_a)
-
-        # Guest Operator — a student/visitor operates; TX stays ENABLED.
-        guest_a = QAction(self.tr("Guest Operator…"), self)
-        guest_a.triggered.connect(self._open_guest_operator)
-        vm.addAction(guest_a)
-
-        # ── Help ──────────────────────────────────────────────────────────
+    def _build_help_menu(self, mb) -> None:
         hm = mb.addMenu(self.tr("&Help"))
-
-        open_help = QAction(
-            self.tr("Open Help Window"), self)
+        open_help = QAction(self.tr("Open Help Window"), self)
         open_help.setShortcut("Ctrl+H")
         open_help.triggered.connect(self._open_help)
         hm.addAction(open_help)
-
-        open_logs = QAction(
-            self.tr("Open Diagnostic Logs"), self)
-        open_logs.setToolTip("Open the folder containing the software diagnostic log "
+        open_logs = QAction(self.tr("Open Diagnostic Logs"), self)
+        open_logs.setToolTip(
+            "Open the folder containing the software diagnostic log "
             "(not the QSO logbook)")
         open_logs.triggered.connect(self._open_log_folder)
         hm.addAction(open_logs)
-
         hm.addSeparator()
-
         about_a = QAction(self.tr("About Squelch"), self)
         about_a.triggered.connect(self._about)
         hm.addAction(about_a)

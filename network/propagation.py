@@ -380,107 +380,82 @@ class PropagationFeed:
         with self._lock:
             self._alerts = alerts
 
-    def _update_band_conditions(self):
+    @staticmethod
+    def _compute_muf_factors(sfi: float, k: float,
+                             path_km: float) -> "tuple[float, float]":
+        """Return (muf_1hop_mhz, muf_short_mhz) using ARRL/CCIR foF2 model.
+
+        Validated: ~8 MHz at SFI=100, ~11 at SFI=200, ~6.5 at SFI=70.
         """
-        Estimate band conditions from solar indices using a proper
-        foF2-based MUF model (ionospheric physics, not just SFI thresholds).
-
-        foF2 estimation follows the simplified Smith/Bradley model used in
-        amateur propagation software. For path-specific prediction the
-        Propagation Reliability approach uses MUF = foF2 × path_factor,
-        where path_factor is ~3.0 for 3000 km paths (one-hop F2), scaling
-        with distance.
-
-        Full VOACAP circuit analysis (requires target QTH) is a planned
-        enhancement; this model is usable offline with no API calls.
-        """
-        solar = self._solar
-        import math, time as _time
-
-        # ── 1. foF2 estimation from SFI ─────────────────────────────────
-        # ARRL/CCIR approximation (midlatitude, reliable for ham use):
-        #   foF2_day ≈ sqrt(SFI/25) × 4  (MHz, noon midlatitude)
-        # Validated against ionosonde data: gives ~8 MHz at SFI=100,
-        # ~11 MHz at SFI=200, ~6.5 MHz at SFI=70 (low solar activity).
-        sfi = max(70.0, float(solar.sfi or 70))
-
-        fof2_day   = math.sqrt(sfi / 25.0) * 4.0   # daytime peak (MHz)
-        fof2_night = fof2_day * 0.55                 # nighttime drop ~45%
-
-        # UTC hour proxy — smooth day/night transition
-        utc_h = (_time.gmtime().tm_hour + _time.gmtime().tm_min / 60)
-        day_frac = 0.5 + 0.5 * math.sin(
-            math.radians((utc_h - 6) * 15))   # 0=midnight, 1=noon
-        fof2 = fof2_night + (fof2_day - fof2_night) * day_frac
-
-        # ── 2. Geomagnetic depression ─────────────────────────────────────
-        k = float(solar.k_index or 0)
-        geo_factor = max(0.3, 1.0 - 0.08 * k)   # K5 → −40%, K9 → −72%
-
-        # ── 3. MUF by hop distance ────────────────────────────────────────
-        # MUF(D) = foF2 × sec(zenith_at_reflection_point)
-        # For 1-hop F2 (~3000 km): factor ≈ 3.0
-        # For short paths (< 500 km): E-layer, factor ≈ 1.5
-        # Path-specific MUF factor: sec(zenith at reflection midpoint)
-        # For 3000km: factor ~3.0; scales with distance
-        # Simplified: factor ≈ max(1.5, min(4.5, path_km / 1000 + 1.2))
-        path_km = self._path_km if self._path_km > 100 else 3000.0
+        import math
+        import time as _time
+        sfi         = max(70.0, sfi)
+        fof2_day    = math.sqrt(sfi / 25.0) * 4.0
+        fof2_night  = fof2_day * 0.55
+        utc_h       = _time.gmtime().tm_hour + _time.gmtime().tm_min / 60
+        day_frac    = 0.5 + 0.5 * math.sin(math.radians((utc_h - 6) * 15))
+        fof2        = fof2_night + (fof2_day - fof2_night) * day_frac
+        geo_factor  = max(0.3, 1.0 - 0.08 * k)          # K5→−40%, K9→−72%
+        path_km     = path_km if path_km > 100 else 3000.0
         path_factor = max(1.5, min(4.5, path_km / 1000.0 + 1.2))
-        muf_1hop  = fof2 * geo_factor * path_factor  # long path F2
-        muf_short = fof2 * geo_factor * 1.5     # short E-hop (500 km)
+        return fof2 * geo_factor * path_factor, fof2 * geo_factor * 1.5
 
-        # ── 4. Band assessment ─────────────────────────────────────────────
-        def _assess(band: str, low_mhz: float,
-                    high_mhz: float,
-                    needs_f2: bool = True) -> BandCondition:
-            # Band is open when MUF > its centre frequency
-            centre = (low_mhz + high_mhz) / 2
-            muf = muf_1hop if needs_f2 else muf_short
+    @staticmethod
+    def _assess_band_condition(band: str, low_mhz: float, high_mhz: float,
+                               needs_f2: bool, muf_1hop: float,
+                               muf_short: float, storm_level: int,
+                               k: float) -> "BandCondition":
+        """Return a BandCondition for one band given current propagation state."""
+        centre = (low_mhz + high_mhz) / 2
+        muf    = muf_1hop if needs_f2 else muf_short
+        if storm_level >= 4:
+            cond, note = "closed", "Severe storm"
+        elif storm_level >= 3 and needs_f2:
+            cond, note = "poor", "G3 storm"
+        elif muf >= high_mhz * 1.15:
+            cond, note = "excellent", ""
+        elif muf >= centre:
+            cond, note = "good", ""
+        elif muf >= low_mhz * 0.8:
+            cond, note = "fair", ""
+        else:
+            cond, note = "poor", ""
+        if k >= 4 and low_mhz < 14:
+            if cond in ("excellent", "good"):
+                cond = "fair"
+            note = f"K={k:.0f} absorption"
+        return BandCondition(
+            band=band, condition=cond,
+            muf_hz=int(muf * 1_000_000),
+            notes=note,
+            color=CONDITION_COLORS.get(cond, "#555"),
+        )
 
-            if solar.storm_level >= 4:
-                cond, note = "closed", "Severe storm"
-            elif solar.storm_level >= 3 and needs_f2:
-                cond, note = "poor", "G3 storm"
-            elif muf >= high_mhz * 1.15:
-                cond, note = "excellent", ""
-            elif muf >= centre:
-                cond, note = "good", ""
-            elif muf >= low_mhz * 0.8:
-                cond, note = "fair", ""
-            else:
-                cond, note = "poor", ""
+    def _update_band_conditions(self):
+        """Estimate band conditions using foF2-based MUF model (offline)."""
+        solar = self._solar
+        k = float(solar.k_index or 0)
+        muf_1hop, muf_short = self._compute_muf_factors(
+            float(solar.sfi or 70), k, self._path_km)
+        sl = solar.storm_level
 
-            # Auroral absorption degrades polar paths on low bands
-            if k >= 4 and low_mhz < 14:
-                if cond in ("excellent", "good"):
-                    cond = "fair"
-                note = f"K={k:.0f} absorption"
-
-            mhz = int(muf * 1_000_000)
-            return BandCondition(
-                band      = band,
-                condition = cond,
-                muf_hz    = mhz,
-                notes     = note,
-                color     = CONDITION_COLORS.get(cond, "#555"),
-            )
+        def _a(band, lo, hi, f2=True):
+            return self._assess_band_condition(
+                band, lo, hi, f2, muf_1hop, muf_short, sl, k)
 
         conditions = [
-            _assess("160m",  1.8,  2.0, False),
-            _assess("80m",   3.5,  4.0, False),
-            _assess("40m",   7.0,  7.3, True),
-            _assess("30m",  10.1, 10.15, True),
-            _assess("20m",  14.0, 14.35, True),
-            _assess("17m",  18.0, 18.17, True),
-            _assess("15m",  21.0, 21.45, True),
-            _assess("12m",  24.8, 24.99, True),
-            _assess("10m",  28.0, 29.7,  True),
-            _assess("6m",   50.0, 54.0,  False),
+            _a("160m",  1.8,  2.0,  False),
+            _a("80m",   3.5,  4.0,  False),
+            _a("40m",   7.0,  7.3),
+            _a("30m",  10.1, 10.15),
+            _a("20m",  14.0, 14.35),
+            _a("17m",  18.0, 18.17),
+            _a("15m",  21.0, 21.45),
+            _a("12m",  24.8, 24.99),
+            _a("10m",  28.0, 29.7),
+            _a("6m",   50.0, 54.0,  False),
         ]
-
-        # ── 5. MUF summary for display ────────────────────────────────────
         solar.muf_estimate_mhz = round(muf_1hop, 1)
-
         with self._lock:
             self._bands = conditions
 

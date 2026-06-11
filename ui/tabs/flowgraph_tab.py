@@ -45,6 +45,42 @@ CATEGORY_ICONS = {
 }
 
 
+# (block_key, params, [x, y]) chains for each built-in template
+_FLOWGRAPH_TEMPLATES: "dict[str, list]" = {
+    "FM Broadcast Receiver": [
+        ("soapy_source", {"freq_hz": 96_500_000, "sample_rate": 2_048_000}, [0, 0]),
+        ("wfm_demod",    {"decimation": 10},                                 [280, 0]),
+        ("audio_sink",   {"sample_rate": 48000},                             [560, 0]),
+    ],
+    "NFM Voice Scanner": [
+        ("soapy_source", {"freq_hz": 146_520_000, "sample_rate": 2_048_000}, [0, 0]),
+        ("fir_filter",   {"cutoff": 0.02},                                   [280, 0]),
+        ("nfm_demod",    {"decimation": 8},                                  [560, 0]),
+        ("audio_sink",   {"sample_rate": 48000},                             [840, 0]),
+    ],
+    "APRS Receiver": [
+        ("soapy_source", {"freq_hz": 144_390_000, "sample_rate": 2_048_000}, [0, 0]),
+        ("fir_filter",   {"cutoff": 0.025, "taps": 64},                      [280, 0]),
+        ("nfm_demod",    {"decimation": 5, "deviation": 3500},               [560, 0]),
+        ("audio_sink",   {"sample_rate": 48000},                             [840, 0]),
+    ],
+    "AM Receiver": [
+        ("soapy_source", {"freq_hz": 1_000_000, "sample_rate": 2_048_000},  [0, 0]),
+        ("am_demod",     {"decimation": 40},                                 [280, 0]),
+        ("audio_sink",   {"sample_rate": 48000},                             [560, 0]),
+    ],
+    "IQ Recording": [
+        ("soapy_source", {"freq_hz": 144_390_000, "sample_rate": 2_048_000}, [0, 0]),
+        ("iq_file_sink", {"filename": "aprs_record.iq", "format": "CF32"},  [280, 0]),
+    ],
+    "Spectrum Monitor": [
+        ("soapy_source",  {"freq_hz": 144_000_000, "sample_rate": 2_048_000}, [0, 0]),
+        ("fft",           {"fft_size": 2048, "avg": 8},                       [280, 0]),
+        ("waterfall_sink", {},                                                 [560, 0]),
+    ],
+}
+
+
 class FlowgraphTab(QWidget):
     """
     Advanced DSP flowgraph editor.
@@ -482,87 +518,21 @@ class FlowgraphTab(QWidget):
             self._set_status(msg)
 
     def _load_template(self, name: str):
-        if name.startswith("—"):
-            return
-        templates = {
-            "FM Broadcast Receiver": [
-                ("soapy_source", {"freq_hz": 96_500_000,
-                                   "sample_rate": 2_048_000},
-                 [0, 0]),
-                ("wfm_demod",   {"decimation": 10},
-                 [280, 0]),
-                ("audio_sink",  {"sample_rate": 48000},
-                 [560, 0]),
-            ],
-            "NFM Voice Scanner": [
-                ("soapy_source", {"freq_hz": 146_520_000,
-                                   "sample_rate": 2_048_000},
-                 [0, 0]),
-                ("fir_filter",  {"cutoff": 0.02},
-                 [280, 0]),
-                ("nfm_demod",   {"decimation": 8},
-                 [560, 0]),
-                ("audio_sink",  {"sample_rate": 48000},
-                 [840, 0]),
-            ],
-            "APRS Receiver": [
-                ("soapy_source", {"freq_hz": 144_390_000,
-                                   "sample_rate": 2_048_000},
-                 [0, 0]),
-                ("fir_filter",  {"cutoff": 0.025, "taps": 64},
-                 [280, 0]),
-                ("nfm_demod",   {"decimation": 5,
-                                  "deviation": 3500},
-                 [560, 0]),
-                ("audio_sink",  {"sample_rate": 48000},
-                 [840, 0]),
-            ],
-            "AM Receiver": [
-                ("soapy_source", {"freq_hz": 1_000_000,
-                                   "sample_rate": 2_048_000},
-                 [0, 0]),
-                ("am_demod",    {"decimation": 40},
-                 [280, 0]),
-                ("audio_sink",  {"sample_rate": 48000},
-                 [560, 0]),
-            ],
-            "IQ Recording": [
-                ("soapy_source", {"freq_hz": 144_390_000,
-                                   "sample_rate": 2_048_000},
-                 [0, 0]),
-                ("iq_file_sink", {"filename": "aprs_record.iq",
-                                   "format": "CF32"},
-                 [280, 0]),
-            ],
-            "Spectrum Monitor": [
-                ("soapy_source", {"freq_hz": 144_000_000,
-                                   "sample_rate": 2_048_000},
-                 [0, 0]),
-                ("fft",         {"fft_size": 2048,
-                                  "avg": 8},
-                 [280, 0]),
-                ("waterfall_sink", {},
-                 [560, 0]),
-            ],
-        }
-
-        if name not in templates:
+        if name.startswith("—") or name not in _FLOWGRAPH_TEMPLATES:
             return
         self._canvas.clear_all()
         from dsp.registry import get_registry
         registry = get_registry()
 
         nodes_created = []
-        for key, params, pos in templates[name]:
+        for key, params, pos in _FLOWGRAPH_TEMPLATES[name]:
             cls = registry.get(key)
             if cls:
-                node = self._canvas.add_node_at(
-                    key, cls.name, pos)
+                node = self._canvas.add_node_at(key, cls.name, pos)
                 if node:
                     node.param_values.update(params)
                     nodes_created.append(node)
 
-        # Wire them in sequence
         for i in range(len(nodes_created) - 1):
             src = nodes_created[i]
             dst = nodes_created[i + 1]

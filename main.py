@@ -220,14 +220,71 @@ def _fix_combo_sizing(window):
             pass
 
 
+def _copy_section_text(lbl):
+    """Copy all visible label text in the surrounding panel to the clipboard."""
+    try:
+        from PyQt6.QtWidgets import QLabel, QApplication
+        container = lbl.parentWidget()
+        for _ in range(4):
+            if container is None:
+                break
+            nxt = container.parentWidget()
+            if nxt is None:
+                break
+            container = nxt
+        root = container or lbl
+        texts = [sub.text().strip()
+                 for sub in root.findChildren(QLabel)
+                 if sub.isVisible() and sub.text().strip()]
+        if texts:
+            QApplication.clipboard().setText("\n".join(texts))
+    except Exception:
+        pass
+
+
+def _install_label_context_menu(lbl):
+    """Attach right-click context menu to a QLabel for copy actions."""
+    from PyQt6.QtWidgets import QMenu, QApplication
+    from PyQt6.QtCore import Qt
+
+    def _show_menu(pos, _lbl=lbl):
+        menu = QMenu(_lbl)
+        act_sel = menu.addAction("Copy selected text")
+        act_sec = menu.addAction("Copy section text (all of this panel)")
+        chosen = menu.exec(_lbl.mapToGlobal(pos))
+        if chosen == act_sel:
+            sel = _lbl.selectedText()
+            if sel:
+                QApplication.clipboard().setText(sel)
+        elif chosen == act_sec:
+            _copy_section_text(_lbl)
+
+    lbl.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    lbl.customContextMenuRequested.connect(_show_menu)
+
+
+def _copy_table_selection(table):
+    """Copy selected table rows to clipboard as tab-separated text."""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        sel = table.selectedItems()
+        if not sel:
+            return
+        rows: "dict[int, list[str]]" = {}
+        for item in sel:
+            rows.setdefault(item.row(), []).append(item.text())
+        text = "\n".join("\t".join(rows[r]) for r in sorted(rows))
+        QApplication.clipboard().setText(text)
+    except Exception:
+        pass
+
+
 def _make_text_selectable(window):
-    """Make all QLabels selectable and all tables Ctrl+C copyable.
-    Users expect to copy text from any view (callsigns, frequencies, etc)."""
-    from PyQt6.QtWidgets import QLabel, QTableWidget, QTreeWidget, QApplication
+    """Make all QLabels selectable and all tables Ctrl+C copyable."""
+    from PyQt6.QtWidgets import QLabel, QTableWidget
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QKeySequence, QShortcut
 
-    # Make every QLabel selectable
     for lbl in window.findChildren(QLabel):
         try:
             lbl.setTextInteractionFlags(
@@ -237,73 +294,16 @@ def _make_text_selectable(window):
             pass
 
     # Qt can't drag-select across separate label widgets (title vs body are
-    # different QLabels). For troubleshooting, give every label a right-click
-    # "Copy section text" that grabs ALL label text in its surrounding panel
-    # at once — so the whole block can be pasted in one go.
-    def _copy_section(lbl):
-        try:
-            # Walk up to a meaningful container (group box / panel / tab)
-            container = lbl.parentWidget()
-            for _ in range(4):
-                if container is None:
-                    break
-                nxt = container.parentWidget()
-                if nxt is None:
-                    break
-                container = nxt
-            root = container or lbl
-            texts = []
-            for sub in root.findChildren(QLabel):
-                if sub.isVisible():
-                    t = sub.text().strip()
-                    if t:
-                        texts.append(t)
-            if texts:
-                QApplication.clipboard().setText("\n".join(texts))
-        except Exception:
-            pass
-
-    def _install_label_menu(lbl):
-        from PyQt6.QtWidgets import QMenu
-        def _show_menu(pos, _lbl=lbl):
-            menu = QMenu(_lbl)
-            act_sel = menu.addAction("Copy selected text")
-            act_sec = menu.addAction("Copy section text (all of this panel)")
-            chosen = menu.exec(_lbl.mapToGlobal(pos))
-            if chosen == act_sel:
-                sel = _lbl.selectedText()
-                if sel:
-                    QApplication.clipboard().setText(sel)
-            elif chosen == act_sec:
-                _copy_section(_lbl)
-        lbl.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu)
-        lbl.customContextMenuRequested.connect(_show_menu)
-
+    # different QLabels) — right-click grabs all panel text in one shot.
     for lbl in window.findChildren(QLabel):
         try:
-            _install_label_menu(lbl)
-        except Exception:
-            pass
-
-    # Add Ctrl+C copy to every table and tree
-    def _copy_selection(table):
-        try:
-            sel = table.selectedItems()
-            if not sel:
-                return
-            # Group by row
-            rows = {}
-            for item in sel:
-                rows.setdefault(item.row(), []).append(item.text())
-            text = "\n".join("\t".join(rows[r]) for r in sorted(rows))
-            QApplication.clipboard().setText(text)
+            _install_label_context_menu(lbl)
         except Exception:
             pass
 
     for table in window.findChildren(QTableWidget):
         sc = QShortcut(QKeySequence.StandardKey.Copy, table)
-        sc.activated.connect(lambda t=table: _copy_selection(t))
+        sc.activated.connect(lambda t=table: _copy_table_selection(t))
 
 
 def _wiring_smoke_test(window):

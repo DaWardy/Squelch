@@ -251,17 +251,12 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             pass
 
     def _install_sdr_drivers(self):
-        import subprocess, threading, shutil, sysconfig
-        from pathlib import Path as P
-
-        selected = [p for p, cb in self._sdr_checks.items()
-                    if cb.isChecked()]
+        import threading
+        selected = [p for p, cb in self._sdr_checks.items() if cb.isChecked()]
         if not selected:
             self._sdr_log.setPlainText(
-                "No drivers selected. "
-                "Check the boxes for your hardware first.")
+                "No drivers selected. Check the boxes for your hardware first.")
             return
-
         conda = self._conda_exe()
         if not conda:
             self._sdr_log.setPlainText(
@@ -271,74 +266,11 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 "Or run manually:\n"
                 "  conda install -c conda-forge " + " ".join(selected))
             return
-
         self._sdr_install_btn.setEnabled(False)
         self._sdr_install_btn.setText("Installing...")
         self._sdr_log.setPlainText(
             "Running: conda install -c conda-forge "
             + " ".join(selected) + "\n\nPlease wait...")
-
-        def _run():
-            try:
-                result = subprocess.run(
-                    [conda, "install", "-c", "conda-forge",
-                     "-y", "--quiet"] + selected,
-                    capture_output=True, text=True)
-
-                if result.returncode == 0:
-                    # Copy plugin .pyd files into venv
-                    try:
-                        site = P(sysconfig.get_path("purelib"))
-                    except Exception:
-                        import sys
-                        site = P(sys.prefix) / "Lib" / "site-packages"
-
-                    conda_sp = None
-                    for root in [
-                        P.home() / "miniforge3" / "Lib" / "site-packages",
-                        P.home() / "miniconda3"  / "Lib" / "site-packages",
-                        P("C:/miniforge3/Lib/site-packages"),
-                        P("C:/miniconda3/Lib/site-packages"),
-                    ]:
-                        if root.exists():
-                            conda_sp = root
-                            break
-
-                    stem_map = {
-                        "soapyrtlsdr":   "SoapyRTLSDR",
-                        "soapyhackrf":   "SoapyHackRF",
-                        "soapysdrplay3": "SoapySDRPlay",
-                        "soapyuhd":      "SoapyUHD",
-                        "soapyairspy":   "SoapyAirspy",
-                        "limesuite":     "SoapyLMS7",
-                    }
-                    copied = []
-                    if conda_sp:
-                        for pkg in selected:
-                            stem = stem_map.get(pkg, pkg)
-                            for pyd in conda_sp.glob(stem + "*.pyd"):
-                                try:
-                                    shutil.copy2(pyd, site / pyd.name)
-                                    copied.append(pyd.name)
-                                except Exception:
-                                    pass
-
-                    msg = "Installation complete.\n\n"
-                    if copied:
-                        msg += "Copied to venv:\n"
-                        msg += "\n".join("  " + f for f in copied)
-                        msg += "\n\nRestart Squelch to use new drivers."
-                    else:
-                        msg += "conda install succeeded but no .pyd files "
-                        msg += "found to copy.\nRun fix_soapysdr.bat."
-                else:
-                    msg = ("conda install failed.\n\n"
-                           + (result.stderr or result.stdout)[:400])
-            except Exception as exc:
-                msg = "Error: " + str(exc)
-
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(0, lambda m=msg: _done(m))
 
         def _done(msg):
             try:
@@ -349,7 +281,73 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             except RuntimeError:
                 pass
 
+        def _run():
+            from PyQt6.QtCore import QTimer
+            msg = self._run_conda_install(conda, selected)
+            QTimer.singleShot(0, lambda m=msg: _done(m))
+
         threading.Thread(target=_run, daemon=True).start()
+
+    @staticmethod
+    def _find_conda_site_packages() -> "object":  # returns pathlib.Path or None
+        """Return the first conda site-packages directory found, or None."""
+        from pathlib import Path as P
+        for root in [
+            P.home() / "miniforge3" / "Lib" / "site-packages",
+            P.home() / "miniconda3"  / "Lib" / "site-packages",
+            P("C:/miniforge3/Lib/site-packages"),
+            P("C:/miniconda3/Lib/site-packages"),
+        ]:
+            if root.exists():
+                return root
+        return None
+
+    @staticmethod
+    def _copy_soapy_plugins(conda_sp, selected, site) -> "list[str]":
+        """Copy SoapySDR .pyd plugins from conda_sp into the venv site-packages."""
+        import shutil
+        STEM_MAP = {
+            "soapyrtlsdr": "SoapyRTLSDR", "soapyhackrf": "SoapyHackRF",
+            "soapysdrplay3": "SoapySDRPlay", "soapyuhd": "SoapyUHD",
+            "soapyairspy": "SoapyAirspy", "limesuite": "SoapyLMS7",
+        }
+        copied = []
+        for pkg in selected:
+            stem = STEM_MAP.get(pkg, pkg)
+            for pyd in conda_sp.glob(stem + "*.pyd"):
+                try:
+                    shutil.copy2(pyd, site / pyd.name)
+                    copied.append(pyd.name)
+                except Exception:
+                    pass
+        return copied
+
+    def _run_conda_install(self, conda, selected) -> str:
+        """Run conda install in a worker thread; return a result message."""
+        import subprocess, sysconfig
+        from pathlib import Path as P
+        try:
+            result = subprocess.run(
+                [conda, "install", "-c", "conda-forge", "-y", "--quiet"] + selected,
+                capture_output=True, text=True)
+            if result.returncode != 0:
+                return "conda install failed.\n\n" + (result.stderr or result.stdout)[:400]
+            try:
+                site = P(sysconfig.get_path("purelib"))
+            except Exception:
+                import sys
+                site = P(sys.prefix) / "Lib" / "site-packages"
+            conda_sp = self._find_conda_site_packages()
+            copied = self._copy_soapy_plugins(conda_sp, selected, site) if conda_sp else []
+            msg = "Installation complete.\n\n"
+            if copied:
+                msg += "Copied to venv:\n" + "\n".join("  " + f for f in copied)
+                msg += "\n\nRestart Squelch to use new drivers."
+            else:
+                msg += "conda install succeeded but no .pyd files found to copy.\nRun fix_soapysdr.bat."
+            return msg
+        except Exception as exc:
+            return "Error: " + str(exc)
 
 
     # ── Settings save helpers (one per tab section) ──────────────────────

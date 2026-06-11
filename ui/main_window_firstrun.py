@@ -129,37 +129,46 @@ class _MainWindowFirstrunMixin:
 
 
     def _first_run_dialog_impl(self):
+        dlg, cs_edit, loc_edit, rig_combo = self._build_firstrun_dialog()
+        dlg.raise_()
+        dlg.activateWindow()
+        if not dlg.exec():
+            return
+        cs = re.sub(r'[^A-Z0-9/]', '', cs_edit.text().strip().upper())
+        loc = loc_edit.text().strip()
+        rig_choice = rig_combo.currentData()
+        if rig_choice and rig_choice not in ("", "none"):
+            self.cfg.set("rig.preset", rig_choice)
+            self.cfg.save()
+        if cs:
+            self.cfg.callsign = cs
+            self._cs_lbl.setText(cs)
+        if loc:
+            self._apply_firstrun_location(loc.strip())
+        self.cfg.save()
+
+    def _build_firstrun_dialog(self) -> "tuple":
+        """Build and return (dlg, cs_edit, loc_edit, rig_combo)."""
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Welcome to {APP_NAME}")
         dlg.setMinimumWidth(440)
         lay = QVBoxLayout(dlg)
-
         intro = QLabel(
-            f"<b style=''>"
-            f"Welcome to {APP_NAME} v{VERSION}</b><br><br>"
+            f"<b>Welcome to {APP_NAME} v{VERSION}</b><br><br>"
             "Enter your callsign and location to get started.<br>"
             "Location resolves to a Maidenhead grid square — "
             "the universal reference for amateur radio.<br>"
-            "You can also click either value in the top bar "
-            "to edit at any time.")
+            "You can also click either value in the top bar to edit at any time.")
         intro.setWordWrap(True)
         lay.addWidget(intro)
-
         form = QFormLayout()
         cs_edit = QLineEdit()
         cs_edit.setPlaceholderText("e.g. W4XYZ")
         cs_edit.setMaxLength(12)
-
         loc_edit = QLineEdit()
-        loc_edit.setPlaceholderText(
-            "Maidenhead grid (DM79rr), ZIP, city, or MGRS")
+        loc_edit.setPlaceholderText("Maidenhead grid (DM79rr), ZIP, city, or MGRS")
         loc_edit.setMaxLength(30)
-
-        # Try to auto-detect location
         self._auto_fill_location(loc_edit)
-
-        # Rig step (C-02, Dorothy): a friendly, optional radio picker.
-        from PyQt6.QtWidgets import QComboBox
         rig_combo = QComboBox()
         rig_combo.addItem("I'll set this up later", "")
         rig_combo.addItem("No radio yet — just exploring", "none")
@@ -172,92 +181,63 @@ class _MainWindowFirstrunMixin:
                           "YAESU FT-991A", "KENWOOD TS-590S",
                           "Other / configure later"):
                 rig_combo.addItem(label, label)
-
         form.addRow("Callsign:", cs_edit)
         form.addRow("Location:", loc_edit)
         form.addRow("Radio:", rig_combo)
         lay.addLayout(form)
-
         hint = QLabel(
             "Find your grid: "
-            "<a href='https://www.levinecentral.com/"
-            "ham/grid_square.php' style='color:#3fbe6f'>"
-            "levinecentral.com</a>")
+            "<a href='https://www.levinecentral.com/ham/grid_square.php'"
+            " style='color:#3fbe6f'>levinecentral.com</a>")
         hint.setOpenExternalLinks(True)
         hint.setStyleSheet("")
         lay.addWidget(hint)
-
-        btns = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.accept)
         lay.addWidget(btns)
+        return dlg, cs_edit, loc_edit, rig_combo
 
-        dlg.raise_()
-        dlg.activateWindow()
-        if dlg.exec():
-            cs = re.sub(r'[^A-Z0-9/]', '',
-                        cs_edit.text().strip().upper())
-            loc = loc_edit.text().strip()
-            rig_choice = rig_combo.currentData()
-            if rig_choice and rig_choice not in ("", "none"):
-                self.cfg.set("rig.preset", rig_choice)
-                self.cfg.save()
+    def _apply_firstrun_location(self, loc_clean: str) -> None:
+        """Apply first-run location: direct grid or async geocoder search."""
+        import threading
+        from core.location import _valid_grid
+        if _valid_grid(loc_clean.upper()):
+            self.cfg.grid = loc_clean.upper()
+            self.location.set_from_grid(loc_clean.upper())
+            self._grid_lbl.setText(loc_clean.upper())
+            return
+        self._grid_lbl.setText(self.tr("Searching…"))
 
-            if cs:
-                self.cfg.callsign = cs
-                self._cs_lbl.setText(cs)
-
-            if loc:
-                from core.location import _valid_grid
-                loc_clean = loc.strip()
-                if _valid_grid(loc_clean.upper()):
-                    self.cfg.grid = loc_clean.upper()
-                    self.location.set_from_grid(
-                        loc_clean.upper())
-                    self._grid_lbl.setText(loc_clean.upper())
+        def _search(q=loc_clean):
+            try:
+                result = self.location.search(q)
+                if result and result.is_valid:
+                    def _apply(r=result):
+                        self.location.apply(r)
+                        grid = r.grid or ""
+                        if grid:
+                            self.cfg.grid = grid
+                        if r.lat:
+                            self.cfg.set("location.lat", r.lat)
+                            self.cfg.set("location.lon", r.lon)
+                        self.cfg.save()
+                        self._grid_lbl.setText(grid or q)
+                        self._grid_lbl.setStyleSheet(
+                            "color:#3fbe6f;font-family:'Courier New';")
+                        city  = getattr(r, "city",  "")
+                        state = getattr(r, "state", "")
+                        disp  = ", ".join(filter(None, [city, state]))
+                        if disp and hasattr(self, "_loc_lbl"):
+                            self._loc_lbl.setText(disp)
+                    QTimer.singleShot(0, _apply)
                 else:
-                    import threading
-                    self._grid_lbl.setText(
-                        self.tr("Searching…"))
-                    def _search(q=loc_clean):
-                        try:
-                            result = self.location.search(q)
-                            if result and result.is_valid:
-                                def _apply(r=result):
-                                    self.location.apply(r)
-                                    grid = r.grid or ""
-                                    if grid:
-                                        self.cfg.grid = grid
-                                    if r.lat:
-                                        self.cfg.set(
-                                            "location.lat", r.lat)
-                                        self.cfg.set(
-                                            "location.lon", r.lon)
-                                    self.cfg.save()
-                                    self._grid_lbl.setText(
-                                        grid or q)
-                                    self._grid_lbl.setStyleSheet(
-                                        "color:#3fbe6f;"
-                                        ""
-                                        "font-family:'Courier New';")
-                                    city  = getattr(r, "city",  "")
-                                    state = getattr(r, "state", "")
-                                    disp  = ", ".join(
-                                        filter(None, [city, state]))
-                                    if disp and hasattr(self, "_loc_lbl"):
-                                        self._loc_lbl.setText(disp)
-                                QTimer.singleShot(0, _apply)
-                            else:
-                                QTimer.singleShot(0,
-                                    lambda: self._grid_lbl.setText(
-                                        "Not found — try grid square"))
-                        except Exception as e:
-                            log.warning(f"First run location: {e}")
-                            QTimer.singleShot(0,
-                                lambda: self._grid_lbl.setText(
-                                    "Search failed"))
-                    threading.Thread(
-                        target=_search, daemon=True).start()
+                    QTimer.singleShot(
+                        0, lambda: self._grid_lbl.setText(
+                            "Not found — try grid square"))
+            except Exception as e:
+                log.warning(f"First run location: {e}")
+                QTimer.singleShot(
+                    0, lambda: self._grid_lbl.setText("Search failed"))
 
-            self.cfg.save()
+        threading.Thread(target=_search, daemon=True).start()
 

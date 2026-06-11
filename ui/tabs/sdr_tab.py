@@ -314,32 +314,30 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(8)
+        self._toolbar_add_device_group(lay)
+        self._toolbar_add_freq_group(lay)
+        self._toolbar_add_step_group(lay)
+        self._toolbar_add_extras(lay)
+        return bar
 
-        # Device selector
-        dev_lbl = QLabel(self.tr("Device:"))
-        dev_lbl.setStyleSheet("")
-        lay.addWidget(dev_lbl)
-
+    def _toolbar_add_device_group(self, lay) -> None:
+        lay.addWidget(QLabel(self.tr("Device:")))
         self._dev_combo = QComboBox()
         self._dev_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._dev_combo.setMinimumWidth(200)
         self._dev_combo.addItem(self.tr("— Scanning… —"))
-        self._dev_combo.currentIndexChanged.connect(
-            self._on_device_select)
+        self._dev_combo.currentIndexChanged.connect(self._on_device_select)
         lay.addWidget(self._dev_combo)
-
         rescan_btn = QPushButton(self.tr("⟳"))
         rescan_btn.setFixedSize(26, 26)
         rescan_btn.setToolTip(self.tr("Rescan for SDR hardware"))
         rescan_btn.clicked.connect(self._enumerate_devices)
         lay.addWidget(rescan_btn)
-
         self._dev_type_lbl = QLabel("")
         self._dev_type_lbl.setStyleSheet(
             "color:#888;font-size:10px;font-family:'Courier New';")
         lay.addWidget(self._dev_type_lbl)
-
         self._connect_btn = QPushButton(self.tr("Connect"))
         self._connect_btn.setFixedWidth(80)
         self._connect_btn.setStyleSheet(
@@ -347,186 +345,137 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             "border:1px solid #3fbe6f;border-radius:4px;")
         self._connect_btn.clicked.connect(self._connect_sdr)
         lay.addWidget(self._connect_btn)
-
         self._sdr_status = QLabel("● Disconnected")
-        self._sdr_status.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._sdr_status.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._sdr_status)
         lay.addWidget(_vsep())
 
-        # Frequency display
-        self._freq_edit = QLineEdit(
-            f"{self._center_hz/1e6:.4f}")
+    def _toolbar_add_freq_group(self, lay) -> None:
+        self._freq_edit = QLineEdit(f"{self._center_hz/1e6:.4f}")
         self._freq_edit.setFixedWidth(110)
         self._freq_edit.setStyleSheet(
             "background:#1a1a1a;color:#3fbe6f;"
             "font-family:'Courier New';"
             "border:1px solid #333;border-radius:3px;"
             "padding:2px 6px;")
-        self._freq_edit.returnPressed.connect(
-            self._on_freq_enter)
+        self._freq_edit.returnPressed.connect(self._on_freq_enter)
         lay.addWidget(self._freq_edit)
-
         self._freq_unit = QComboBox()
         self._freq_unit.addItems(["MHz", "kHz", "Hz"])
         self._freq_unit.setFixedWidth(55)
         lay.addWidget(self._freq_unit)
         lay.addWidget(_vsep())
 
-        # Step sizes
-        step_lbl = QLabel("Step:")
-        step_lbl.setStyleSheet("")
-        lay.addWidget(step_lbl)
-
+    def _toolbar_add_step_group(self, lay) -> None:
+        lay.addWidget(QLabel("Step:"))
         self._step_btns = []
         self._step_grp  = QButtonGroup(self)
         self._step_grp.setExclusive(True)
-        for i, (hz, lbl) in enumerate(
-                zip(SDR_STEP_SIZES, SDR_STEP_LABELS)):
+        for i, (hz, lbl) in enumerate(zip(SDR_STEP_SIZES, SDR_STEP_LABELS)):
             btn = QPushButton(lbl)
             btn.setCheckable(True)
             btn.setChecked(i == self._step_idx)
             btn.setFixedHeight(22)
-            btn.setStyleSheet("""
-                QPushButton{border:1px solid #222;
-                  border-radius:3px;background:#111;
-                  padding:0 4px;}
-                QPushButton:checked{background:#1a3a1a;
-                  color:#3fbe6f;border-color:#3fbe6f;}
-                QPushButton:hover{background:#1e2e1e;}
-            """)
-            btn.clicked.connect(
-                lambda _, idx=i: self._set_step(idx))
+            btn.setStyleSheet(
+                "QPushButton{border:1px solid #222;border-radius:3px;"
+                "background:#111;padding:0 4px;}"
+                "QPushButton:checked{background:#1a3a1a;color:#3fbe6f;"
+                "border-color:#3fbe6f;}"
+                "QPushButton:hover{background:#1e2e1e;}")
+            btn.clicked.connect(lambda _, idx=i: self._set_step(idx))
             self._step_btns.append(btn)
             self._step_grp.addButton(btn)
             lay.addWidget(btn)
-
         lay.addWidget(_vsep())
 
-        # TX indicator (only shown for TX-capable hardware)
+    def _toolbar_add_extras(self, lay) -> None:
+        """TX indicator (hidden until TX hardware detected) + optional rig-tune button."""
         self._tx_indicator = QLabel("● TX")
         self._tx_indicator.setStyleSheet(
-            "color:#cc4444;"
-            "font-family:'Courier New';")
+            "color:#cc4444;font-family:'Courier New';")
         self._tx_indicator.hide()
         lay.addWidget(self._tx_indicator)
-
         lay.addStretch()
-
-        # Tune to rig button
         if self.rig:
-            rig_btn = QPushButton(
-                self.tr("← Rig Freq"))
+            rig_btn = QPushButton(self.tr("← Rig Freq"))
             rig_btn.setFixedWidth(90)
-            rig_btn.setToolTip(
-                self.tr("Tune SDR to current rig frequency"))
+            rig_btn.setToolTip(self.tr("Tune SDR to current rig frequency"))
             rig_btn.clicked.connect(self._tune_to_rig)
             lay.addWidget(rig_btn)
 
-        return bar
-
     def _build_waterfall(self) -> QWidget:
+        from PyQt6.QtWidgets import QSplitter
         w   = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
+        self._build_spectrum_plot()
+        self._build_waterfall_plot()
+        self._seg_items = []
+        wf_splitter = QSplitter(Qt.Orientation.Vertical)
+        wf_splitter.setStyleSheet(
+            "QSplitter::handle{background:#2a2a2a;height:4px;"
+            "border-top:1px solid #333;}")
+        spec_container = QWidget()
+        sc_lay = QVBoxLayout(spec_container)
+        sc_lay.setContentsMargins(0, 0, 0, 0)
+        sc_lay.addWidget(self._spec_plot)
+        wf_container = QWidget()
+        wc_lay = QVBoxLayout(wf_container)
+        wc_lay.setContentsMargins(0, 0, 0, 0)
+        wc_lay.addWidget(self._wf_plot)
+        wf_splitter.addWidget(spec_container)
+        wf_splitter.addWidget(wf_container)
+        wf_splitter.setSizes([120, 280])   # spectrum 30%, waterfall 70%
+        wf_splitter.setChildrenCollapsible(False)
+        lay.addWidget(wf_splitter)
+        return w
 
-        # Spectrum plot
-        self._spec_plot = pg.PlotWidget(
-            background="#080808")
+    def _build_spectrum_plot(self) -> None:
+        """Build self._spec_plot with curves, CF marker, and level region."""
+        self._spec_plot = pg.PlotWidget(background="#080808")
         self._spec_plot.setFixedHeight(120)
-        self._spec_plot.showGrid(
-            x=False, y=True, alpha=0.15)
+        self._spec_plot.showGrid(x=False, y=True, alpha=0.15)
         self._spec_plot.setMenuEnabled(False)
         self._spec_plot.setMouseEnabled(x=False, y=False)
         self._spec_plot.getAxis("left").setWidth(40)
         self._spec_plot.setLabel(
-            "left", "dBFS",
-            color="#444", **{"font-size": "9px"})
+            "left", "dBFS", color="#444", **{"font-size": "9px"})
         self._spec_curve = self._spec_plot.plot(
             pen=pg.mkPen("#3fbe6f", width=1))
         self._peak_curve = self._spec_plot.plot(
-            pen=pg.mkPen("#ff8800", width=1,
-                          style=Qt.PenStyle.DotLine))
+            pen=pg.mkPen("#ff8800", width=1, style=Qt.PenStyle.DotLine))
         self._peak_curve.hide()
-
-        # Center frequency marker
         self._cf_line = pg.InfiniteLine(
             angle=90, movable=False,
-            pen=pg.mkPen("#ff4444", width=1,
-                          style=Qt.PenStyle.DashLine))
+            pen=pg.mkPen("#ff4444", width=1, style=Qt.PenStyle.DashLine))
         self._spec_plot.addItem(self._cf_line)
-
-        # Floor/ceiling draggable region
         self._level_region = pg.LinearRegionItem(
             values=[self._floor_db, self._ceiling_db],
-            orientation='horizontal',
-            movable=True,
+            orientation='horizontal', movable=True,
             brush=pg.mkBrush(255, 255, 255, 8))
-        self._level_region.sigRegionChanged.connect(
-            self._on_level_region)
+        self._level_region.sigRegionChanged.connect(self._on_level_region)
         self._spec_plot.addItem(self._level_region)
+        self._spec_plot.scene().sigMouseClicked.connect(self._on_spec_click)
+        self._spec_plot.wheelEvent = self._wheel_waterfall
 
-        # Waterfall image
-        self._wf_plot = pg.PlotWidget(
-            background="#080808")
+    def _build_waterfall_plot(self) -> None:
+        """Build self._wf_plot with image item and click/wheel handlers."""
+        import threading
+        self._wf_plot = pg.PlotWidget(background="#080808")
         self._wf_plot.setMenuEnabled(False)
         self._wf_plot.hideAxis("left")
-        self._wf_plot.getAxis("bottom").setStyle(
-            tickFont=_small_font())
-
+        self._wf_plot.getAxis("bottom").setStyle(tickFont=_small_font())
         self._wf_img = pg.ImageItem()
         cmap = _make_colormap(self._palette)
         if cmap:
             self._wf_img.setColorMap(cmap)
         self._wf_plot.addItem(self._wf_img)
-
-        # Click waterfall to tune / right-click to identify
-        self._wf_plot.scene().sigMouseClicked.connect(
-            self._on_wf_click)
-        # Load Artemis DB in background
-        import threading
-        threading.Thread(
-            target=get_identifier().load_db,
-            daemon=True).start()
-        self._spec_plot.scene().sigMouseClicked.connect(
-            self._on_spec_click)
-
-        # Scroll/zoom on waterfall
+        self._wf_plot.scene().sigMouseClicked.connect(self._on_wf_click)
         self._wf_plot.wheelEvent = self._wheel_waterfall
-        self._spec_plot.wheelEvent = self._wheel_waterfall
-
-        # Band segments overlay
-        self._seg_items = []
-
-        # Splitter between spectrum and waterfall
-        # User can resize each independently
-        from PyQt6.QtWidgets import QSplitter
-        wf_splitter = QSplitter(Qt.Orientation.Vertical)
-        wf_splitter.setStyleSheet(
-            "QSplitter::handle{"
-            "background:#2a2a2a;height:4px;"
-            "border-top:1px solid #333;}")
-
-        spec_container = QWidget()
-        sc_lay = QVBoxLayout(spec_container)
-        sc_lay.setContentsMargins(0, 0, 0, 0)
-        sc_lay.addWidget(self._spec_plot)
-
-        wf_container = QWidget()
-        wc_lay = QVBoxLayout(wf_container)
-        wc_lay.setContentsMargins(0, 0, 0, 0)
-        wc_lay.addWidget(self._wf_plot)
-
-        wf_splitter.addWidget(spec_container)
-        wf_splitter.addWidget(wf_container)
-        # Default: spectrum 30%, waterfall 70%
-        wf_splitter.setSizes([120, 280])
-        wf_splitter.setChildrenCollapsible(False)
-
-        lay.addWidget(wf_splitter)
-        return w
+        # Load Artemis signal-ID database in background
+        threading.Thread(
+            target=get_identifier().load_db, daemon=True).start()
 
     def _build_controls(self) -> QScrollArea:
         scroll = QScrollArea()
@@ -1657,80 +1606,57 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
 
     # ── Help ──────────────────────────────────────────────────────────────
 
-    def _identify_signal(self, bandwidth_hz: int,
-                           freq_hz: int):
-        """Identify signal at clicked frequency."""
+    def _identify_signal(self, bandwidth_hz: int, freq_hz: int):
+        """Identify signal at clicked frequency (async via Artemis DB)."""
+        from PyQt6.QtCore import QTimer
         def _done(matches):
-            from PyQt6.QtWidgets import QDialog, QVBoxLayout
-            from PyQt6.QtWidgets import QTableWidget
-            from PyQt6.QtWidgets import QTableWidgetItem
-            from PyQt6.QtWidgets import QHeaderView
-            from PyQt6.QtWidgets import QDialogButtonBox
-            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(
+                0, lambda m=matches: self._show_signal_id_dialog(
+                    m, bandwidth_hz, freq_hz))
+        get_identifier().identify_async(bandwidth_hz, freq_hz, _done)
 
-            def _show(m=matches):
-                if not m:
-                    bw_k = bandwidth_hz / 1e3
-                    fq_m = freq_hz / 1e6
-                    QMessageBox.information(
-                        self, self.tr("Signal ID"),
-                        f"No match found for "
-                        f"{bw_k:.1f} kHz bandwidth "
-                        f"at {fq_m:.3f} MHz.\n\n"
-                        "Try adjusting bandwidth selection.")
-                    return
-
-                dlg = QDialog(self)
-                dlg.setWindowTitle(
-                    self.tr("Signal Identification"))
-                dlg.setMinimumWidth(500)
-                lay = QVBoxLayout(dlg)
-
-                bw_k = bandwidth_hz / 1e3
-                fq_m = freq_hz / 1e6
-                nm   = len(m)
-                lbl = QLabel(
-                    f"Bandwidth: {bw_k:.1f} kHz  "
-                    f"Frequency: {fq_m:.3f} MHz\n"
-                    f"Top {nm} matches from "
-                    f"Artemis database:")
-                lbl.setStyleSheet("")
-                lay.addWidget(lbl)
-
-                tbl = QTableWidget(len(m), 4)
-                tbl.setHorizontalHeaderLabels([
-                    "Signal", "Modulation",
-                    "Bandwidth", "Confidence"])
-                tbl.horizontalHeader().setSectionResizeMode(
-                    0, QHeaderView.ResizeMode.Stretch)
-                tbl.setEditTriggers(
-                    QTableWidget.EditTrigger.NoEditTriggers)
-                tbl.setStyleSheet(
-                    "font-family:'Courier New';")
-
-                for row, match in enumerate(m):
-                    tbl.setItem(row, 0,
-                        QTableWidgetItem(match.name))
-                    tbl.setItem(row, 1,
-                        QTableWidgetItem(match.modulation))
-                    tbl.setItem(row, 2,
-                        QTableWidgetItem(
-                            f"{match.bandwidth_hz/1e3:.1f} kHz"))
-                    tbl.setItem(row, 3,
-                        QTableWidgetItem(
-                            f"{match.confidence*100:.0f}%"))
-
-                lay.addWidget(tbl)
-                btns = QDialogButtonBox(
-                    QDialogButtonBox.StandardButton.Ok)
-                btns.accepted.connect(dlg.accept)
-                lay.addWidget(btns)
-                dlg.exec()
-
-            QTimer.singleShot(0, _show)
-
-        get_identifier().identify_async(
-            bandwidth_hz, freq_hz, _done)
+    def _show_signal_id_dialog(self, matches, bandwidth_hz: int,
+                                freq_hz: int) -> None:
+        """Show Artemis signal-ID results in a dialog (must run on main thread)."""
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTableWidget,
+                                      QTableWidgetItem, QHeaderView,
+                                      QDialogButtonBox)
+        bw_k = bandwidth_hz / 1e3
+        fq_m = freq_hz / 1e6
+        if not matches:
+            QMessageBox.information(
+                self, self.tr("Signal ID"),
+                f"No match found for {bw_k:.1f} kHz bandwidth "
+                f"at {fq_m:.3f} MHz.\n\n"
+                "Try adjusting bandwidth selection.")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle(self.tr("Signal Identification"))
+        dlg.setMinimumWidth(500)
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(
+            f"Bandwidth: {bw_k:.1f} kHz  Frequency: {fq_m:.3f} MHz\n"
+            f"Top {len(matches)} matches from Artemis database:")
+        lay.addWidget(lbl)
+        tbl = QTableWidget(len(matches), 4)
+        tbl.setHorizontalHeaderLabels(
+            ["Signal", "Modulation", "Bandwidth", "Confidence"])
+        tbl.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch)
+        tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tbl.setStyleSheet("font-family:'Courier New';")
+        for row, match in enumerate(matches):
+            tbl.setItem(row, 0, QTableWidgetItem(match.name))
+            tbl.setItem(row, 1, QTableWidgetItem(match.modulation))
+            tbl.setItem(row, 2, QTableWidgetItem(
+                f"{match.bandwidth_hz/1e3:.1f} kHz"))
+            tbl.setItem(row, 3, QTableWidgetItem(
+                f"{match.confidence*100:.0f}%"))
+        lay.addWidget(tbl)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btns.accepted.connect(dlg.accept)
+        lay.addWidget(btns)
+        dlg.exec()
 
     def _open_adsb_map(self):
         """Open dump1090 aircraft map in browser."""

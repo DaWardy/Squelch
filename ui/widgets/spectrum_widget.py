@@ -182,56 +182,7 @@ class SpectrumWidget(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 4, 0, 0)
         root.setSpacing(2)
-
-        # ── Toolbar ───────────────────────────────────────────────────────
-        bar = QHBoxLayout()
-        bar.setContentsMargins(4, 0, 4, 0)
-
-        lbl = QLabel("Spectrum / Waterfall")
-        lbl.setStyleSheet(" ")
-        bar.addWidget(lbl)
-        bar.addStretch()
-
-        span_lbl = QLabel("Span:")
-        span_lbl.setStyleSheet(" ")
-        bar.addWidget(span_lbl)
-        self._span_combo = QComboBox()
-        self._span_combo.addItems(["5 kHz", "10 kHz", "25 kHz",
-                                    "48 kHz", "96 kHz", "192 kHz"])
-        self._span_combo.setCurrentIndex(3)
-        self._span_combo.setFixedWidth(75)
-        self._span_combo.setStyleSheet(
-            " background:#1a1a1a;  border:1px solid #333;")
-        self._span_combo.currentIndexChanged.connect(self._on_span)
-        bar.addWidget(self._span_combo)
-
-        gain_lbl = QLabel("Gain:")
-        gain_lbl.setStyleSheet(" ")
-        bar.addWidget(gain_lbl)
-        self._gain_slider = QSlider(Qt.Orientation.Horizontal)
-        self._gain_slider.setRange(1, 20)
-        self._gain_slider.setValue(10)
-        self._gain_slider.setFixedWidth(70)
-        self._gain_slider.valueChanged.connect(self._on_gain)
-        bar.addWidget(self._gain_slider)
-
-        self._axis_toggle = QPushButton("MHz")
-        self._axis_toggle.setFixedSize(36, 20)
-        self._axis_toggle.setToolTip(
-            "Toggle between absolute MHz and kHz offset display")
-        self._axis_toggle.setStyleSheet(
-            "border:1px solid #333;border-radius:3px;"
-            "background:#1a1a1a;")
-        self._axis_toggle.clicked.connect(self._toggle_axis_mode)
-        bar.addWidget(self._axis_toggle)
-
-        self._src_lbl = QLabel("● Audio")
-        self._src_lbl.setStyleSheet(" ")
-        bar.addWidget(self._src_lbl)
-
-        root.addLayout(bar)
-
-        # ── Plots ─────────────────────────────────────────────────────────
+        root.addLayout(self._build_spectrum_toolbar())
         if not HAS_PG:
             placeholder = QLabel(
                 "pyqtgraph not installed\n"
@@ -240,14 +191,54 @@ class SpectrumWidget(QWidget):
             placeholder.setStyleSheet(" ")
             root.addWidget(placeholder)
             return
+        root.addWidget(self._build_spec_plot())
+        root.addWidget(self._build_wf_plot())
+        self._seg_items = []
+        self._spec_plot.scene().sigMouseClicked.connect(self._on_spec_click)
+        self._draw_band_segments()
 
-        # Spectrum plot
+    def _build_spectrum_toolbar(self) -> "QHBoxLayout":
+        bar = QHBoxLayout()
+        bar.setContentsMargins(4, 0, 4, 0)
+        lbl = QLabel("Spectrum / Waterfall")
+        lbl.setStyleSheet(" ")
+        bar.addWidget(lbl)
+        bar.addStretch()
+        bar.addWidget(QLabel("Span:"))
+        self._span_combo = QComboBox()
+        self._span_combo.addItems(
+            ["5 kHz", "10 kHz", "25 kHz", "48 kHz", "96 kHz", "192 kHz"])
+        self._span_combo.setCurrentIndex(3)
+        self._span_combo.setFixedWidth(75)
+        self._span_combo.setStyleSheet("background:#1a1a1a;border:1px solid #333;")
+        self._span_combo.currentIndexChanged.connect(self._on_span)
+        bar.addWidget(self._span_combo)
+        bar.addWidget(QLabel("Gain:"))
+        self._gain_slider = QSlider(Qt.Orientation.Horizontal)
+        self._gain_slider.setRange(1, 20)
+        self._gain_slider.setValue(10)
+        self._gain_slider.setFixedWidth(70)
+        self._gain_slider.valueChanged.connect(self._on_gain)
+        bar.addWidget(self._gain_slider)
+        self._axis_toggle = QPushButton("MHz")
+        self._axis_toggle.setFixedSize(36, 20)
+        self._axis_toggle.setToolTip(
+            "Toggle between absolute MHz and kHz offset display")
+        self._axis_toggle.setStyleSheet(
+            "border:1px solid #333;border-radius:3px;background:#1a1a1a;")
+        self._axis_toggle.clicked.connect(self._toggle_axis_mode)
+        bar.addWidget(self._axis_toggle)
+        self._src_lbl = QLabel("● Audio")
+        self._src_lbl.setStyleSheet(" ")
+        bar.addWidget(self._src_lbl)
+        return bar
+
+    def _build_spec_plot(self) -> "pg.PlotWidget":
         self._freq_axis = FreqAxisItem(orientation='bottom')
         self._db_axis   = DBAxisItem(orientation='left')
         self._spec_plot = pg.PlotWidget(
             background="#0a0a0a",
-            axisItems={'bottom': self._freq_axis,
-                       'left':   self._db_axis})
+            axisItems={'bottom': self._freq_axis, 'left': self._db_axis})
         self._spec_plot.setFixedHeight(90)
         self._spec_plot.showGrid(x=False, y=True, alpha=0.2)
         self._spec_plot.setMouseEnabled(x=False, y=False)
@@ -256,20 +247,13 @@ class SpectrumWidget(QWidget):
         self._spec_plot.getAxis("bottom").setStyle(tickFont=_small_font())
         self._spec_plot.getAxis("left").setStyle(tickFont=_small_font())
         self._spec_plot.getAxis("left").setWidth(32)
-        self._spec_plot.setLabel("left", "dBm", color="#555",
-                                  **{"font-size": "9px"})
-        self._spec_plot.setLabel("bottom", "MHz", color="#555",
-                                   **{"font-size": "9px"})
-        self._spec_curve = self._spec_plot.plot(
-            pen=pg.mkPen("#3fbe6f", width=1))
-
-        # VFO marker line
+        self._spec_plot.setLabel("left",   "dBm", color="#555", **{"font-size": "9px"})
+        self._spec_plot.setLabel("bottom", "MHz", color="#555", **{"font-size": "9px"})
+        self._spec_curve = self._spec_plot.plot(pen=pg.mkPen("#3fbe6f", width=1))
         self._vfo_line = pg.InfiniteLine(
             angle=90, movable=False,
             pen=pg.mkPen("#ff4444", width=1, style=Qt.PenStyle.DashLine))
         self._spec_plot.addItem(self._vfo_line)
-
-        # BW markers
         self._bw_lo = pg.InfiniteLine(
             angle=90, movable=False,
             pen=pg.mkPen("#ffaa00", width=1, style=Qt.PenStyle.DotLine))
@@ -278,8 +262,9 @@ class SpectrumWidget(QWidget):
             pen=pg.mkPen("#ffaa00", width=1, style=Qt.PenStyle.DotLine))
         self._spec_plot.addItem(self._bw_lo)
         self._spec_plot.addItem(self._bw_hi)
+        return self._spec_plot
 
-        # Waterfall image
+    def _build_wf_plot(self) -> "pg.PlotWidget":
         self._wf_widget = pg.PlotWidget(background="#0a0a0a")
         self._wf_widget.setFixedHeight(100)
         self._wf_widget.setMouseEnabled(x=False, y=False)
@@ -288,22 +273,12 @@ class SpectrumWidget(QWidget):
         self._wf_freq_axis = FreqAxisItem(orientation='bottom')
         self._wf_widget.setAxisItems({'bottom': self._wf_freq_axis})
         self._wf_widget.getAxis("bottom").setStyle(tickFont=_small_font())
-
         self._wf_img = pg.ImageItem()
         cmap = _make_colormap()
         if cmap:
             self._wf_img.setColorMap(cmap)
         self._wf_widget.addItem(self._wf_img)
-
-        # Band segment overlays (drawn on spec plot)
-        self._seg_items = []
-
-        # Click on spectrum → emit freq
-        self._spec_plot.scene().sigMouseClicked.connect(self._on_spec_click)
-
-        root.addWidget(self._spec_plot)
-        root.addWidget(self._wf_widget)
-        self._draw_band_segments()
+        return self._wf_widget
 
     # ── Public API ────────────────────────────────────────────────────────
 

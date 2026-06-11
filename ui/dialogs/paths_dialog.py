@@ -232,104 +232,80 @@ class PathsDialog(QDialog):
 
     def _build(self):
         lay = QVBoxLayout(self)
-
         intro = QLabel(self.tr(
             "Configure paths to external programs. "
             "Click ▶ to launch. "
             "Click ↓ to open the download page. "
             "Green ✅ = found, ⚠ = not configured."))
         intro.setWordWrap(True)
-        intro.setStyleSheet(
-            "")
+        intro.setStyleSheet("")
         lay.addWidget(intro)
-
-        # Tabs by category
-        tabs = QTabWidget()
-        tabs.setStyleSheet(
-            "QTabBar::tab{padding:5px 10px;"
-            "}")
-
-        # Group apps by category
-        cats: dict[str, list[AppDef]] = {}
-        for app in APPS:
-            cats.setdefault(app.category, []).append(app)
-
-        for cat_key, apps in cats.items():
-            cat_label = CATEGORY_LABELS.get(
-                cat_key, cat_key.title())
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QFrame.Shape.NoFrame)
-
-            inner  = QWidget()
-            grid   = QGridLayout(inner)
-            grid.setSpacing(6)
-            grid.setContentsMargins(6, 6, 6, 6)
-
-            # Header
-            for col, hdr in enumerate([
-                    self.tr("Program"),
-                    self.tr("Path / Status"), "", "", "", ""]):
-                if hdr:
-                    lbl = QLabel(hdr)
-                    lbl.setStyleSheet(
-                        ""
-                        "font-weight:bold;")
-                    grid.addWidget(lbl, 0, col)
-
-            sep = QFrame()
-            sep.setFrameShape(QFrame.Shape.HLine)
-            sep.setStyleSheet("color:#222;")
-            grid.addWidget(sep, 1, 0, 1, 6)
-
-            for i, app in enumerate(apps):
-                row_idx = i + 2
-                lbl_w   = QWidget()
-                lbl_lay = QVBoxLayout(lbl_w)
-                lbl_lay.setContentsMargins(0, 0, 0, 0)
-                lbl_lay.setSpacing(0)
-                name = QLabel(app.name)
-                name.setStyleSheet(
-                    ""
-                    "font-weight:bold;")
-                desc = QLabel(app.description)
-                desc.setStyleSheet(
-                    "")
-                if app.download_note:
-                    note = QLabel(app.download_note)
-                    note.setStyleSheet(
-                        "color:#446644;")
-                    note.setWordWrap(True)
-                    lbl_lay.addWidget(note)
-                lbl_lay.addWidget(name)
-                lbl_lay.addWidget(desc)
-                grid.addWidget(lbl_w, row_idx, 0)
-
-                row = AppRow(app, self.cfg)
-                grid.addWidget(row, row_idx, 1, 1, 5)
-                self._rows.append(row)
-
-            scroll.setWidget(inner)
-            tabs.addTab(scroll, cat_label)
-
-        lay.addWidget(tabs)
-
-        # Bottom buttons
+        lay.addWidget(self._build_app_tabs())
         btn_row = QHBoxLayout()
-        auto_btn = QPushButton(
-            self.tr("Auto-detect all"))
-        auto_btn.clicked.connect(
-            self._auto_detect_all)
+        auto_btn = QPushButton(self.tr("Auto-detect all"))
+        auto_btn.clicked.connect(self._auto_detect_all)
         btn_row.addWidget(auto_btn)
         btn_row.addStretch()
         lay.addLayout(btn_row)
-
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(self._save_and_accept)
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
+
+    def _build_app_tabs(self) -> "QTabWidget":
+        tabs = QTabWidget()
+        tabs.setStyleSheet("QTabBar::tab{padding:5px 10px;}")
+        cats: "dict[str, list]" = {}
+        for app in APPS:
+            cats.setdefault(app.category, []).append(app)
+        for cat_key, apps in cats.items():
+            cat_label = CATEGORY_LABELS.get(cat_key, cat_key.title())
+            tabs.addTab(self._build_category_tab(apps), cat_label)
+        return tabs
+
+    def _build_category_tab(self, apps) -> "QScrollArea":
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        inner = QWidget()
+        grid  = QGridLayout(inner)
+        grid.setSpacing(6)
+        grid.setContentsMargins(6, 6, 6, 6)
+        for col, hdr in enumerate(
+                [self.tr("Program"), self.tr("Path / Status"), "", "", "", ""]):
+            if hdr:
+                lbl = QLabel(hdr)
+                lbl.setStyleSheet("font-weight:bold;")
+                grid.addWidget(lbl, 0, col)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color:#222;")
+        grid.addWidget(sep, 1, 0, 1, 6)
+        for i, app in enumerate(apps):
+            row_idx = i + 2
+            lbl_w   = QWidget()
+            lbl_lay = QVBoxLayout(lbl_w)
+            lbl_lay.setContentsMargins(0, 0, 0, 0)
+            lbl_lay.setSpacing(0)
+            name = QLabel(app.name)
+            name.setStyleSheet("font-weight:bold;")
+            desc = QLabel(app.description)
+            desc.setStyleSheet("")
+            if app.download_note:
+                note = QLabel(app.download_note)
+                note.setStyleSheet("color:#446644;")
+                note.setWordWrap(True)
+                lbl_lay.addWidget(note)
+            lbl_lay.addWidget(name)
+            lbl_lay.addWidget(desc)
+            grid.addWidget(lbl_w, row_idx, 0)
+            row = AppRow(app, self.cfg)
+            grid.addWidget(row, row_idx, 1, 1, 5)
+            self._rows.append(row)
+        scroll.setWidget(inner)
+        return scroll
 
     def _auto_detect_all(self):
         found = 0

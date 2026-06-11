@@ -227,137 +227,118 @@ class RigTab(SquelchPanel, QWidget):
         root.addStretch()
 
     def _build_vfo_section(self, inner):
-            # ── VFO + Status ──────────────────────────────────────────────────
-            row1 = QHBoxLayout()
-    
-            vfo_grp = QGroupBox("VFO A")
-            vfl = QVBoxLayout(vfo_grp)
-            vfl.setSpacing(4)
-    
-            self.freq_display = FreqDisplay()
-            # Enable mousewheel stepping
-            self.freq_display.wheelEvent = self._wheel_on_vfo
-            vfl.addWidget(self.freq_display)
-    
-            # Band/segment info
-            self._band_info = QLabel("20m  |  Digital  |  General+")
-            self._band_info.setStyleSheet(" ")
-            vfl.addWidget(self._band_info)
-    
-            # Step size buttons
-            step_lbl = QLabel("Step:")
-            step_lbl.setStyleSheet(" ")
-            step_row = QHBoxLayout()
-            step_row.setSpacing(2)
-            step_row.addWidget(step_lbl)
-            self._step_btns = []
-            self._step_grp  = QButtonGroup(self)
-            self._step_grp.setExclusive(True)
-            for i, (hz, lbl) in enumerate(zip(STEP_SIZES, STEP_LABELS)):
-                btn = QPushButton(lbl)
-                btn.setCheckable(True)
-                btn.setChecked(i == self._step_idx)
-                btn.setFixedHeight(20)
-                btn.setStyleSheet("""
-                    QPushButton{border:1px solid palette(mid);
-                      border-radius:3px;padding:0 4px;}
-                    QPushButton:checked{background:#1a7a3f;color:#ffffff;
-                      border-color:#1a7a3f;}
-                    QPushButton:hover{border-color:palette(highlight);}
-                """)
-                btn.clicked.connect(
-                    lambda _, idx=i, s=hz: self._set_step(idx, s))
-                self._step_btns.append(btn)
-                self._step_grp.addButton(btn)
-                step_row.addWidget(btn)
-            step_row.addStretch()
-            vfl.addLayout(step_row)
-    
-            # Arrow controls + band jump
-            arrow_row = QHBoxLayout()
-            arrow_row.setSpacing(4)
-    
-            def _abtn(label, tip, cb):
-                b = QPushButton(label)
-                b.setFixedSize(34, 28)
-                b.setToolTip(tip)
-                b.setStyleSheet("""
-                    QPushButton{border:1px solid #2a2a2a;
-                      border-radius:4px;background:#141414;}
-                    QPushButton:hover{background:#1e3a1e;color:#3fbe6f;}
-                    QPushButton:pressed{background:#0a1a0a;}
-                """)
-                b.clicked.connect(cb)
-                return b
-    
-            arrow_row.addWidget(_abtn("⏮", "Jump to band start",
-                                      self._jump_band_start))
-            arrow_row.addWidget(_abtn("◄", "Step down",
-                                      self._step_down))
-            arrow_row.addWidget(_abtn("▼", "Fine tune down (1 Hz)",
-                                      lambda: self._nudge(-1)))
-            arrow_row.addWidget(_abtn("▲", "Fine tune up (1 Hz)",
-                                      lambda: self._nudge(1)))
-            arrow_row.addWidget(_abtn("►", "Step up",
-                                      self._step_up))
-            arrow_row.addWidget(_abtn("⏭", "Jump to band end",
-                                      self._jump_band_end))
-    
-            arrow_row.addSpacing(12)
-            arrow_row.addWidget(QLabel("Band:"))
-    
-            self._band_jump_combo = QComboBox()
-            self._band_jump_combo.setFixedWidth(70)
-            self._band_jump_combo.setStyleSheet(
-                "background:#1a1a1a;border:1px solid #333;")
-            self._populate_band_combo()
-            arrow_row.addWidget(self._band_jump_combo)
-    
-            go_btn = QPushButton("Go")
-            go_btn.setFixedSize(36, 24)
-            go_btn.setToolTip(
-                "Jump to conventional frequency for this band and active mode")
-            go_btn.setStyleSheet("""
-                QPushButton{border:1px solid #3fbe6f;
-                  border-radius:3px;background:#1a3a1a;color:#3fbe6f;}
-                QPushButton:hover{background:#2a4a2a;}
-            """)
-            go_btn.clicked.connect(self._band_go)
-            arrow_row.addWidget(go_btn)
-            arrow_row.addStretch()
-            vfl.addLayout(arrow_row)
-            row1.addWidget(vfo_grp, 3)
-    
-            # Status panel
-            stat_grp = QGroupBox("Status")
-            stl = QVBoxLayout(stat_grp)
-            stl.setSpacing(4)
-            self.status_lbl = QLabel("● Disconnected")
-            self.status_lbl.setStyleSheet(
-                "  font-weight:bold;")
-            sm_lbl = QLabel("S-Meter")
-            sm_lbl.setStyleSheet(" ")
-            self.smeter_bar = QProgressBar()
-            self.smeter_bar.setRange(0, 13)
-            self.smeter_bar.setValue(0)
-            self.smeter_bar.setTextVisible(False)
-            self.smeter_bar.setFixedHeight(10)
-            self.smeter_bar.setStyleSheet(
-                "QProgressBar{border:1px solid palette(mid);border-radius:2px;}"
-                "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-                "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
-            self.smeter_val = QLabel("S0")
-            self.smeter_val.setStyleSheet(" ")
-            sm_row = QHBoxLayout()
-            sm_row.addWidget(self.smeter_bar)
-            sm_row.addWidget(self.smeter_val)
-    
-            stl.addWidget(self.status_lbl)
-            stl.addWidget(sm_lbl)
-            stl.addLayout(sm_row)
-            stl.addStretch()
-            row1.addWidget(stat_grp, 2)
-            self._rig_root.addLayout(row1)
+        row1 = QHBoxLayout()
+        row1.addWidget(self._build_vfo_group(), 3)
+        row1.addWidget(self._build_status_group(), 2)
+        self._rig_root.addLayout(row1)
+
+    def _build_vfo_group(self) -> QGroupBox:
+        vfo_grp = QGroupBox("VFO A")
+        vfl = QVBoxLayout(vfo_grp)
+        vfl.setSpacing(4)
+        self.freq_display = FreqDisplay()
+        self.freq_display.wheelEvent = self._wheel_on_vfo
+        vfl.addWidget(self.freq_display)
+        self._band_info = QLabel("20m  |  Digital  |  General+")
+        self._band_info.setStyleSheet(" ")
+        vfl.addWidget(self._band_info)
+        self._build_vfo_step_row(vfl)
+        self._build_vfo_arrow_row(vfl)
+        return vfo_grp
+
+    def _build_vfo_step_row(self, vfl) -> None:
+        step_lbl = QLabel("Step:")
+        step_lbl.setStyleSheet(" ")
+        step_row = QHBoxLayout()
+        step_row.setSpacing(2)
+        step_row.addWidget(step_lbl)
+        self._step_btns = []
+        self._step_grp  = QButtonGroup(self)
+        self._step_grp.setExclusive(True)
+        for i, (hz, lbl) in enumerate(zip(STEP_SIZES, STEP_LABELS)):
+            btn = QPushButton(lbl)
+            btn.setCheckable(True)
+            btn.setChecked(i == self._step_idx)
+            btn.setFixedHeight(20)
+            btn.setStyleSheet(
+                "QPushButton{border:1px solid palette(mid);"
+                "border-radius:3px;padding:0 4px;}"
+                "QPushButton:checked{background:#1a7a3f;color:#ffffff;"
+                "border-color:#1a7a3f;}"
+                "QPushButton:hover{border-color:palette(highlight);}")
+            btn.clicked.connect(lambda _, idx=i, s=hz: self._set_step(idx, s))
+            self._step_btns.append(btn)
+            self._step_grp.addButton(btn)
+            step_row.addWidget(btn)
+        step_row.addStretch()
+        vfl.addLayout(step_row)
+
+    def _build_vfo_arrow_row(self, vfl) -> None:
+        arrow_row = QHBoxLayout()
+        arrow_row.setSpacing(4)
+        def _abtn(label, tip, cb):
+            b = QPushButton(label)
+            b.setFixedSize(34, 28)
+            b.setToolTip(tip)
+            b.setStyleSheet(
+                "QPushButton{border:1px solid #2a2a2a;"
+                "border-radius:4px;background:#141414;}"
+                "QPushButton:hover{background:#1e3a1e;color:#3fbe6f;}"
+                "QPushButton:pressed{background:#0a1a0a;}")
+            b.clicked.connect(cb)
+            return b
+        arrow_row.addWidget(_abtn("⏮", "Jump to band start", self._jump_band_start))
+        arrow_row.addWidget(_abtn("◄", "Step down", self._step_down))
+        arrow_row.addWidget(_abtn("▼", "Fine tune down (1 Hz)", lambda: self._nudge(-1)))
+        arrow_row.addWidget(_abtn("▲", "Fine tune up (1 Hz)", lambda: self._nudge(1)))
+        arrow_row.addWidget(_abtn("►", "Step up", self._step_up))
+        arrow_row.addWidget(_abtn("⏭", "Jump to band end", self._jump_band_end))
+        arrow_row.addSpacing(12)
+        arrow_row.addWidget(QLabel("Band:"))
+        self._band_jump_combo = QComboBox()
+        self._band_jump_combo.setFixedWidth(70)
+        self._band_jump_combo.setStyleSheet("background:#1a1a1a;border:1px solid #333;")
+        self._populate_band_combo()
+        arrow_row.addWidget(self._band_jump_combo)
+        go_btn = QPushButton("Go")
+        go_btn.setFixedSize(36, 24)
+        go_btn.setToolTip("Jump to conventional frequency for this band and active mode")
+        go_btn.setStyleSheet(
+            "QPushButton{border:1px solid #3fbe6f;"
+            "border-radius:3px;background:#1a3a1a;color:#3fbe6f;}"
+            "QPushButton:hover{background:#2a4a2a;}")
+        go_btn.clicked.connect(self._band_go)
+        arrow_row.addWidget(go_btn)
+        arrow_row.addStretch()
+        vfl.addLayout(arrow_row)
+
+    def _build_status_group(self) -> QGroupBox:
+        stat_grp = QGroupBox("Status")
+        stl = QVBoxLayout(stat_grp)
+        stl.setSpacing(4)
+        self.status_lbl = QLabel("● Disconnected")
+        self.status_lbl.setStyleSheet("  font-weight:bold;")
+        sm_lbl = QLabel("S-Meter")
+        sm_lbl.setStyleSheet(" ")
+        self.smeter_bar = QProgressBar()
+        self.smeter_bar.setRange(0, 13)
+        self.smeter_bar.setValue(0)
+        self.smeter_bar.setTextVisible(False)
+        self.smeter_bar.setFixedHeight(10)
+        self.smeter_bar.setStyleSheet(
+            "QProgressBar{border:1px solid palette(mid);border-radius:2px;}"
+            "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
+        self.smeter_val = QLabel("S0")
+        self.smeter_val.setStyleSheet(" ")
+        sm_row = QHBoxLayout()
+        sm_row.addWidget(self.smeter_bar)
+        sm_row.addWidget(self.smeter_val)
+        stl.addWidget(self.status_lbl)
+        stl.addWidget(sm_lbl)
+        stl.addLayout(sm_row)
+        stl.addStretch()
+        return stat_grp
     
 
 
@@ -427,155 +408,133 @@ class RigTab(SquelchPanel, QWidget):
 
 
     def _build_mode_section(self, inner):
-            # ── Mode buttons ──────────────────────────────────────────────────
-            mode_grp = QGroupBox("Mode")
-            ml = QHBoxLayout(mode_grp)
-            ml.setSpacing(4)
-            self._mode_btns = {}
-            self._mode_btn_grp = QButtonGroup(self)
-            self._mode_btn_grp.setExclusive(True)
-            for label, hamlib_mode, tip in MODE_BUTTONS:
-                btn = QPushButton(label)
-                btn.setCheckable(True)
-                btn.setFixedSize(46, 28)
-                btn.setToolTip(tip)
-                btn.setStyleSheet("""
-                    QPushButton{border:1px solid #2a2a2a;
-                      border-radius:4px;background:#141414;}
-                    QPushButton:checked{background:#1a3a1a;color:#3fbe6f;
-                      border-color:#3fbe6f;font-weight:bold;}
-                    QPushButton:hover{background:#1e2e1e;}
-                """)
-                btn.clicked.connect(
-                    lambda _, m=hamlib_mode: self._on_mode_btn(m))
-                self._mode_btns[label] = btn
-                self._mode_btn_grp.addButton(btn)
-                ml.addWidget(btn)
-    
-            ml.addSpacing(10)
-            self._auto_mode_cb = QCheckBox("Auto")
-            self._auto_mode_cb.setChecked(True)
-            self._auto_mode_cb.setToolTip(
-                "Auto-switch mode by frequency:\n"
-                "LSB below 10 MHz, USB above,\n"
-                "FM on VHF/UHF, PKT on digital freqs")
-            self._auto_mode_cb.setStyleSheet(" ")
-            self._auto_mode_cb.toggled.connect(
-                lambda c: setattr(self, '_auto_mode', c))
-            ml.addWidget(self._auto_mode_cb)
-            ml.addStretch()
-            self._rig_root.addWidget(mode_grp)
-    
-            # ── Controls: PTT / Power / Preamp / ATT / Filter ────────────────
-            ctrl_row = QHBoxLayout()
-            ctrl_row.setSpacing(6)
-    
-            self.ptt_btn = QPushButton("● TX")
-            self.ptt_btn.setCheckable(True)
-            self.ptt_btn.setFixedSize(64, 36)
-            self.ptt_btn.setStyleSheet("""
-                QPushButton{border:2px solid #883333;border-radius:5px;
-                  color:#cc4444;font-weight:bold;background:#1a0808;}
-                QPushButton:checked{background:#cc2222;color:#fff;
-                  border-color:#ff4444;}
-                QPushButton:hover{background:#2a1010;}
-            """)
-            ctrl_row.addWidget(_grp("PTT", self.ptt_btn))
-    
-            self.power_spin = QSpinBox()
-            self.power_spin.setRange(1, 100)
-            self.power_spin.setValue(100)
-            self.power_spin.setSuffix(" %")
-            self.power_spin.setFixedWidth(72)
-            self.power_spin.setSingleStep(5)
-            self.power_spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-            # Only scroll when focused
-            orig_wheel = self.power_spin.wheelEvent
-            self.power_spin.wheelEvent = lambda e: (
-                orig_wheel(e) if self.power_spin.hasFocus() else e.ignore())
-            ctrl_row.addWidget(_grp("Power", self.power_spin))
-    
-            self.preamp_combo = QComboBox()
-            self.preamp_combo.addItems(["Off", "Preamp 1", "Preamp 2"])
-            self.preamp_combo.setFixedWidth(88)
-            ctrl_row.addWidget(_grp("Preamp", self.preamp_combo))
-    
-            self.att_combo = QComboBox()
-            self.att_combo.addItems(["Off", "6 dB", "12 dB", "18 dB"])
-            self.att_combo.setFixedWidth(70)
-            ctrl_row.addWidget(_grp("ATT", self.att_combo))
-    
-            self.filter_combo = QComboBox()
-            self._update_filter_labels("USB")
-            self.filter_combo.setFixedWidth(110)
-            ctrl_row.addWidget(_grp("Filter / BW", self.filter_combo))
-    
-            ctrl_row.addStretch()
-            self._rig_root.addLayout(ctrl_row)
-    
-            # ── VFO B / Split / RIT row ───────────────────────────────────────
-            vfo_row = QHBoxLayout()
-    
-            self._vfo_a_btn = QPushButton("VFO-A")
-            self._vfo_a_btn.setFixedHeight(28)
-            self._vfo_a_btn.setCheckable(True)
-            self._vfo_a_btn.setChecked(True)
-            self._vfo_a_btn.setToolTip("Select VFO A")
-            self._vfo_a_btn.clicked.connect(
-                lambda: self._select_vfo("A"))
-            vfo_row.addWidget(self._vfo_a_btn)
-    
-            self._vfo_b_btn = QPushButton("VFO-B")
-            self._vfo_b_btn.setFixedHeight(28)
-            self._vfo_b_btn.setCheckable(True)
-            self._vfo_b_btn.setToolTip("Select VFO B")
-            self._vfo_b_btn.clicked.connect(
-                lambda: self._select_vfo("B"))
-            vfo_row.addWidget(self._vfo_b_btn)
-    
-            swap_btn = QPushButton("⇄ Swap")
-            swap_btn.setFixedHeight(28)
-            swap_btn.setFixedWidth(70)
-            swap_btn.setToolTip("Swap VFO A and VFO B")
-            swap_btn.clicked.connect(self._swap_vfo)
-            vfo_row.addWidget(swap_btn)
-    
-            vfo_row.addSpacing(10)
-    
-            self._split_btn = QPushButton("Split")
-            self._split_btn.setFixedHeight(28)
-            self._split_btn.setCheckable(True)
-            self._split_btn.setToolTip(
-                "Split operation\n"
-                "RX on VFO-A, TX on VFO-B\n"
-                "Tune VFO-B for DX pileup offset")
-            # (split toggle wired at build — see line 366)
-            vfo_row.addWidget(self._split_btn)
-    
-            vfo_row.addSpacing(10)
-    
-            vfo_row.addWidget(QLabel("RIT:"))
-            self._rit_spin = QSpinBox()
-            self._rit_spin.setRange(-9999, 9999)
-            self._rit_spin.setValue(0)
-            self._rit_spin.setSuffix(" Hz")
-            self._rit_spin.setFixedWidth(90)
-            self._rit_spin.setToolTip(
-                "RIT/XIT offset (Hz)\n"
-                "Receive incremental tuning\n"
-                "0 = disabled")
-            self._rit_spin.valueChanged.connect(self._set_rit)
-            vfo_row.addWidget(self._rit_spin)
-    
-            rit_clear = QPushButton("×")
-            rit_clear.setFixedSize(26, 26)
-            rit_clear.setToolTip("Clear RIT")
-            rit_clear.clicked.connect(
-                lambda: self._rit_spin.setValue(0))
-            vfo_row.addWidget(rit_clear)
-    
-            vfo_row.addStretch()
-            self._rig_root.addLayout(vfo_row)
+        self._rig_root.addWidget(self._build_mode_buttons_group())
+        self._build_rig_controls_row()
+        self._build_vfo_b_row()
+
+    def _build_mode_buttons_group(self) -> QGroupBox:
+        mode_grp = QGroupBox("Mode")
+        ml = QHBoxLayout(mode_grp)
+        ml.setSpacing(4)
+        self._mode_btns = {}
+        self._mode_btn_grp = QButtonGroup(self)
+        self._mode_btn_grp.setExclusive(True)
+        for label, hamlib_mode, tip in MODE_BUTTONS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setFixedSize(46, 28)
+            btn.setToolTip(tip)
+            btn.setStyleSheet(
+                "QPushButton{border:1px solid #2a2a2a;"
+                "border-radius:4px;background:#141414;}"
+                "QPushButton:checked{background:#1a3a1a;color:#3fbe6f;"
+                "border-color:#3fbe6f;font-weight:bold;}"
+                "QPushButton:hover{background:#1e2e1e;}")
+            btn.clicked.connect(lambda _, m=hamlib_mode: self._on_mode_btn(m))
+            self._mode_btns[label] = btn
+            self._mode_btn_grp.addButton(btn)
+            ml.addWidget(btn)
+        ml.addSpacing(10)
+        self._auto_mode_cb = QCheckBox("Auto")
+        self._auto_mode_cb.setChecked(True)
+        self._auto_mode_cb.setToolTip(
+            "Auto-switch mode by frequency:\n"
+            "LSB below 10 MHz, USB above,\n"
+            "FM on VHF/UHF, PKT on digital freqs")
+        self._auto_mode_cb.setStyleSheet(" ")
+        self._auto_mode_cb.toggled.connect(
+            lambda c: setattr(self, '_auto_mode', c))
+        ml.addWidget(self._auto_mode_cb)
+        ml.addStretch()
+        return mode_grp
+
+    def _build_rig_controls_row(self) -> None:
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(6)
+        self.ptt_btn = QPushButton("● TX")
+        self.ptt_btn.setCheckable(True)
+        self.ptt_btn.setFixedSize(64, 36)
+        self.ptt_btn.setStyleSheet(
+            "QPushButton{border:2px solid #883333;border-radius:5px;"
+            "color:#cc4444;font-weight:bold;background:#1a0808;}"
+            "QPushButton:checked{background:#cc2222;color:#fff;"
+            "border-color:#ff4444;}"
+            "QPushButton:hover{background:#2a1010;}")
+        ctrl_row.addWidget(_grp("PTT", self.ptt_btn))
+        self.power_spin = QSpinBox()
+        self.power_spin.setRange(1, 100)
+        self.power_spin.setValue(100)
+        self.power_spin.setSuffix(" %")
+        self.power_spin.setFixedWidth(72)
+        self.power_spin.setSingleStep(5)
+        self.power_spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        orig_wheel = self.power_spin.wheelEvent
+        self.power_spin.wheelEvent = lambda e: (
+            orig_wheel(e) if self.power_spin.hasFocus() else e.ignore())
+        ctrl_row.addWidget(_grp("Power", self.power_spin))
+        self.preamp_combo = QComboBox()
+        self.preamp_combo.addItems(["Off", "Preamp 1", "Preamp 2"])
+        self.preamp_combo.setFixedWidth(88)
+        ctrl_row.addWidget(_grp("Preamp", self.preamp_combo))
+        self.att_combo = QComboBox()
+        self.att_combo.addItems(["Off", "6 dB", "12 dB", "18 dB"])
+        self.att_combo.setFixedWidth(70)
+        ctrl_row.addWidget(_grp("ATT", self.att_combo))
+        self.filter_combo = QComboBox()
+        self._update_filter_labels("USB")
+        self.filter_combo.setFixedWidth(110)
+        ctrl_row.addWidget(_grp("Filter / BW", self.filter_combo))
+        ctrl_row.addStretch()
+        self._rig_root.addLayout(ctrl_row)
+
+    def _build_vfo_b_row(self) -> None:
+        """Build VFO-A/B selector, swap, split, and RIT controls row."""
+        vfo_row = QHBoxLayout()
+        self._vfo_a_btn = QPushButton("VFO-A")
+        self._vfo_a_btn.setFixedHeight(28)
+        self._vfo_a_btn.setCheckable(True)
+        self._vfo_a_btn.setChecked(True)
+        self._vfo_a_btn.setToolTip("Select VFO A")
+        self._vfo_a_btn.clicked.connect(lambda: self._select_vfo("A"))
+        vfo_row.addWidget(self._vfo_a_btn)
+        self._vfo_b_btn = QPushButton("VFO-B")
+        self._vfo_b_btn.setFixedHeight(28)
+        self._vfo_b_btn.setCheckable(True)
+        self._vfo_b_btn.setToolTip("Select VFO B")
+        self._vfo_b_btn.clicked.connect(lambda: self._select_vfo("B"))
+        vfo_row.addWidget(self._vfo_b_btn)
+        swap_btn = QPushButton("⇄ Swap")
+        swap_btn.setFixedHeight(28)
+        swap_btn.setFixedWidth(70)
+        swap_btn.setToolTip("Swap VFO A and VFO B")
+        swap_btn.clicked.connect(self._swap_vfo)
+        vfo_row.addWidget(swap_btn)
+        vfo_row.addSpacing(10)
+        self._split_btn = QPushButton("Split")
+        self._split_btn.setFixedHeight(28)
+        self._split_btn.setCheckable(True)
+        self._split_btn.setToolTip(
+            "Split operation\nRX on VFO-A, TX on VFO-B\n"
+            "Tune VFO-B for DX pileup offset")
+        vfo_row.addWidget(self._split_btn)
+        vfo_row.addSpacing(10)
+        vfo_row.addWidget(QLabel("RIT:"))
+        self._rit_spin = QSpinBox()
+        self._rit_spin.setRange(-9999, 9999)
+        self._rit_spin.setValue(0)
+        self._rit_spin.setSuffix(" Hz")
+        self._rit_spin.setFixedWidth(90)
+        self._rit_spin.setToolTip(
+            "RIT/XIT offset (Hz)\nReceive incremental tuning\n0 = disabled")
+        self._rit_spin.valueChanged.connect(self._set_rit)
+        vfo_row.addWidget(self._rit_spin)
+        rit_clear = QPushButton("×")
+        rit_clear.setFixedSize(26, 26)
+        rit_clear.setToolTip("Clear RIT")
+        rit_clear.clicked.connect(lambda: self._rit_spin.setValue(0))
+        vfo_row.addWidget(rit_clear)
+        vfo_row.addStretch()
+        self._rig_root.addLayout(vfo_row)
     
 
 
@@ -628,94 +587,90 @@ class RigTab(SquelchPanel, QWidget):
 
 
     def _build_scanner_section(self, inner):
-            # ── Scanner (collapsible) ─────────────────────────────────────────
-            self._scan_toggle = _collapse_btn("Scanner")
-            self._scan_toggle.toggled.connect(
-                lambda c: self._scan_body.setVisible(c))
-            self._rig_root.addWidget(self._scan_toggle)
-    
-            self._scan_body = QWidget()
-            self._scan_body.setVisible(False)
-            scan_layout = QGridLayout(self._scan_body)
-            scan_layout.setContentsMargins(8, 4, 8, 4)
-            scan_layout.setSpacing(6)
-    
-            scan_layout.addWidget(QLabel("Mode:"), 0, 0)
-            self._scan_mode = QComboBox()
-            self._scan_mode.addItems(
-                ["Sweep", "Band", "Channel list", "Memory"])
-            self._scan_mode.setFixedWidth(120)
-            scan_layout.addWidget(self._scan_mode, 0, 1)
-    
-            scan_layout.addWidget(QLabel("From:"), 1, 0)
-            self._scan_from = QLineEdit("14.000")
-            self._scan_from.setFixedWidth(90)
-            scan_layout.addWidget(self._scan_from, 1, 1)
-    
-            scan_layout.addWidget(QLabel("To:"), 1, 2)
-            self._scan_to = QLineEdit("14.350")
-            self._scan_to.setFixedWidth(90)
-            scan_layout.addWidget(self._scan_to, 1, 3)
-    
-            scan_layout.addWidget(QLabel("Dwell (s):"), 0, 2)
-            self._scan_dwell = QDoubleSpinBox()
-            self._scan_dwell.setRange(0.1, 60.0)
-            self._scan_dwell.setValue(2.0)
-            self._scan_dwell.setSingleStep(0.5)
-            self._scan_dwell.setFixedWidth(70)
-            scan_layout.addWidget(self._scan_dwell, 0, 3)
-    
-            scan_layout.addWidget(QLabel("Squelch:"), 0, 4)
-            self._scan_sql = QSpinBox()
-            self._scan_sql.setRange(-120, 0)
-            self._scan_sql.setValue(-80)
-            self._scan_sql.setSuffix(" dBm")
-            self._scan_sql.setFixedWidth(80)
-            scan_layout.addWidget(self._scan_sql, 0, 5)
-    
-            scan_layout.addWidget(QLabel("Step:"), 1, 2)
-            self._scan_step = QComboBox()
-            self._scan_step.addItems([
-                "100 Hz", "500 Hz", "1 kHz", "2.5 kHz",
-                "5 kHz", "6.25 kHz", "10 kHz", "12.5 kHz",
-                "25 kHz", "50 kHz", "100 kHz"])
-            self._scan_step.setCurrentText("5 kHz")
-            self._scan_step.setToolTip(
-                "Frequency step between scan stops.\n"
-                "Match to channel spacing:\n"
-                "  FM voice: 12.5 or 25 kHz\n"
-                "  HF: 1–5 kHz\n"
-                "  AM broadcast: 10 kHz")
-            self._scan_step.setFixedWidth(90)
-            scan_layout.addWidget(self._scan_step, 1, 3)
-    
-            scan_btn_row = QHBoxLayout()
-            self._scan_start = QPushButton("▶  Start Scan")
-            self._scan_start.setFixedHeight(28)
-            self._scan_start.setStyleSheet(
-                "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
-                "border-radius:4px;")
-            self._scan_start.clicked.connect(self._start_scan)
-    
-            self._scan_stop = QPushButton("■  Stop")
-            self._scan_stop.setFixedHeight(28)
-            self._scan_stop.setEnabled(False)
-            self._scan_stop.clicked.connect(self._stop_scan)
-    
-            self._scan_lock = QPushButton("⊘  Lock current")
-            self._scan_lock.setFixedHeight(28)
-            self._scan_lock.setToolTip("Add current frequency to lockout list")
-    
-            self._scan_status = QLabel("Idle")
-            self._scan_status.setStyleSheet(" ")
-    
-            scan_btn_row.addWidget(self._scan_start)
-            scan_btn_row.addWidget(self._scan_stop)
-            scan_btn_row.addWidget(self._scan_lock)
-            scan_btn_row.addWidget(self._scan_status)
-            scan_btn_row.addStretch()
-            scan_layout.addLayout(scan_btn_row, 2, 0, 1, 6)
-            self._rig_root.addWidget(self._scan_body)
+        self._scan_toggle = _collapse_btn("Scanner")
+        self._scan_toggle.toggled.connect(
+            lambda c: self._scan_body.setVisible(c))
+        self._rig_root.addWidget(self._scan_toggle)
+        self._scan_body = self._build_scanner_body()
+        self._rig_root.addWidget(self._scan_body)
+
+    def _build_scanner_body(self) -> QWidget:
+        body = QWidget()
+        body.setVisible(False)
+        scan_layout = QGridLayout(body)
+        scan_layout.setContentsMargins(8, 4, 8, 4)
+        scan_layout.setSpacing(6)
+        self._build_scan_params_grid(scan_layout)
+        self._build_scan_btn_row(scan_layout)
+        return body
+
+    def _build_scan_params_grid(self, scan_layout) -> None:
+        scan_layout.addWidget(QLabel("Mode:"), 0, 0)
+        self._scan_mode = QComboBox()
+        self._scan_mode.addItems(["Sweep", "Band", "Channel list", "Memory"])
+        self._scan_mode.setFixedWidth(120)
+        scan_layout.addWidget(self._scan_mode, 0, 1)
+        scan_layout.addWidget(QLabel("Dwell (s):"), 0, 2)
+        self._scan_dwell = QDoubleSpinBox()
+        self._scan_dwell.setRange(0.1, 60.0)
+        self._scan_dwell.setValue(2.0)
+        self._scan_dwell.setSingleStep(0.5)
+        self._scan_dwell.setFixedWidth(70)
+        scan_layout.addWidget(self._scan_dwell, 0, 3)
+        scan_layout.addWidget(QLabel("Squelch:"), 0, 4)
+        self._scan_sql = QSpinBox()
+        self._scan_sql.setRange(-120, 0)
+        self._scan_sql.setValue(-80)
+        self._scan_sql.setSuffix(" dBm")
+        self._scan_sql.setFixedWidth(80)
+        scan_layout.addWidget(self._scan_sql, 0, 5)
+        scan_layout.addWidget(QLabel("From:"), 1, 0)
+        self._scan_from = QLineEdit("14.000")
+        self._scan_from.setFixedWidth(90)
+        scan_layout.addWidget(self._scan_from, 1, 1)
+        scan_layout.addWidget(QLabel("To:"), 1, 2)
+        self._scan_to = QLineEdit("14.350")
+        self._scan_to.setFixedWidth(90)
+        scan_layout.addWidget(self._scan_to, 1, 3)
+        scan_layout.addWidget(QLabel("Step:"), 1, 4)
+        self._scan_step = QComboBox()
+        self._scan_step.addItems([
+            "100 Hz", "500 Hz", "1 kHz", "2.5 kHz",
+            "5 kHz", "6.25 kHz", "10 kHz", "12.5 kHz",
+            "25 kHz", "50 kHz", "100 kHz"])
+        self._scan_step.setCurrentText("5 kHz")
+        self._scan_step.setToolTip(
+            "Frequency step between scan stops.\n"
+            "Match to channel spacing:\n"
+            "  FM voice: 12.5 or 25 kHz\n"
+            "  HF: 1-5 kHz\n"
+            "  AM broadcast: 10 kHz")
+        self._scan_step.setFixedWidth(90)
+        scan_layout.addWidget(self._scan_step, 1, 5)
+
+    def _build_scan_btn_row(self, scan_layout) -> None:
+        scan_btn_row = QHBoxLayout()
+        self._scan_start = QPushButton("▶  Start Scan")
+        self._scan_start.setFixedHeight(28)
+        self._scan_start.setStyleSheet(
+            "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
+            "border-radius:4px;")
+        self._scan_start.clicked.connect(self._start_scan)
+        self._scan_stop = QPushButton("■  Stop")
+        self._scan_stop.setFixedHeight(28)
+        self._scan_stop.setEnabled(False)
+        self._scan_stop.clicked.connect(self._stop_scan)
+        self._scan_lock = QPushButton("⊘  Lock current")
+        self._scan_lock.setFixedHeight(28)
+        self._scan_lock.setToolTip("Add current frequency to lockout list")
+        self._scan_status = QLabel("Idle")
+        self._scan_status.setStyleSheet(" ")
+        scan_btn_row.addWidget(self._scan_start)
+        scan_btn_row.addWidget(self._scan_stop)
+        scan_btn_row.addWidget(self._scan_lock)
+        scan_btn_row.addWidget(self._scan_status)
+        scan_btn_row.addStretch()
+        scan_layout.addLayout(scan_btn_row, 2, 0, 1, 6)
     
 
 

@@ -96,18 +96,18 @@ class LocalRFTab(SquelchPanel, QWidget):
         bar = QFrame()
         bar.setFixedHeight(44)
         bar.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
+            "background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(8)
-
         lay.addWidget(QLabel("Nearest repeaters:"))
+        self._searchbar_add_location_controls(lay)
+        self._searchbar_add_action_buttons(lay)
+        return bar
 
-        # Radius
+    def _searchbar_add_location_controls(self, lay) -> None:
         lay.addWidget(QLabel("From:"))
-        from PyQt6.QtWidgets import QLineEdit as _QLE
-        self._from_edit = _QLE()
+        self._from_edit = QLineEdit()
         self._from_edit.setPlaceholderText("grid / ZIP / city (blank = my location)")
         self._from_edit.setMaximumWidth(220)
         self._from_edit.setToolTip(
@@ -115,7 +115,6 @@ class LocalRFTab(SquelchPanel, QWidget):
             "enter a Maidenhead grid, ZIP code, or city. Leave blank to "
             "use your configured location.")
         lay.addWidget(self._from_edit)
-
         lay.addWidget(QLabel("Within:"))
         self._radius = QDoubleSpinBox()
         self._radius.setRange(5, 200)
@@ -123,32 +122,25 @@ class LocalRFTab(SquelchPanel, QWidget):
         self._radius.setSuffix(distance_suffix(self.cfg))
         self._radius.setFixedWidth(85)
         lay.addWidget(self._radius)
-
-        # Mode filter
         lay.addWidget(QLabel("Mode:"))
         self._mode_filter = QComboBox()
-        self._mode_filter.addItems([
-            "All", "FM", "DMR", "P25", "YSF",
-            "D-STAR", "NXDN"])
+        self._mode_filter.addItems(["All", "FM", "DMR", "P25", "YSF", "D-STAR", "NXDN"])
         self._mode_filter.setFixedWidth(75)
-        self._mode_filter.currentTextChanged.connect(
-            self._apply_mode_filter)
+        self._mode_filter.currentTextChanged.connect(self._apply_mode_filter)
         lay.addWidget(self._mode_filter)
 
-        # Search button
+    def _searchbar_add_action_buttons(self, lay) -> None:
         self._search_btn = QPushButton("🔍 Search")
         self._search_btn.setFixedWidth(90)
         self._search_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
-            "border:1px solid #3fbe6f;border-radius:4px;"
-            "")
+            "border:1px solid #3fbe6f;border-radius:4px;")
         self._search_btn.setToolTip(
             "Search RepeaterBook for nearby repeaters\n"
             "Free, no API key required\n"
             "Requires location set in top bar")
         self._search_btn.clicked.connect(self._do_search)
         lay.addWidget(self._search_btn)
-
         # CHIRP CSV import — operator's own data, no token, no scraping.
         # The most reliable path: drop a Proximity Query export from CHIRP.
         self._import_btn = QPushButton("📂 Import CHIRP CSV")
@@ -160,72 +152,54 @@ class LocalRFTab(SquelchPanel, QWidget):
             "No API token or RepeaterBook account required.")
         self._import_btn.clicked.connect(self._do_import_chirp)
         lay.addWidget(self._import_btn)
-
         self._status_lbl = QLabel("")
-        self._status_lbl.setStyleSheet(
-            "")
+        self._status_lbl.setStyleSheet("")
         lay.addWidget(self._status_lbl)
-
         lay.addStretch()
-
-        # Location display
         self._loc_lbl = QLabel("Location: not set")
-        self._loc_lbl.setStyleSheet(
-            "")
+        self._loc_lbl.setStyleSheet("")
         lay.addWidget(self._loc_lbl)
-
-        return bar
 
     def _build_repeater_panel(self) -> QWidget:
         w   = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(4)
-
-        # Repeater table
-        self._table = QTableWidget(0, 7)
-        self._table.setHorizontalHeaderLabels([
-            "Callsign", "Output MHz", "Offset",
-            "Tone", "Mode", "City", "Dist"])
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(
-            5, QHeaderView.ResizeMode.Stretch)
-        self._table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setAlternatingRowColors(True)
-        self._table.setStyleSheet(
-            "QTableWidget{"
-            "background:#0a0a0a;"
-            "gridline-color:#1a1a1a;"
-            "alternate-background-color:#0d0d0d;"
-            "font-family:'Courier New';"
-            "selection-background-color:#1a3a1a;"
-            "border:1px solid #1a1a1a;}"
-            "QHeaderView::section{"
-            "background:#141414;"
-            "border:none;padding:3px;}")
-        self._table.clicked.connect(self._on_row_click)
-        self._table.doubleClicked.connect(self._tune_to_selected)
-        lay.addWidget(self._table)
-
-        # No results placeholder
+        lay.addWidget(self._build_repeater_table())
         self._no_results = QLabel(
             "Click Search to find nearest repeaters.\n\n"
             "Data from RepeaterBook.com\n"
             "(free, no API key required)\n\n"
             "Double-click a repeater to tune the rig.\n"
             "Right-click to save to memory.")
-        self._no_results.setAlignment(
-            Qt.AlignmentFlag.AlignCenter)
-        self._no_results.setStyleSheet(
-            "")
+        self._no_results.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._no_results.setStyleSheet("")
         lay.addWidget(self._no_results)
+        lay.addLayout(self._build_repeater_btn_row())
+        return w
 
-        # Action buttons
+    def _build_repeater_table(self) -> QTableWidget:
+        self._table = QTableWidget(0, 7)
+        self._table.setHorizontalHeaderLabels([
+            "Callsign", "Output MHz", "Offset",
+            "Tone", "Mode", "City", "Dist"])
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        self._table.setAlternatingRowColors(True)
+        self._table.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;gridline-color:#1a1a1a;"
+            "alternate-background-color:#0d0d0d;font-family:'Courier New';"
+            "selection-background-color:#1a3a1a;border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;border:none;padding:3px;}")
+        self._table.clicked.connect(self._on_row_click)
+        self._table.doubleClicked.connect(self._tune_to_selected)
+        return self._table
+
+    def _build_repeater_btn_row(self) -> QHBoxLayout:
         btn_row = QHBoxLayout()
         self._tune_btn = QPushButton("📻 Tune Rig")
         self._tune_btn.setEnabled(False)
@@ -234,7 +208,6 @@ class LocalRFTab(SquelchPanel, QWidget):
             "Requires rig connected in Rig tab")
         self._tune_btn.clicked.connect(self._tune_to_selected)
         btn_row.addWidget(self._tune_btn)
-
         self._memory_btn = QPushButton("💾 Save to Memory")
         self._memory_btn.setEnabled(False)
         self._memory_btn.setToolTip(
@@ -242,7 +215,6 @@ class LocalRFTab(SquelchPanel, QWidget):
             "Import the CSV into CHIRP to program your radio")
         self._memory_btn.clicked.connect(self._save_to_memory)
         btn_row.addWidget(self._memory_btn)
-
         self._chirp_btn = QPushButton("🔧 Open in CHIRP")
         self._chirp_btn.setEnabled(False)
         self._chirp_btn.setToolTip(
@@ -250,46 +222,40 @@ class LocalRFTab(SquelchPanel, QWidget):
             "Set path in File → Paths & Executables")
         self._chirp_btn.clicked.connect(self._open_chirp)
         btn_row.addWidget(self._chirp_btn)
-
         export_btn = QPushButton("📁 Export All → CHIRP")
-        export_btn.setToolTip(
-            "Export all search results to CHIRP CSV format")
+        export_btn.setToolTip("Export all search results to CHIRP CSV format")
         export_btn.clicked.connect(self._export_all_to_chirp)
         btn_row.addWidget(export_btn)
-
         manual_btn = QPushButton("✏️ Add Manually")
         manual_btn.setToolTip(
             "Add a repeater manually by frequency and tone\n"
             "Useful when RepeaterBook search is unavailable")
         manual_btn.clicked.connect(self._add_manual_repeater)
         btn_row.addWidget(manual_btn)
-
-        lay.addLayout(btn_row)
-
-        return w
+        return btn_row
 
     def _build_detail_panel(self) -> QWidget:
         w   = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(4, 6, 6, 6)
         lay.setSpacing(6)
-
-        # Selected repeater detail
         detail_grp = QGroupBox("Repeater Detail")
         dl = QVBoxLayout(detail_grp)
         self._detail_text = QTextEdit()
         self._detail_text.setReadOnly(True)
         self._detail_text.setMaximumHeight(220)
         self._detail_text.setStyleSheet(
-            "background:#0a0a0a;"
-            "font-family:'Courier New';"
+            "background:#0a0a0a;font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
-        self._detail_text.setPlaceholderText(
-            "Select a repeater to see details…")
+        self._detail_text.setPlaceholderText("Select a repeater to see details…")
         dl.addWidget(self._detail_text)
         lay.addWidget(detail_grp)
+        lay.addWidget(self._build_detail_rr_group())
+        lay.addWidget(self._build_detail_aprs_group())
+        lay.addStretch()
+        return w
 
-        # RadioReference stub
+    def _build_detail_rr_group(self) -> QGroupBox:
         rr_grp = QGroupBox("RadioReference Premium")
         rl = QVBoxLayout(rr_grp)
         rr_msg = QLabel(
@@ -298,58 +264,40 @@ class LocalRFTab(SquelchPanel, QWidget):
             "aviation, marine, and business radio.\n\n"
             "Requires a Premium subscription.\n"
             "Configure API key in Settings.")
-        rr_msg.setStyleSheet(
-            "")
+        rr_msg.setStyleSheet("")
         rr_msg.setWordWrap(True)
         rl.addWidget(rr_msg)
-
         rr_btn = QPushButton("Configure API Key →")
-        rr_btn.setStyleSheet(
-            "")
+        rr_btn.setStyleSheet("")
         rr_btn.clicked.connect(self._open_rr_settings)
         rl.addWidget(rr_btn)
-        lay.addWidget(rr_grp)
+        return rr_grp
 
-        # APRS panel
+    def _build_detail_aprs_group(self) -> QGroupBox:
         aprs_grp = QGroupBox("APRS-IS")
         al = QVBoxLayout(aprs_grp)
-
         self._aprs_status = QLabel("● Not connected")
-        self._aprs_status.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._aprs_status.setStyleSheet("font-family:'Courier New';")
         al.addWidget(self._aprs_status)
-
         self._aprs_count = QLabel("Stations: 0")
-        self._aprs_count.setStyleSheet(
-            "")
+        self._aprs_count.setStyleSheet("")
         al.addWidget(self._aprs_count)
-
         aprs_btns = QHBoxLayout()
         self._aprs_conn_btn = QPushButton("Connect")
         self._aprs_conn_btn.setFixedHeight(24)
-        self._aprs_conn_btn.clicked.connect(
-            self._toggle_aprs)
+        self._aprs_conn_btn.clicked.connect(self._toggle_aprs)
         aprs_btns.addWidget(self._aprs_conn_btn)
-
         beacon_btn = QPushButton("Beacon Now")
         beacon_btn.setFixedHeight(24)
         beacon_btn.clicked.connect(self._send_beacon)
         aprs_btns.addWidget(beacon_btn)
         al.addLayout(aprs_btns)
-
-        aprs_note = QLabel(
-            "APRS-IS: internet receive-only.\n"
-            "RF TX requires Direwolf + TNC.")
-        aprs_note.setStyleSheet(
-            "")
+        aprs_note = QLabel("APRS-IS: internet receive-only.\nRF TX requires Direwolf + TNC.")
+        aprs_note.setStyleSheet("")
         aprs_note.setWordWrap(True)
         al.addWidget(aprs_note)
-        lay.addWidget(aprs_grp)
         self._aprs_client = None
-
-        lay.addStretch()
-        return w
+        return aprs_grp
 
     # ── Search ────────────────────────────────────────────────────────────
 
@@ -689,98 +637,86 @@ class LocalRFTab(SquelchPanel, QWidget):
 
     def _add_manual_repeater(self):
         """Let user add a repeater manually."""
-        from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QLineEdit,
-            QDoubleSpinBox, QDialogButtonBox,
-            QComboBox, QHBoxLayout)
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+        dlg, callsign, freq_mhz, offset, tone, mode, city = \
+            self._build_manual_repeater_dialog()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        rep = self._manual_repeater_to_namespace(
+            callsign.text(), freq_mhz.value(),
+            offset.currentText(), tone.text(),
+            mode.currentText(), city.text())
+        if not hasattr(self, "_repeaters"):
+            self._repeaters = []
+        self._repeaters.append(rep)
+        self._populate(self._repeaters)
+        self._status_lbl.setText(
+            f"{len(self._repeaters)} repeaters (includes manual entries)")
 
+    def _build_manual_repeater_dialog(self) -> "tuple":
+        """Build the Add Repeater dialog; return (dlg, callsign, freq, offset, tone, mode, city)."""
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox as _DSB)
         dlg = QDialog(self)
         dlg.setWindowTitle("Add Repeater Manually")
         dlg.setMinimumWidth(340)
         f = QFormLayout(dlg)
         f.setSpacing(8)
         f.setContentsMargins(12, 12, 12, 12)
-
         callsign = QLineEdit()
         callsign.setPlaceholderText("e.g. W4XYZ")
         callsign.setMaxLength(10)
         f.addRow("Callsign:", callsign)
-
-        freq_mhz = QDoubleSpinBox()
+        freq_mhz = _DSB()
         freq_mhz.setRange(50.0, 1300.0)
         freq_mhz.setValue(146.520)
         freq_mhz.setDecimals(4)
         freq_mhz.setSuffix(" MHz")
         f.addRow("Output Freq:", freq_mhz)
-
         offset = QComboBox()
         offset.addItems([
-            "Simplex (+0.000)",
-            "+0.600 (2m standard)",
-            "-0.600 (2m standard)",
-            "+5.000 (70cm standard)",
-            "-5.000 (70cm standard)",
-            "+1.600 (1.25m standard)",
-            "Custom…"])
+            "Simplex (+0.000)", "+0.600 (2m standard)", "-0.600 (2m standard)",
+            "+5.000 (70cm standard)", "-5.000 (70cm standard)",
+            "+1.600 (1.25m standard)", "Custom…"])
         f.addRow("Offset:", offset)
-
         tone = QLineEdit()
         tone.setPlaceholderText("e.g. 100.0 (leave blank for none)")
         f.addRow("CTCSS Tone:", tone)
-
         mode = QComboBox()
         mode.addItems(["FM", "DMR", "P25", "YSF", "D-STAR", "NXDN"])
         f.addRow("Mode:", mode)
-
         city = QLineEdit()
         city.setPlaceholderText("e.g. Denver CO")
         f.addRow("Location:", city)
-
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         f.addRow(btns)
+        return dlg, callsign, freq_mhz, offset, tone, mode, city
 
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        # Build Repeater-like object
-        cs  = callsign.text().strip().upper() or "MANUAL"
-        off_text = offset.currentText()
-        off_map  = {
-            "+0.600 (2m standard)":  +0.600,
-            "-0.600 (2m standard)":  -0.600,
-            "+5.000 (70cm standard)":+5.000,
-            "-5.000 (70cm standard)":-5.000,
-            "+1.600 (1.25m standard)":+1.600,
-        }
-        off_mhz = off_map.get(off_text, 0.0)
-        tone_val = tone.text().strip()
-
+    @staticmethod
+    def _manual_repeater_to_namespace(
+            cs_text, freq_val, off_text, tone_text, mode_text, city_text):
+        """Build a SimpleNamespace repeater from Add Repeater dialog values."""
         from types import SimpleNamespace
-        rep = SimpleNamespace(
-            callsign   = cs,
-            output_mhz = freq_mhz.value(),
-            output_str = f"{freq_mhz.value():.4f}",
-            offset_mhz = off_mhz,
-            tone       = tone_val,
-            tone_str   = f"CTCSS {tone_val}" if tone_val else "None",
-            mode       = mode.currentText(),
-            city       = city.text().strip(),
-            state      = "",
-            lat        = 0.0,
-            lon        = 0.0,
+        OFF_MAP = {
+            "+0.600 (2m standard)": +0.600,  "-0.600 (2m standard)": -0.600,
+            "+5.000 (70cm standard)": +5.000, "-5.000 (70cm standard)": -5.000,
+            "+1.600 (1.25m standard)": +1.600,
+        }
+        cs       = cs_text.strip().upper() or "MANUAL"
+        off_mhz  = OFF_MAP.get(off_text, 0.0)
+        tone_val = tone_text.strip()
+        return SimpleNamespace(
+            callsign=cs, output_mhz=freq_val,
+            output_str=f"{freq_val:.4f}", offset_mhz=off_mhz,
+            tone=tone_val,
+            tone_str=f"CTCSS {tone_val}" if tone_val else "None",
+            mode=mode_text, city=city_text.strip(),
+            state="", lat=0.0, lon=0.0,
         )
-
-        if not hasattr(self, "_repeaters"):
-            self._repeaters = []
-        self._repeaters.append(rep)
-        self._populate(self._repeaters)
-        self._status_lbl.setText(
-            f"{len(self._repeaters)} repeaters "
-            f"(includes manual entries)")
 
     def _export_all_to_chirp(self):
         """Export all search results to CHIRP CSV."""

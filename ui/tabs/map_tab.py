@@ -149,86 +149,66 @@ class MapTab(SquelchPanel, QWidget):
         bar = QFrame()
         bar.setFixedHeight(38)
         bar.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
+            "background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(8)
+        self._toolbar_add_layer_toggles(lay)
+        lay.addWidget(_vsep())
+        lay.addWidget(QLabel("QSOs:"))
+        self._qso_filter = QComboBox()
+        self._qso_filter.addItems(
+            ["All", "Last 50", "Last 24h", "Last 7 days", "Current band"])
+        self._qso_filter.setFixedWidth(100)
+        self._qso_filter.currentTextChanged.connect(lambda _: self._refresh_map())
+        lay.addWidget(self._qso_filter)
+        lay.addStretch()
+        refresh_btn = QPushButton("↺ Refresh")
+        refresh_btn.setFixedHeight(26)
+        refresh_btn.setFixedWidth(80)
+        refresh_btn.clicked.connect(self._refresh_map)
+        lay.addWidget(refresh_btn)
+        center_btn = QPushButton("⌂ My Station")
+        center_btn.setFixedHeight(26)
+        center_btn.setFixedWidth(90)
+        center_btn.clicked.connect(self._center_on_station)
+        lay.addWidget(center_btn)
+        return bar
 
-        # Layer toggles
+    def _toolbar_add_layer_toggles(self, lay) -> None:
         self._show_gl = QCheckBox("Gray line")
         self._show_gl.setChecked(True)
         self._show_gl.setToolTip(
             "Show day/night terminator on map\n"
             "The gray line is the best time for DX\n"
             "Updates every 60 seconds")
-        self._show_gl.toggled.connect(
-            lambda _: self._refresh_map())
+        self._show_gl.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_gl)
-
         self._show_qso = QCheckBox("QSO paths")
         self._show_qso.setChecked(True)
         self._show_qso.setToolTip(
             "Draw great circle paths to logged QSOs\n"
             "Color-coded by mode (FT8=blue, CW=orange, SSB=green)")
-        self._show_qso.toggled.connect(
-            lambda _: self._refresh_map())
+        self._show_qso.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_qso)
-
         self._show_rep = QCheckBox("Repeaters")
         self._show_rep.setChecked(False)
-        self._show_rep.toggled.connect(
-            lambda _: self._refresh_map())
+        self._show_rep.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_rep)
-
         self._show_adsb = QCheckBox("ADS-B")
         self._show_adsb.setChecked(True)
         self._show_adsb.setToolTip(
             "Show aircraft from dump1090-fa\n"
             "Requires dump1090-fa running locally")
-        self._show_adsb.toggled.connect(
-            lambda _: self._refresh_map())
+        self._show_adsb.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_adsb)
-
         self._show_aprs = QCheckBox("APRS")
         self._show_aprs.setChecked(True)
         self._show_aprs.setToolTip(
             "Show APRS stations from APRS-IS\n"
             "Connect in Local RF tab first")
-        self._show_aprs.toggled.connect(
-            lambda _: self._refresh_map())
+        self._show_aprs.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_aprs)
-
-        lay.addWidget(_vsep())
-
-        # QSO filter
-        lay.addWidget(QLabel("QSOs:"))
-        self._qso_filter = QComboBox()
-        self._qso_filter.addItems([
-            "All", "Last 50", "Last 24h",
-            "Last 7 days", "Current band"])
-        self._qso_filter.setFixedWidth(100)
-        self._qso_filter.currentTextChanged.connect(
-            lambda _: self._refresh_map())
-        lay.addWidget(self._qso_filter)
-
-        lay.addStretch()
-
-        # Refresh button
-        refresh_btn = QPushButton("↺ Refresh")
-        refresh_btn.setFixedHeight(26)
-        refresh_btn.setFixedWidth(80)
-        refresh_btn.clicked.connect(self._refresh_map)
-        lay.addWidget(refresh_btn)
-
-        # Center on station
-        center_btn = QPushButton("⌂ My Station")
-        center_btn.setFixedHeight(26)
-        center_btn.setFixedWidth(90)
-        center_btn.clicked.connect(self._center_on_station)
-        lay.addWidget(center_btn)
-
-        return bar
 
     def _build_no_webengine(self, layout):
         """

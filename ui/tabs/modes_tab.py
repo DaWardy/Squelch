@@ -436,35 +436,32 @@ class ModesTab(SquelchPanel, QWidget):
             self._build_fldigi_section()
 
     def _build_fldigi_section(self):
-        # ── Fldigi panel (shown for PSK31/RTTY/CW/SSTV) ──────────────
         self._fldigi_panel = self._build_fldigi_panel()
         self._left_layout.addWidget(self._fldigi_panel)
         self._fldigi_panel.hide()
-        
         self._main_splitter.addWidget(self._left_outer)
-        
-        # Right panel — decode list + activity
+        self._main_splitter.addWidget(self._build_decode_right_panel())
+        self._main_splitter.setSizes([300, 700])
+        # Start cycle timer
+
+    def _build_decode_right_panel(self) -> "QWidget":
+        """Right half of the modes splitter: decode table + activity log."""
         right = QWidget()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(4, 8, 8, 8)
-        right_layout.setSpacing(4)
-        
-        # Decode list header
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(4, 8, 8, 8)
+        rl.setSpacing(4)
         decode_hdr = QHBoxLayout()
         decode_hdr.addWidget(QLabel("Decoded Signals"))
         decode_hdr.addStretch()
-        
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("Filter callsign…")
         self._filter_edit.setFixedWidth(130)
         self._filter_edit.textChanged.connect(self._filter_decodes)
         decode_hdr.addWidget(self._filter_edit)
-        
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setFixedHeight(24)
         self._clear_btn.clicked.connect(self._clear_decodes)
         decode_hdr.addWidget(self._clear_btn)
-        
         export_btn = QPushButton("⬇ Export")
         export_btn.setFixedHeight(24)
         export_btn.setToolTip(
@@ -472,9 +469,7 @@ class ModesTab(SquelchPanel, QWidget):
             "ADIF can be imported into most log programs.")
         export_btn.clicked.connect(self._export_decodes)
         decode_hdr.addWidget(export_btn)
-        right_layout.addLayout(decode_hdr)
-        
-        # Decode table
+        rl.addLayout(decode_hdr)
         self._decode_table = QTableWidget(0, len(DECODE_HEADERS))
         self._decode_table.setHorizontalHeaderLabels(DECODE_HEADERS)
         self._decode_table.horizontalHeader().setSectionResizeMode(
@@ -488,21 +483,16 @@ class ModesTab(SquelchPanel, QWidget):
         self._decode_table.setAlternatingRowColors(True)
         try:
             self._decode_table.setSortingEnabled(True)
-        except Exception: pass
+        except Exception:
+            pass
         self._decode_table.verticalHeader().setVisible(False)
-        self._decode_table.setStyleSheet("""
-            QTableWidget{background:#0d0d0d;
-              gridline-color:#1a1a1a;
-              font-family:'Courier New';
-              alternate-background-color:#111111;
-              selection-background-color:#1a3a1a;}
-            QHeaderView::section{background:#141414;
-              border:none;padding:3px;}
-        """)
+        self._decode_table.setStyleSheet(
+            "QTableWidget{background:#0d0d0d;gridline-color:#1a1a1a;"
+            "font-family:'Courier New';alternate-background-color:#111111;"
+            "selection-background-color:#1a3a1a;}"
+            "QHeaderView::section{background:#141414;border:none;padding:3px;}")
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
-        right_layout.addWidget(self._decode_table, 3)
-        
-        # Activity log
+        rl.addWidget(self._decode_table, 3)
         activity_hdr = QHBoxLayout()
         activity_hdr.addWidget(QLabel("Activity / TX Log"))
         activity_hdr.addStretch()
@@ -510,21 +500,15 @@ class ModesTab(SquelchPanel, QWidget):
         clr.setFixedHeight(22)
         clr.clicked.connect(lambda: self._activity_log.clear())
         activity_hdr.addWidget(clr)
-        right_layout.addLayout(activity_hdr)
-        
+        rl.addLayout(activity_hdr)
         self._activity_log = QTextEdit()
         self._activity_log.setReadOnly(True)
         self._activity_log.setMaximumHeight(120)
         self._activity_log.setStyleSheet(
-            "background:#080808; color:#3fbe6f; "
-            "font-family:'Courier New';  "
-            "border:1px solid #1a1a1a;")
-        right_layout.addWidget(self._activity_log)
-        
-        self._main_splitter.addWidget(right)
-        self._main_splitter.setSizes([300, 700])
-        
-        # Start cycle timer
+            "background:#080808;color:#3fbe6f;"
+            "font-family:'Courier New';border:1px solid #1a1a1a;")
+        rl.addWidget(self._activity_log)
+        return right
 
 
     def _build_fldigi_panel(self) -> QWidget:
@@ -564,86 +548,63 @@ class ModesTab(SquelchPanel, QWidget):
     # ── Wire signals ──────────────────────────────────────────────────────
 
     def _build_dx_panel(self):
-        """
-        Live DX spots panel at bottom of Modes tab.
-        Shows recent DX from cluster, filtered by current band.
-        """
-        from PyQt6.QtWidgets import (
-            QGroupBox, QTableWidget, QTableWidgetItem,
-            QHeaderView, QHBoxLayout, QPushButton,
-            QComboBox, QLabel)
-
-        # Find the root layout and add DX panel
+        """Live DX spots panel at bottom of Modes tab."""
         dx_grp = QGroupBox("DX Spots (cluster)")
         dx_grp.setMaximumHeight(160)
         dl = QVBoxLayout(dx_grp)
         dl.setContentsMargins(4, 4, 4, 4)
         dl.setSpacing(3)
+        dl.addLayout(self._build_dx_controls_row())
+        dl.addWidget(self._build_dx_table())
+        self.layout().addWidget(dx_grp)
+        self._dx_cluster = None
+        self._dx_spots   = []
+        self._build_sota_pota_panel()
 
-        # Controls row
+    def _build_dx_controls_row(self) -> "QHBoxLayout":
         ctrl = QHBoxLayout()
         ctrl.addWidget(QLabel("Band:"))
         self._dx_band = QComboBox()
         self._dx_band.addItems([
-            "Current", "160m","80m","40m","30m","20m",
-            "17m","15m","12m","10m","6m","All"])
+            "Current", "160m", "80m", "40m", "30m", "20m",
+            "17m", "15m", "12m", "10m", "6m", "All"])
         self._dx_band.setFixedWidth(80)
-        self._dx_band.currentTextChanged.connect(
-            self._filter_dx_spots)
+        self._dx_band.currentTextChanged.connect(self._filter_dx_spots)
         ctrl.addWidget(self._dx_band)
-
         ctrl.addWidget(QLabel("Mode:"))
         self._dx_mode_filter = QComboBox()
-        self._dx_mode_filter.addItems([
-            "All","FT8","CW","SSB","FT4"])
+        self._dx_mode_filter.addItems(["All", "FT8", "CW", "SSB", "FT4"])
         self._dx_mode_filter.setFixedWidth(60)
-        self._dx_mode_filter.currentTextChanged.connect(
-            self._filter_dx_spots)
+        self._dx_mode_filter.currentTextChanged.connect(self._filter_dx_spots)
         ctrl.addWidget(self._dx_mode_filter)
-
         ctrl.addStretch()
-
         self._dx_status = QLabel("DX Cluster: not connected")
         self._dx_status.setStyleSheet("")
         ctrl.addWidget(self._dx_status)
-
         conn_btn = QPushButton("Connect")
         conn_btn.setFixedHeight(22)
         conn_btn.setFixedWidth(70)
         conn_btn.clicked.connect(self._toggle_dx_cluster)
         self._dx_conn_btn = conn_btn
         ctrl.addWidget(conn_btn)
-        dl.addLayout(ctrl)
+        return ctrl
 
-        # Spot table
+    def _build_dx_table(self) -> "QTableWidget":
         self._dx_table = QTableWidget(0, 5)
-        self._dx_table.setHorizontalHeaderLabels([
-            "DX", "Freq", "Spotter", "Comment", "Time"])
+        self._dx_table.setHorizontalHeaderLabels(
+            ["DX", "Freq", "Spotter", "Comment", "Time"])
         h = self._dx_table.horizontalHeader()
-        h.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(
-            3, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._dx_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
         self._dx_table.setFixedHeight(90)
         self._dx_table.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;"
-            "font-family:'Courier New';"
+            "QTableWidget{background:#0a0a0a;font-family:'Courier New';"
             "border:1px solid #1a1a1a;}"
-            "QHeaderView::section{background:#141414;"
-            "border:none;}")
-        self._dx_table.doubleClicked.connect(
-            self._tune_to_dx_spot)
-        dl.addWidget(self._dx_table)
-
-        # Add to root layout - find it
-        self.layout().addWidget(dx_grp)
-        self._dx_cluster = None
-        self._dx_spots   = []
-
-        # SOTA/POTA spots panel
-        self._build_sota_pota_panel()
+            "QHeaderView::section{background:#141414;border:none;}")
+        self._dx_table.doubleClicked.connect(self._tune_to_dx_spot)
+        return self._dx_table
 
     def _build_sota_pota_panel(self):
         """SOTA and POTA activator spots panel."""

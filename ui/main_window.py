@@ -215,33 +215,7 @@ class MainWindow(
         self.cfg      = config
         self.rig      = rig
         self.location = location
-
-        self.setWindowTitle(
-            f"{APP_NAME}  v{VERSION}  —  {APP_FULL}")
-        try:
-            from PyQt6.QtGui import QIcon
-            from pathlib import Path as _P
-            _ic = _P(__file__).resolve().parent.parent / "assets" / "squelch.png"
-            if _ic.exists():
-                self.setWindowIcon(QIcon(str(_ic)))
-        except Exception:
-            pass
-        self.setMinimumSize(900, 600)
-
-        # Restore window geometry
-        self._settings = QSettings("Squelch", "squelch")
-        geo = self._settings.value("window/geometry")
-        if geo:
-            self.restoreGeometry(geo)
-        else:
-            self.resize(1300, 840)
-
-        # Apply theme
-        theme_name = self.cfg.get("ui.theme", "Dark")
-        font_size  = max(8, min(20,
-            self.cfg.get("ui.font_size", 11)))
-        self.setStyleSheet(get_stylesheet(theme_name, font_size))
-
+        self._setup_window()
         self._build_ui()
         self._build_menu()
         self._build_statusbar()
@@ -256,14 +230,31 @@ class MainWindow(
         self._init_satellites()
         QTimer.singleShot(100, self._wire_sdr_to_digital)
         self._auto_detect_software()
-        # Populate operator profiles
         self._populate_profiles()
-
-        # Show location on startup if already configured
         QTimer.singleShot(800, self._restore_location)
-
-        # Apply saved Guest Operator mode (C-06) once the window is built
         self._apply_saved_guest_mode()
+
+    def _setup_window(self) -> None:
+        """Set window title, icon, geometry, and stylesheet from saved config."""
+        self.setWindowTitle(f"{APP_NAME}  v{VERSION}  —  {APP_FULL}")
+        try:
+            from PyQt6.QtGui import QIcon
+            from pathlib import Path as _P
+            _ic = _P(__file__).resolve().parent.parent / "assets" / "squelch.png"
+            if _ic.exists():
+                self.setWindowIcon(QIcon(str(_ic)))
+        except Exception:
+            pass
+        self.setMinimumSize(900, 600)
+        self._settings = QSettings("Squelch", "squelch")
+        geo = self._settings.value("window/geometry")
+        if geo:
+            self.restoreGeometry(geo)
+        else:
+            self.resize(1300, 840)
+        theme_name = self.cfg.get("ui.theme", "Dark")
+        font_size  = max(8, min(20, self.cfg.get("ui.font_size", 11)))
+        self.setStyleSheet(get_stylesheet(theme_name, font_size))
 
     # ── UI ────────────────────────────────────────────────────────────────
 
@@ -383,17 +374,12 @@ class MainWindow(
         label  = self.tabs.tabText(index)
         if widget is None:
             return
-
-        # Find the key for this widget
-        key = next((k for k, w in self._tab_map.items()
-                    if w is widget), None)
-
-        main_window = self
+        key = next((k for k, w in self._tab_map.items() if w is widget), None)
 
         def _redock():
             """Put the widget back into the tab bar at its original position."""
             if self.tabs.indexOf(widget) >= 0:
-                return   # already docked
+                return
             original_idx = next(
                 (i for i, (k, _, _) in enumerate(TABS) if k == key),
                 self.tabs.count())
@@ -401,17 +387,24 @@ class MainWindow(
                 min(original_idx, self.tabs.count()), widget, label)
             self.tabs.setCurrentWidget(widget)
 
-        # QDockWidget subclass that re-docks (instead of destroying the
-        # widget) when its close button is pressed. Without this, closing a
-        # popped-out window destroyed the tab's widget and the tab could not
-        # be brought back even via the View menu (user report).
+        win = self._make_floating_dock(widget, label, _redock)
+        self.tabs.removeTab(index)
+        if key:
+            self.statusBar().showMessage(
+                f"{label} undocked — close it or drag it back to re-dock", 4000)
+
+    def _make_floating_dock(self, widget, label: str, redock_fn) -> QDockWidget:
+        """Create a floating QDockWidget that re-docks instead of destroying widget."""
+        main_window = self
+
+        # QDockWidget subclass that re-docks (instead of destroying the widget)
+        # when its close button is pressed. Without this, closing a popped-out
+        # window destroyed the tab's widget (user report).
         class _FloatingTab(QDockWidget):
             def closeEvent(self_inner, event):
-                # Detach the widget so it isn't destroyed with the dock, then
-                # re-dock it into the tab bar.
                 self_inner.setWidget(None)
                 widget.setParent(main_window)
-                _redock()
+                redock_fn()
                 try:
                     main_window._floating_windows.remove(self_inner)
                 except (ValueError, AttributeError):
@@ -425,44 +418,24 @@ class MainWindow(
             QDockWidget.DockWidgetFeature.DockWidgetMovable |
             QDockWidget.DockWidgetFeature.DockWidgetFloatable |
             QDockWidget.DockWidgetFeature.DockWidgetClosable)
-        # Force a visible close/float button regardless of theme. The default
-        # icon was rendering near-white-on-white in Light theme (user report).
-        win.setStyleSheet("""
-            QDockWidget::title {
-                background: #2a2a2a;
-                color: #f0f0f0;
-                padding: 4px 8px;
-                font-weight: bold;
-            }
-            QDockWidget::close-button, QDockWidget::float-button {
-                background: #4a4a4a;
-                border: 1px solid #888;
-                border-radius: 2px;
-                padding: 1px;
-                icon-size: 12px;
-            }
-            QDockWidget::close-button:hover, QDockWidget::float-button:hover {
-                background: #a04040;
-            }
-        """)
+        # Force visible close/float buttons regardless of theme.
+        # Default icons rendered near-white-on-white in Light theme (user report).
+        win.setStyleSheet(
+            "QDockWidget::title{"
+            "background:#2a2a2a;color:#f0f0f0;padding:4px 8px;font-weight:bold;}"
+            "QDockWidget::close-button,QDockWidget::float-button{"
+            "background:#4a4a4a;border:1px solid #888;"
+            "border-radius:2px;padding:1px;icon-size:12px;}"
+            "QDockWidget::close-button:hover,QDockWidget::float-button:hover{"
+            "background:#a04040;}")
         win.resize(900, 650)
         win.show()
-
-        # Re-dock when dragged back onto the main window too
         win.topLevelChanged.connect(
-            lambda floating: (not floating) and _redock())
-
-        # Track floating windows
+            lambda floating: (not floating) and redock_fn())
         if not hasattr(self, '_floating_windows'):
             self._floating_windows = []
         self._floating_windows.append(win)
-
-        # Remove from tab bar while floating
-        self.tabs.removeTab(index)
-        if key:
-            self.statusBar().showMessage(
-                f"{label} undocked — close it or drag it back "
-                "to re-dock", 4000)
+        return win
 
     # Registry for simple tabs: key → (module_path, class_name, args_lambda)
     # args_lambda(self, ldb) → tuple of constructor args
@@ -529,97 +502,75 @@ class MainWindow(
         bar = QFrame()
         bar.setFixedHeight(38)
         bar.setObjectName("topbar")
-        bar.setStyleSheet(
-            "QFrame#topbar{border-bottom:1px solid #1a1a1a;}")
+        bar.setStyleSheet("QFrame#topbar{border-bottom:1px solid #1a1a1a;}")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(12, 0, 12, 0)
         lay.setSpacing(12)
-
         title = QLabel(APP_NAME)
         title.setStyleSheet(
-            "color:#3fbe6f;font-weight:bold;"
-            "font-family:'Courier New';")
+            "color:#3fbe6f;font-weight:bold;font-family:'Courier New';")
         lay.addWidget(title)
         lay.addWidget(_vsep())
+        self._topbar_add_station_group(lay)
+        self._loc_lbl = QLabel("—")
+        self._loc_lbl.setStyleSheet("color:#4a4a4a;")
+        lay.addWidget(self._loc_lbl)
+        lay.addStretch()
+        self._topbar_add_status_group(lay)
+        return bar
 
-        # Inline-editable callsign
+    def _topbar_add_station_group(self, lay) -> None:
+        """Add callsign label, profile combo, and grid label to the topbar layout."""
         self._cs_lbl = ClickableLabel(
             self.cfg.callsign or "No callsign set",
             "e.g. W4XYZ",
             self._on_callsign_edit,
             max_length=12)
-        self._cs_lbl.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._cs_lbl.setStyleSheet("font-family:'Courier New';")
         self._cs_lbl.setToolTip(
-            "Your FCC callsign\n"
-            "Click to edit\n"
+            "Your FCC callsign\nClick to edit\n"
             "Used in all transmissions, logs, and beacons")
         lay.addWidget(self._cs_lbl)
-
-        # Operator profile switcher
         self._profile_combo = QComboBox()
         self._profile_combo.setFixedWidth(120)
         self._profile_combo.setFixedHeight(24)
         self._profile_combo.setStyleSheet(
-            "QComboBox{"
-            "background:#141414;"
-            "border:1px solid #222;border-radius:3px;"
-            "padding:2px 6px;}"
+            "QComboBox{background:#141414;border:1px solid #222;"
+            "border-radius:3px;padding:2px 6px;}"
             "QComboBox::drop-down{border:none;width:16px;}"
-            "QComboBox QAbstractItemView{"
-            "background:#141414;"
+            "QComboBox QAbstractItemView{background:#141414;"
             "selection-background-color:#1a3a1a;}")
         self._profile_combo.setToolTip(
             "Operator profile switcher\n"
-            "Each profile has its own callsign,\n"
-            "credentials, and settings.\n"
+            "Each profile has its own callsign, credentials, and settings.\n"
             "Click '+' to create a new profile\n"
             "Useful for club stations with multiple ops")
-        self._profile_combo.currentIndexChanged.connect(
-            self._on_profile_change)
+        self._profile_combo.currentIndexChanged.connect(self._on_profile_change)
         lay.addWidget(self._profile_combo)
         lay.addWidget(_vsep())
-
-        # Inline-editable grid
         self._grid_lbl = ClickableLabel(
             self.cfg.grid or "No grid set",
-            "Maidenhead grid (DM79rr), ZIP (22030), "
-            "city (Denver CO), or MGRS. "
+            "Maidenhead grid (DM79rr), ZIP (22030), city (Denver CO), or MGRS. "
             "All formats resolve to Maidenhead grid square.",
             self._on_grid_edit,
             max_length=30)
-        self._grid_lbl.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._grid_lbl.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._grid_lbl)
         lay.addWidget(_vsep())
 
-        self._loc_lbl = QLabel("—")
-        self._loc_lbl.setStyleSheet(
-            "color:#4a4a4a;")
-        lay.addWidget(self._loc_lbl)
-        lay.addStretch()
-
-        # Clock display
+    def _topbar_add_status_group(self, lay) -> None:
+        """Add UTC clock and rig status pill to the topbar layout."""
         self._utc_lbl = QLabel("00:00:00 UTC")
         self._utc_lbl.setStyleSheet(
-            "color:#3fbe6f;font-family:'Courier New';"
-            "")
-        self._utc_lbl.setToolTip(
-            "Click to toggle UTC / Local time")
+            "color:#3fbe6f;font-family:'Courier New';")
+        self._utc_lbl.setToolTip("Click to toggle UTC / Local time")
         self._utc_lbl.mousePressEvent = self._toggle_clock
         self._show_utc = True
         lay.addWidget(self._utc_lbl)
         lay.addWidget(_vsep())
-
         self._rig_pill = QLabel("● RIG")
-        self._rig_pill.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._rig_pill.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._rig_pill)
-
-        return bar
 
     # ── Menu ──────────────────────────────────────────────────────────────
 

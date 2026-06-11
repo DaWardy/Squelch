@@ -116,7 +116,7 @@ class BandConditionsTab(SquelchPanel, QWidget):
         root.addWidget(splitter, 1)
 
     def _build_header_bar(self) -> QHBoxLayout:
-        from PyQt6.QtWidgets import QLineEdit, QPushButton, QComboBox, QDoubleSpinBox
+        from PyQt6.QtWidgets import QPushButton, QDoubleSpinBox
         hdr = QHBoxLayout()
         self._summary_lbl = QLabel(self.tr("Fetching solar data…"))
         self._summary_lbl.setStyleSheet("font-weight:bold;color:#3fbe6f;")
@@ -127,37 +127,7 @@ class BandConditionsTab(SquelchPanel, QWidget):
             "Estimated Maximum Usable Frequency for a ~3000 km F2 path "
             "based on current SFI. Updates with solar data.")
         hdr.addWidget(self._muf_lbl)
-        path_lbl = QLabel("Path to:")
-        path_lbl.setStyleSheet("color:#888888; font-size:10px;")
-        hdr.addWidget(path_lbl)
-        self._path_edit = QLineEdit()
-        self._path_edit.setPlaceholderText("grid / call / city")
-        self._path_edit.setMaximumWidth(130)
-        self._path_edit.setToolTip(
-            "Enter a Maidenhead grid (e.g. JO01), callsign, or city for "
-            "path-specific MUF / band predictions.\n"
-            "Leave blank for the default 3000 km F2 estimate.")
-        self._path_edit.setStyleSheet("font-size:10px;")
-        self._path_edit.returnPressed.connect(self._on_path_changed)
-        hdr.addWidget(self._path_edit)
-        # Go button — user needs a visible "apply" affordance besides Enter
-        self._path_go = QPushButton("Go")
-        self._path_go.setMaximumWidth(40)
-        self._path_go.setToolTip("Calculate path-specific MUF/distance/bearing")
-        self._path_go.clicked.connect(self._on_path_changed)
-        hdr.addWidget(self._path_go)
-        # Band filter — side-view uses band centre freq instead of rig freq
-        self._band_filter = QComboBox()
-        self._band_filter.addItems([
-            "Auto", "160m", "80m", "60m", "40m", "30m", "20m",
-            "17m", "15m", "12m", "10m", "6m"])
-        self._band_filter.setMaximumWidth(70)
-        self._band_filter.setToolTip(
-            "Try a specific HAM band for this path.\n"
-            "Auto uses the rig's current frequency.")
-        self._band_filter.currentTextChanged.connect(
-            lambda *_: self._on_path_changed())
-        hdr.addWidget(self._band_filter)
+        self._header_add_path_group(hdr)
         self._eirp_spin = QDoubleSpinBox()
         self._eirp_spin.setRange(-30.0, 60.0)
         self._eirp_spin.setSingleStep(1.0)
@@ -180,6 +150,41 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._age_lbl = QLabel("")
         hdr.addWidget(self._age_lbl)
         return hdr
+
+    def _header_add_path_group(self, hdr) -> None:
+        """Add path-to field, Go button, and band filter to the header layout."""
+        from PyQt6.QtWidgets import QLineEdit, QPushButton, QComboBox
+        path_lbl = QLabel("Path to:")
+        path_lbl.setStyleSheet("color:#888888; font-size:10px;")
+        hdr.addWidget(path_lbl)
+        self._path_edit = QLineEdit()
+        self._path_edit.setPlaceholderText("grid / call / city")
+        self._path_edit.setMaximumWidth(130)
+        self._path_edit.setToolTip(
+            "Enter a Maidenhead grid (e.g. JO01), callsign, or city for "
+            "path-specific MUF / band predictions.\n"
+            "Leave blank for the default 3000 km F2 estimate.")
+        self._path_edit.setStyleSheet("font-size:10px;")
+        self._path_edit.returnPressed.connect(self._on_path_changed)
+        hdr.addWidget(self._path_edit)
+        # Go button — visible "apply" affordance; Enter also works
+        self._path_go = QPushButton("Go")
+        self._path_go.setMaximumWidth(40)
+        self._path_go.setToolTip("Calculate path-specific MUF/distance/bearing")
+        self._path_go.clicked.connect(self._on_path_changed)
+        hdr.addWidget(self._path_go)
+        # Band filter — uses band centre freq instead of live rig frequency
+        self._band_filter = QComboBox()
+        self._band_filter.addItems([
+            "Auto", "160m", "80m", "60m", "40m", "30m", "20m",
+            "17m", "15m", "12m", "10m", "6m"])
+        self._band_filter.setMaximumWidth(70)
+        self._band_filter.setToolTip(
+            "Try a specific HAM band for this path.\n"
+            "Auto uses the rig's current frequency.")
+        self._band_filter.currentTextChanged.connect(
+            lambda *_: self._on_path_changed())
+        hdr.addWidget(self._band_filter)
 
     def _build_solar_pane(self) -> QWidget:
         left = QWidget()

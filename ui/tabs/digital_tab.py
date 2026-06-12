@@ -408,56 +408,37 @@ class DigitalTab(SquelchPanel, QWidget):
         lay.addWidget(self._no_decoder_msg)
         return w
 
-    def _build_info_panels(self) -> QWidget:
-        w   = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(4, 6, 6, 6)
-        lay.setSpacing(6)
-
-        # Active call panel
+    def _build_active_call_panel(self) -> "QGroupBox":
         call_grp = QGroupBox("Active Call")
         cl = QVBoxLayout(call_grp)
-
         self._call_proto = QLabel("Protocol: —")
         self._call_tg    = QLabel("Talkgroup: —")
         self._call_src   = QLabel("Source: —")
         self._call_enc   = QLabel("")
         self._call_dur   = QLabel("Duration: —")
-
         for lbl in [self._call_proto, self._call_tg,
-                    self._call_src, self._call_enc,
-                    self._call_dur]:
-            lbl.setStyleSheet(
-                ""
-                "font-family:'Courier New';")
+                    self._call_src, self._call_enc, self._call_dur]:
+            lbl.setStyleSheet("font-family:'Courier New';")
             cl.addWidget(lbl)
-        lay.addWidget(call_grp)
+        return call_grp
 
-        # Protocol info / education panel
+    def _build_protocol_info_panel(self) -> "QGroupBox":
         info_grp = QGroupBox("Protocol Reference")
         il = QVBoxLayout(info_grp)
-
         self._proto_selector = QComboBox()
-        self._proto_selector.addItems([
-            "P25", "DMR", "NXDN", "YSF", "D-STAR"])
-        self._proto_selector.currentTextChanged.connect(
-            self._show_protocol_info)
+        self._proto_selector.addItems(["P25", "DMR", "NXDN", "YSF", "D-STAR"])
+        self._proto_selector.currentTextChanged.connect(self._show_protocol_info)
         il.addWidget(self._proto_selector)
-
         self._proto_info = QTextEdit()
         self._proto_info.setReadOnly(True)
         self._proto_info.setStyleSheet(
-            "background:#0a0a0a;"
-            "font-family:'Courier New';"
+            "background:#0a0a0a;font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         self._proto_info.setMaximumHeight(200)
         il.addWidget(self._proto_info)
-        lay.addWidget(info_grp)
+        return info_grp
 
-        # Show initial protocol info
-        self._show_protocol_info("P25")
-
-        # Stats
+    def _build_session_stats_panel(self) -> "QGroupBox":
         stats_grp = QGroupBox("Session Statistics")
         sl = QVBoxLayout(stats_grp)
         self._stats_lbl = QLabel(
@@ -466,12 +447,19 @@ class DigitalTab(SquelchPanel, QWidget):
             "DMR calls:        0\n"
             "Encrypted:        0\n"
             "Session started:  —")
-        self._stats_lbl.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._stats_lbl.setStyleSheet("font-family:'Courier New';")
         sl.addWidget(self._stats_lbl)
-        lay.addWidget(stats_grp)
+        return stats_grp
 
+    def _build_info_panels(self) -> "QWidget":
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(4, 6, 6, 6)
+        lay.setSpacing(6)
+        lay.addWidget(self._build_active_call_panel())
+        lay.addWidget(self._build_protocol_info_panel())
+        self._show_protocol_info("P25")
+        lay.addWidget(self._build_session_stats_panel())
         lay.addStretch()
         return w
 

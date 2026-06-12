@@ -20,14 +20,32 @@ class _MainWindowFirstrunMixin:
     """Mixed into MainWindow. Do not instantiate directly."""
     cfg: "Config"
 
+    def _apply_rig_preset(self, name: str) -> None:
+        from core.rig_presets import get_preset
+        preset = get_preset(name)
+        if not preset:
+            return
+        if preset.hamlib_model:
+            self.cfg.set("rig.hamlib_model", preset.hamlib_model)
+        self.cfg.set("rig.baud", preset.baud)
+        self.cfg.save()
+        rig_tab = self._tab_map.get("rig")
+        if rig_tab and hasattr(rig_tab, "_populate_rig_models"):
+            rig_tab._populate_rig_models()
+        QMessageBox.information(
+            self, "Radio Selected",
+            f"{name} selected.\n"
+            f"Baud rate: {preset.baud}\n\n"
+            "Check Radio Setup in Help for required menu settings.")
+
     def _select_rig_model(self):
         from core.rig_presets import preset_names, get_preset
+        from PyQt6.QtWidgets import QTextEdit
         dlg = QDialog(self)
         dlg.setWindowTitle("Select Radio Model")
         dlg.setMinimumWidth(420)
         lay = QVBoxLayout(dlg)
 
-        from PyQt6.QtWidgets import QComboBox, QTextEdit
         combo = QComboBox()
         combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
@@ -40,15 +58,13 @@ class _MainWindowFirstrunMixin:
         info.setReadOnly(True)
         info.setMaximumHeight(200)
         info.setStyleSheet(
-            "background:#111;"
-            "font-family:'Courier New';border:1px solid #333;")
+            "background:#111;font-family:'Courier New';border:1px solid #333;")
         lay.addWidget(info)
 
         def _on_select(idx):
             if idx <= 0:
                 return
-            name = combo.currentText()
-            preset = get_preset(name)
+            preset = get_preset(combo.currentText())
             if preset:
                 lines = [f"<b>{preset.name}</b><br>"]
                 if preset.notes:
@@ -60,7 +76,6 @@ class _MainWindowFirstrunMixin:
                 info.setHtml("".join(lines))
 
         combo.currentIndexChanged.connect(_on_select)
-
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel)
@@ -69,24 +84,7 @@ class _MainWindowFirstrunMixin:
         lay.addWidget(btns)
 
         if dlg.exec() and combo.currentIndex() > 0:
-            name = combo.currentText()
-            preset = get_preset(name)
-            if preset:
-                if preset.hamlib_model:
-                    self.cfg.set("rig.hamlib_model",
-                                 preset.hamlib_model)
-                self.cfg.set("rig.baud", preset.baud)
-                self.cfg.save()
-                # Update rig tab if visible
-                rig_tab = self._tab_map.get("rig")
-                if rig_tab and hasattr(rig_tab, '_populate_rig_models'):
-                    rig_tab._populate_rig_models()
-                QMessageBox.information(
-                    self, "Radio Selected",
-                    f"{name} selected.\n"
-                    f"Baud rate: {preset.baud}\n\n"
-                    "Check Radio Setup in Help for "
-                    "required menu settings.")
+            self._apply_rig_preset(combo.currentText())
 
 
     def _auto_fill_location(self, edit):

@@ -41,30 +41,23 @@ class _SettingsSdrTab:
         QTimer.singleShot(400, self._check_sdr_status)
         return w
 
-    def _build_sdr_hardware_group(self) -> "QGroupBox":
-        """Checkbox list of installable SDR drivers + select-all/clear row."""
+    _SDR_DRIVERS = [
+        ("soapyrtlsdr",   "RTL-SDR  (any RTL2832U dongle)",
+         "RTL-SDR Blog V3/V4, Nooelec, etc.  Also needs Zadig WinUSB driver."),
+        ("soapyhackrf",   "HackRF One  (1 MHz to 6 GHz TX/RX)",
+         "Great Plains SDR transceiver."),
+        ("soapysdrplay3", "SDRplay RSP2Pro / RSP1A / RSPdx / RSPduo",
+         "Requires SDRplay API installed first: sdrplay.com/softwarehome"),
+        ("soapyuhd",      "USRP B200 mini / B210  (Ettus Research)",
+         "Professional full-duplex SDR, 70 MHz to 6 GHz."),
+        ("soapyairspy",   "Airspy R2 / Airspy Mini",
+         "High performance, 24 MHz to 1.8 GHz."),
+        ("limesuite",     "LimeSDR / LimeSDR Mini",
+         "Open source transceiver, 100 kHz to 3.8 GHz."),
+    ]
+
+    def _build_sdr_driver_checkboxes(self, gl: "QVBoxLayout") -> None:
         from PyQt6.QtWidgets import QFrame
-        DRIVERS = [
-            ("soapyrtlsdr",  "RTL-SDR  (any RTL2832U dongle)",
-             "RTL-SDR Blog V3/V4, Nooelec, etc.  Also needs Zadig WinUSB driver."),
-            ("soapyhackrf",  "HackRF One  (1 MHz to 6 GHz TX/RX)",
-             "Great Plains SDR transceiver."),
-            ("soapysdrplay3", "SDRplay RSP2Pro / RSP1A / RSPdx / RSPduo",
-             "Requires SDRplay API installed first: sdrplay.com/softwarehome"),
-            ("soapyuhd",     "USRP B200 mini / B210  (Ettus Research)",
-             "Professional full-duplex SDR, 70 MHz to 6 GHz."),
-            ("soapyairspy",  "Airspy R2 / Airspy Mini",
-             "High performance, 24 MHz to 1.8 GHz."),
-            ("limesuite",    "LimeSDR / LimeSDR Mini",
-             "Open source transceiver, 100 kHz to 3.8 GHz."),
-        ]
-        grp = QGroupBox("Select your hardware:")
-        grp.setStyleSheet(
-            "QGroupBox{border:1px solid #2a2a2a;border-radius:4px;"
-            "padding-top:12px;margin-top:6px;}")
-        gl = QVBoxLayout(grp)
-        gl.setSpacing(10)
-        self._sdr_checks = {}
         cb_style = (
             "QCheckBox{font-weight:bold;font-size:13px;spacing:8px;padding:2px 0;}"
             "QCheckBox::indicator{width:18px;height:18px;border:2px solid #888;"
@@ -72,7 +65,8 @@ class _SettingsSdrTab:
             "QCheckBox::indicator:hover{border-color:#3fbe6f;}"
             "QCheckBox::indicator:checked{background:#3fbe6f;border-color:#3fbe6f;}"
             "QCheckBox::indicator:disabled{background:#2a2a2a;border-color:#444;}")
-        for pkg, label, note in DRIVERS:
+        self._sdr_checks = {}
+        for pkg, label, note in self._SDR_DRIVERS:
             row = QVBoxLayout()
             row.setSpacing(4)
             row.setContentsMargins(0, 6, 0, 6)
@@ -89,8 +83,8 @@ class _SettingsSdrTab:
             sep.setFrameShape(QFrame.Shape.HLine)
             sep.setStyleSheet("color:#333;max-height:1px;")
             gl.addWidget(sep)
-        sel_row = QHBoxLayout()
-        sel_row.setContentsMargins(0, 6, 0, 0)
+
+    def _build_sdr_select_row(self) -> "QHBoxLayout":
         sel_btn_style = (
             "QPushButton{padding:6px 14px;font-weight:bold;"
             "border:1px solid #555;border-radius:3px;"
@@ -103,13 +97,26 @@ class _SettingsSdrTab:
         b_all.setMinimumWidth(110)
         b_none.setMinimumWidth(90)
         b_all.clicked.connect(
-            lambda: [c.setChecked(True) for c in self._sdr_checks.values()])
+            lambda: [c.setChecked(True)  for c in self._sdr_checks.values()])
         b_none.clicked.connect(
             lambda: [c.setChecked(False) for c in self._sdr_checks.values()])
-        sel_row.addWidget(b_all)
-        sel_row.addWidget(b_none)
-        sel_row.addStretch()
-        gl.addLayout(sel_row)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 6, 0, 0)
+        row.addWidget(b_all)
+        row.addWidget(b_none)
+        row.addStretch()
+        return row
+
+    def _build_sdr_hardware_group(self) -> "QGroupBox":
+        """Checkbox list of installable SDR drivers + select-all/clear row."""
+        grp = QGroupBox("Select your hardware:")
+        grp.setStyleSheet(
+            "QGroupBox{border:1px solid #2a2a2a;border-radius:4px;"
+            "padding-top:12px;margin-top:6px;}")
+        gl = QVBoxLayout(grp)
+        gl.setSpacing(10)
+        self._build_sdr_driver_checkboxes(gl)
+        gl.addLayout(self._build_sdr_select_row())
         return grp
 
     def _build_sdr_action_area(self, lay) -> None:

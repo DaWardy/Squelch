@@ -116,6 +116,33 @@ class SignalIdentifier:
             log.warning(f"Artemis DB download: {e}")
             return False
 
+    def _match_candidate(self, sig: dict, bandwidth_hz: int,
+                          freq_hz: int, bw_lo: float, bw_hi: float):
+        """Return a SignalMatch if sig matches, or None."""
+        bw_val = self._parse_hz(str(sig.get('bandwidth', '0')))
+        if bw_val <= 0 or not (bw_lo <= bw_val <= bw_hi):
+            return None
+        if freq_hz > 0:
+            freq_lo = self._parse_hz(str(sig.get('frequency_lower', '0')))
+            freq_hi = self._parse_hz(
+                str(sig.get('frequency_upper', '999999999999')))
+            if freq_lo > 0 and freq_hi > 0:
+                if not (freq_lo <= freq_hz <= freq_hi):
+                    return None
+        bw_diff = abs(bw_val - bandwidth_hz) / max(bandwidth_hz, 1)
+        confidence = max(0.0, 1.0 - bw_diff * 2)
+        return SignalMatch(
+            name         = str(sig.get('name', 'Unknown'))[:80],
+            modulation   = str(sig.get('modulation', ''))[:40],
+            bandwidth_hz = int(bw_val),
+            freq_hz      = freq_hz,
+            description  = str(sig.get('description', ''))[:200],
+            url          = str(sig.get('url', '')),
+            category     = str(sig.get('category', ''))[:40],
+            confidence   = confidence,
+            source       = 'artemis',
+        )
+
     def identify(self,
                   bandwidth_hz: int,
                   freq_hz: int = 0,
@@ -127,57 +154,17 @@ class SignalIdentifier:
         """
         if not self._loaded:
             self.load_db()
-
-        matches = []
         bw_lo = bandwidth_hz * (1 - bw_tolerance)
         bw_hi = bandwidth_hz * (1 + bw_tolerance)
-
+        matches = []
         for sig in self._db:
             try:
-                # Artemis stores bandwidth as string like "5 kHz"
-                bw_str = str(sig.get('bandwidth', '0'))
-                bw_val = self._parse_hz(bw_str)
-                if bw_val <= 0:
-                    continue
-                if not (bw_lo <= bw_val <= bw_hi):
-                    continue
-
-                # Frequency range check if provided
-                if freq_hz > 0:
-                    freq_lo = self._parse_hz(
-                        str(sig.get('frequency_lower', '0')))
-                    freq_hi = self._parse_hz(
-                        str(sig.get('frequency_upper',
-                                    '999999999999')))
-                    if freq_lo > 0 and freq_hi > 0:
-                        if not (freq_lo <= freq_hz <= freq_hi):
-                            continue
-
-                # Confidence based on BW match quality
-                bw_diff = abs(bw_val - bandwidth_hz) / \
-                           max(bandwidth_hz, 1)
-                confidence = max(0.0, 1.0 - bw_diff * 2)
-
-                matches.append(SignalMatch(
-                    name        = str(sig.get(
-                        'name', 'Unknown'))[:80],
-                    modulation  = str(sig.get(
-                        'modulation', ''))[:40],
-                    bandwidth_hz = int(bw_val),
-                    freq_hz     = freq_hz,
-                    description = str(sig.get(
-                        'description', ''))[:200],
-                    url         = str(sig.get(
-                        'url', '')),
-                    category    = str(sig.get(
-                        'category', ''))[:40],
-                    confidence  = confidence,
-                    source      = 'artemis',
-                ))
+                m = self._match_candidate(sig, bandwidth_hz, freq_hz,
+                                          bw_lo, bw_hi)
+                if m is not None:
+                    matches.append(m)
             except Exception:
                 continue
-
-        # Sort by confidence descending
         matches.sort(key=lambda m: m.confidence, reverse=True)
         return matches[:10]
 

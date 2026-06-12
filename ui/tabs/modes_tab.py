@@ -331,21 +331,14 @@ class ModesTab(SquelchPanel, QWidget):
         
 
 
-    def _build_tx_settings(self, root):
-        # ── TX settings ───────────────────────────────────────────────
-        tx_grp = QGroupBox("TX Settings")
-        tx_gl  = QGridLayout(tx_grp)
-        tx_gl.setSpacing(4)
-        
+    def _build_tx_freq_controls(self, tx_gl) -> None:
         tx_gl.addWidget(QLabel("Power:"), 0, 0)
         self._power_spin = QSpinBox()
         self._power_spin.setRange(1, 100)
-        self._power_spin.setValue(
-            self.cfg.get("ft8.tx_power_dbm", 37))
+        self._power_spin.setValue(self.cfg.get("ft8.tx_power_dbm", 37))
         self._power_spin.setSuffix(" dBm")
         self._power_spin.setFixedWidth(80)
         tx_gl.addWidget(self._power_spin, 0, 1)
-        
         tx_gl.addWidget(QLabel("TX Freq:"), 1, 0)
         self._tx_freq_spin = QSpinBox()
         self._tx_freq_spin.setRange(200, 3000)
@@ -353,45 +346,45 @@ class ModesTab(SquelchPanel, QWidget):
         self._tx_freq_spin.setSuffix(" Hz")
         self._tx_freq_spin.setFixedWidth(80)
         tx_gl.addWidget(self._tx_freq_spin, 1, 1)
-        
+
+    def _build_tx_checkboxes(self, tx_gl) -> None:
         self._even_cb = QCheckBox("TX even periods")
         self._even_cb.setToolTip(
             "Transmit on even 15-second periods (00, 30s). Leave unchecked to use odd periods. Pick the opposite of the station you're working.")
         self._even_cb.setChecked(True)
         tx_gl.addWidget(self._even_cb, 2, 0, 1, 2)
-        
         self._auto_seq_cb = QCheckBox("Auto-sequence")
         self._auto_seq_cb.setToolTip(
             "Let the software automatically step through the QSO exchange (signal report, R+report, 73). Recommended for beginners.")
         self._auto_seq_cb.setChecked(True)
-        self._auto_seq_cb.toggled.connect(
-            self.ft8_engine.set_auto_sequence)
+        self._auto_seq_cb.toggled.connect(self.ft8_engine.set_auto_sequence)
         tx_gl.addWidget(self._auto_seq_cb, 3, 0, 1, 2)
-        
         self._auto_cq_cb = QCheckBox("Auto CQ")
         self._auto_cq_cb.setToolTip(
             "Automatically repeat CQ calls until someone answers. Watch the band — don't leave it unattended while transmitting.")
         self._auto_cq_cb.setChecked(False)
-        self._auto_cq_cb.toggled.connect(
-            self.ft8_engine.set_auto_cq)
+        self._auto_cq_cb.toggled.connect(self.ft8_engine.set_auto_cq)
         tx_gl.addWidget(self._auto_cq_cb, 4, 0, 1, 2)
-        
         self._hold_tx_cb = QCheckBox("Hold TX frequency")
         self._hold_tx_cb.setToolTip(
             "Keep your transmit frequency fixed instead of following the station you're answering. Helps avoid being covered by callers.")
         self._hold_tx_cb.setChecked(False)
-        self._hold_tx_cb.toggled.connect(
-            self.ft8_engine.set_hold_tx_freq)
+        self._hold_tx_cb.toggled.connect(self.ft8_engine.set_hold_tx_freq)
         tx_gl.addWidget(self._hold_tx_cb, 5, 0, 1, 2)
-        
         self._dx_only_cb = QCheckBox("DX only (skip domestic)")
         self._dx_only_cb.setToolTip(
             "Only respond to stations outside your own country — useful for chasing DX.")
         self._dx_only_cb.setChecked(False)
-        self._dx_only_cb.toggled.connect(
-            self.ft8_engine.set_dx_only)
+        self._dx_only_cb.toggled.connect(self.ft8_engine.set_dx_only)
         tx_gl.addWidget(self._dx_only_cb, 6, 0, 1, 2)
-        
+
+    def _build_tx_settings(self, root):
+        # ── TX settings ───────────────────────────────────────────────
+        tx_grp = QGroupBox("TX Settings")
+        tx_gl  = QGridLayout(tx_grp)
+        tx_gl.setSpacing(4)
+        self._build_tx_freq_controls(tx_gl)
+        self._build_tx_checkboxes(tx_gl)
         tx_grp.setMinimumHeight(80)
         self._left_layout.addWidget(tx_grp)
         

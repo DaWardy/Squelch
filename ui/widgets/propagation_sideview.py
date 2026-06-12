@@ -307,13 +307,41 @@ class PropagationSideView(QWidget):
                            ground + bulge_px * 4 * t * (1 - t) - _terrain_px(i))
         p.drawPath(surface)
 
+    @staticmethod
+    def _extra_path_loss_db(mode: str, path_km: float, freq_mhz: float) -> float:
+        """Extra loss beyond FSPL: ionospheric absorption + ground reflections.
+
+        Uses a simplified ITU/CCIR model (educational approximation, not VOACAP):
+        - Skywave:    ~10 dB/hop ionospheric absorption + ~8 dB/ground reflection
+        - NVIS:       single-hop; D-layer absorption rises sharply below 10 MHz
+        - Groundwave: surface attenuation increases with path length and frequency
+        - Beyond/Absorbed: signal effectively lost
+        """
+        if mode == "skywave":
+            hops = 2 if path_km > 4000 else 1
+            return 10 * hops + 8 * (hops - 1)   # absorption + ground reflections
+        if mode == "nvis":
+            # D-layer is worst at low frequencies; 20 dB at 2 MHz → 0 dB at 10 MHz
+            d_layer = max(0.0, 20.0 * (1.0 - min(freq_mhz, 10.0) / 10.0))
+            return 10.0 + d_layer
+        if mode == "groundwave":
+            # Surface wave decays faster than free space; rough freq-scaled model
+            freq_factor = max(0.5, math.log10(max(freq_mhz, 0.1)) + 1.0)
+            return 0.5 * path_km * freq_factor / 10.0
+        if mode in ("beyond", "absorbed"):
+            return 60.0
+        return 0.0
+
     def _draw_path_loss_bar(self, p: "QPainter", x0: int, plot_w: int,
                             top: int, H: int):
-        """Draw EIRP/FSPL signal-strength bar and terrain source label."""
-        if self._eirp_dbw != 0.0 and self._path_km > 0 and self._freq_mhz > 0:
+        """Draw EIRP/path-loss signal-strength bar and terrain source label."""
+        if self._path_km > 0 and self._freq_mhz > 0:
+            mode    = self._propagation_mode()
+            eirp_dbm = self._eirp_dbw + 30          # dBW → dBm
             fspl    = (20 * math.log10(max(self._path_km, 1)) +
                        20 * math.log10(max(self._freq_mhz, 0.1)) + 92.45)
-            prx_dbm = (self._eirp_dbw * 10) - fspl
+            extra   = self._extra_path_loss_db(mode, self._path_km, self._freq_mhz)
+            prx_dbm = eirp_dbm - fspl - extra
             norm    = max(0.0, min(1.0, (prx_dbm + 130) / 57))
             bar_w   = int(plot_w * norm)
             if bar_w > 4:
@@ -325,9 +353,14 @@ class PropagationSideView(QWidget):
                 p.fillRect(x0, sig_y, bar_w, 8, QBrush(sig_grad))
                 p.setPen(QColor("#99aabb"))
                 p.setFont(QFont("", 7))
-                p.drawText(x0 + bar_w + 4, sig_y + 7, f"Prx≈{prx_dbm:.0f} dBm")
+                total_loss = fspl + extra
+                p.drawText(x0 + bar_w + 4, sig_y + 7,
+                           f"Prx≈{prx_dbm:.0f} dBm")
                 p.drawText(x0 + 2, sig_y + 7,
-                           f"EIRP {self._eirp_dbw:.0f} dBW → FSPL {fspl:.0f} dB")
+                           f"EIRP {self._eirp_dbw:.0f} dBW  "
+                           f"FSPL {fspl:.0f} dB  "
+                           f"+{extra:.0f} dB  "
+                           f"= {total_loss:.0f} dB loss")
         if self._terrain_label:
             ground = int(self.height() * 0.82)
             p.setPen(QColor("#778899"))

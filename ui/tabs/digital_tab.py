@@ -346,73 +346,55 @@ class DigitalTab(SquelchPanel, QWidget):
 
         return bar
 
-    def _build_decode_log(self) -> QWidget:
-        w   = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(4)
-
-        # Header
+    def _build_decode_header(self) -> "QHBoxLayout":
         hdr = QHBoxLayout()
         title = QLabel("Digital Decode Log")
-        title.setStyleSheet(
-            "font-weight:bold;")
+        title.setStyleSheet("font-weight:bold;")
         hdr.addWidget(title)
         hdr.addStretch()
-
-        # Protocol filter
         self._proto_filter = QComboBox()
         self._proto_filter.setToolTip(
             "Filter decoded calls by protocol\n"
             "All: show P25, DMR, NXDN, YSF, D-STAR")
-        self._proto_filter.addItems([
-            "All protocols",
-            "P25", "DMR", "NXDN", "YSF", "D-STAR"])
+        self._proto_filter.addItems(
+            ["All protocols", "P25", "DMR", "NXDN", "YSF", "D-STAR"])
         self._proto_filter.setFixedWidth(130)
-        self._proto_filter.currentTextChanged.connect(
-            self._apply_filter)
+        self._proto_filter.currentTextChanged.connect(self._apply_filter)
         hdr.addWidget(self._proto_filter)
-
-        # Hide encrypted
         self._hide_enc = QCheckBox("Hide encrypted")
         self._hide_enc.setToolTip(
             "Hide encrypted calls from the decode log\n"
             "Encrypted audio cannot be decoded")
         self._hide_enc.toggled.connect(self._apply_filter)
         hdr.addWidget(self._hide_enc)
+        return hdr
 
-        lay.addLayout(hdr)
-
-        # Decode table
-        self._table = QTableWidget(0, 6)
-        self._table.setHorizontalHeaderLabels([
-            "Time", "Protocol", "TG/Dest",
-            "Source", "Info", "Enc"])
-        hdr_view = self._table.horizontalHeader()
-        hdr_view.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
-        hdr_view.setSectionResizeMode(
-            4, QHeaderView.ResizeMode.Stretch)
-        self._table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setAlternatingRowColors(True)
-        self._table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setStyleSheet(
-            "QTableWidget{"
-            "background:#0a0a0a;"
-            "gridline-color:#1a1a1a;"
+    def _build_decode_table(self) -> "QTableWidget":
+        t = QTableWidget(0, 6)
+        t.setHorizontalHeaderLabels(
+            ["Time", "Protocol", "TG/Dest", "Source", "Info", "Enc"])
+        hv = t.horizontalHeader()
+        hv.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hv.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        t.setAlternatingRowColors(True)
+        t.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        t.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;gridline-color:#1a1a1a;"
             "alternate-background-color:#0d0d0d;"
-            "font-family:'Courier New';"
-            "border:1px solid #1a1a1a;}"
-            "QHeaderView::section{"
-            "background:#141414;"
-            "border:none;padding:3px;}")
-        self._table.setAlternatingRowColors(True)
-        self._table.clicked.connect(self._on_row_click)
-        lay.addWidget(self._table)
+            "font-family:'Courier New';border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;border:none;padding:3px;}")
+        t.clicked.connect(self._on_row_click)
+        return t
 
-        # No decoder placeholder
+    def _build_decode_log(self) -> "QWidget":
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(4)
+        lay.addLayout(self._build_decode_header())
+        self._table = self._build_decode_table()
+        lay.addWidget(self._table)
         self._no_decoder_msg = QLabel(
             "No digital voice decoder running.\n\n"
             "Windows: Launch DSD+ from the bar above\n"
@@ -420,13 +402,10 @@ class DigitalTab(SquelchPanel, QWidget):
             "Audio routing:\n"
             "  SDR tab → Route to Digital tab\n"
             "  or IC-7100 USB audio → VB-Cable → DSD+")
-        self._no_decoder_msg.setAlignment(
-            Qt.AlignmentFlag.AlignCenter)
-        self._no_decoder_msg.setStyleSheet(
-            "")
+        self._no_decoder_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._no_decoder_msg.setStyleSheet("")
         self._no_decoder_msg.setWordWrap(True)
         lay.addWidget(self._no_decoder_msg)
-
         return w
 
     def _build_info_panels(self) -> QWidget:

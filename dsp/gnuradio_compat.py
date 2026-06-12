@@ -135,15 +135,58 @@ def import_grc(path: str) -> Optional["ImportResult"]:
         return None
 
 
+def _parse_grc_block(block_data: dict, result: "ImportResult") -> None:
+    """Parse one GRC block entry into *result*."""
+    btype = block_data.get("id", "")
+    squelch_key = GR_TO_SQUELCH.get(
+        btype, GR_TO_SQUELCH.get(btype.replace(".", "_"), None))
+    bid = block_data.get("name",
+                         block_data.get("id", str(len(result.blocks))))
+    pos = block_data.get("states", {}).get("coordinate", [0, 0])
+
+    if squelch_key:
+        param_map = GR_PARAM_MAP.get(squelch_key, {})
+        params: dict = {}
+        for p in block_data.get("parameters", []):
+            pname = p.get("id", "")
+            pval  = p.get("value", "")
+            squelch_pname = param_map.get(pname, pname)
+            try:
+                pval = float(pval)
+                if pval == int(pval):
+                    pval = int(pval)
+            except (ValueError, TypeError):
+                pass
+            params[squelch_pname] = pval
+        result.blocks[bid] = {
+            "key": squelch_key, "params": params,
+            "pos": pos, "gr_id": btype}
+    else:
+        result.warnings.append(
+            f"Unsupported block: {btype} ({bid}) — shown as placeholder")
+        result.unsupported.append(btype)
+        result.blocks[bid] = {
+            "key": "_unsupported", "params": {"gr_type": btype},
+            "pos": pos, "gr_id": btype}
+
+
+def _parse_grc_connections(data: dict, result: "ImportResult") -> None:
+    """Parse connection list from *data* into *result*."""
+    for conn in data.get("connections", []):
+        if isinstance(conn, list) and len(conn) == 4:
+            src, src_port, dst, dst_port = conn
+            result.connections.append({
+                "src": src, "src_port": str(src_port),
+                "dst": dst, "dst_port": str(dst_port)})
+
+
 def _import_yaml_grc(path: Path) -> "ImportResult":
     """Import YAML-format .grc file (GNU Radio 3.8+)."""
     result = ImportResult()
-
     try:
         import yaml
         data = yaml.safe_load(path.read_text())
     except ImportError:
-        # PyYAML not installed — try basic parsing
         result.warnings.append(
             "PyYAML not installed — basic GRC parsing "
             "may miss some blocks. pip install pyyaml")
@@ -152,65 +195,9 @@ def _import_yaml_grc(path: Path) -> "ImportResult":
         result.errors.append(f"YAML parse: {e}")
         return result
 
-    # Parse blocks
     for block_data in data.get("blocks", []):
-        btype = block_data.get("id", "")
-        squelch_key = GR_TO_SQUELCH.get(
-            btype,
-            GR_TO_SQUELCH.get(
-                btype.replace(".", "_"), None))
-
-        bid = block_data.get("name",
-                              block_data.get("id",
-                                             str(len(result.blocks))))
-        pos = block_data.get(
-            "states", {}).get("coordinate", [0, 0])
-
-        if squelch_key:
-            # Map parameters
-            params = {}
-            param_map = GR_PARAM_MAP.get(squelch_key, {})
-            for p in block_data.get("parameters", []):
-                pname = p.get("id",  "")
-                pval  = p.get("value", "")
-                squelch_pname = param_map.get(
-                    pname, pname)
-                try:
-                    pval = float(pval)
-                    if pval == int(pval):
-                        pval = int(pval)
-                except (ValueError, TypeError):
-                    pass
-                params[squelch_pname] = pval
-
-            result.blocks[bid] = {
-                "key":    squelch_key,
-                "params": params,
-                "pos":    pos,
-                "gr_id":  btype,
-            }
-        else:
-            result.warnings.append(
-                f"Unsupported block: {btype} "
-                f"({bid}) — shown as placeholder")
-            result.unsupported.append(btype)
-            result.blocks[bid] = {
-                "key":    "_unsupported",
-                "params": {"gr_type": btype},
-                "pos":    pos,
-                "gr_id":  btype,
-            }
-
-    # Parse connections
-    for conn in data.get("connections", []):
-        if isinstance(conn, list) and len(conn) == 4:
-            src, src_port, dst, dst_port = conn
-            result.connections.append({
-                "src":      src,
-                "src_port": str(src_port),
-                "dst":      dst,
-                "dst_port": str(dst_port),
-            })
+        _parse_grc_block(block_data, result)
+    _parse_grc_connections(data, result)
 
     result.source_file = str(path)
     result.gr_version  = data.get(

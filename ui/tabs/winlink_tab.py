@@ -348,39 +348,20 @@ class WinlinkTab(SquelchPanel, QWidget):
                 "No messages found in file.\n"
                 "Supported: plain text, mbox format.")
 
-    def _build_compose_tab(self) -> QWidget:
-        w   = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(6)
-
-        # Address bar
+    def _build_compose_address_bar(self) -> "QFormLayout":
         form = QFormLayout()
         self._to_edit = QLineEdit()
         self._to_edit.setPlaceholderText(
             "callsign@winlink.org or gateway callsign")
         form.addRow("To:", self._to_edit)
-
         self._subj_edit = QLineEdit()
         self._subj_edit.setPlaceholderText("Subject")
         form.addRow("Subject:", self._subj_edit)
+        return form
 
-        lay.addLayout(form)
-
-        # Body
-        self._body_edit = QTextEdit()
-        self._body_edit.setPlaceholderText(
-            "Message body…\n\n"
-            "Use the Templates tab to load an EmComm template.")
-        self._body_edit.setFont(
-            QFont("Courier New", 11))
-        lay.addWidget(self._body_edit, 1)
-
-        # Action buttons
+    def _build_compose_action_row(self) -> "QHBoxLayout":
         btn_row = QHBoxLayout()
-
-        via_lbl = QLabel("Via:")
-        btn_row.addWidget(via_lbl)
+        btn_row.addWidget(QLabel("Via:"))
         self._via_combo = QComboBox()
         self._via_combo.setToolTip(
             "Select how to send the message\n"
@@ -391,13 +372,10 @@ class WinlinkTab(SquelchPanel, QWidget):
             "VARA HF", "VARA FM", "Pat (auto)", "RMS Express"])
         self._via_combo.setFixedWidth(130)
         btn_row.addWidget(self._via_combo)
-
         btn_row.addStretch()
-
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._clear_compose)
         btn_row.addWidget(clear_btn)
-
         send_btn = QPushButton("📤  Send")
         send_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;"
@@ -408,16 +386,30 @@ class WinlinkTab(SquelchPanel, QWidget):
             "VARA must be connected and a gateway selected")
         send_btn.clicked.connect(self._send_message)
         btn_row.addWidget(send_btn)
-        lay.addLayout(btn_row)
+        return btn_row
 
-        # Info strip
+    def _build_compose_tab(self) -> "QWidget":
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+
+        lay.addLayout(self._build_compose_address_bar())
+
+        self._body_edit = QTextEdit()
+        self._body_edit.setPlaceholderText(
+            "Message body…\n\n"
+            "Use the Templates tab to load an EmComm template.")
+        self._body_edit.setFont(QFont("Courier New", 11))
+        lay.addWidget(self._body_edit, 1)
+
+        lay.addLayout(self._build_compose_action_row())
+
         info = QLabel(
             "Winlink delivers messages even when internet is down. "
             "Messages route through RF gateways to the Winlink network.")
         info.setWordWrap(True)
-        info.setStyleSheet("")
         lay.addWidget(info)
-
         return w
 
     def _build_vara_tab(self) -> QWidget:

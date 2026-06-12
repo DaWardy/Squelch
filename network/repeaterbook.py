@@ -237,6 +237,12 @@ def nearest_repeaters(lat: float, lon: float,
             "nxdn": "NXDN", "ysf": "analog", "dstar": "analog",
         }.get(mode.lower(), "analog")
 
+    return _rb_fetch_and_parse(lat, lon, token, params, radius_km)
+
+
+def _rb_fetch_and_parse(lat: float, lon: float,
+                         token: str, params: dict,
+                         radius_km: float) -> list:
     try:
         resp = requests.get(RB_EXPORT, params=params, timeout=REQUEST_TIMEOUT,
                             headers={"User-Agent": RB_UA, "X-RB-App-Token": token})
@@ -246,18 +252,15 @@ def nearest_repeaters(lat: float, lon: float,
                               purpose="repeater search", user_initiated=True)
         except Exception:
             pass
-
         _rb_check_response(resp)
         results = resp.json().get("results", [])
         if not isinstance(results, list):
             return []
-
         repeaters = [r for r in
                      (_rb_parse_repeater(raw, lat, lon) for raw in results[:100])
                      if r is not None and r.distance_km <= radius_km]
         repeaters.sort(key=lambda r: r.distance_km)
         return repeaters
-
     except RepeaterBookError:
         raise
     except Exception as e:

@@ -134,30 +134,31 @@ class Config:
                     f"-- using defaults")
                 self._data = self._load_example()
         else:
-            # Check app folder for legacy config
-            legacy = APP_DIR / "config.json"
-            if legacy.exists():
-                try:
-                    with open(legacy, "r",
-                              encoding="utf-8") as f:
-                        self._data = json.load(f)
-                    log.info(
-                        f"Config loaded from legacy "
-                        f"path: {legacy}")
-                    # Immediately save to APPDATA location
-                    self.save()
-                    log.info(
-                        f"Config migrated to "
-                        f"{self._path.resolve()}")
-                except Exception as e:
-                    log.warning(f"Legacy config: {e}")
-                    self._data = self._load_example()
-            else:
-                log.info(
-                    "No config found -- starting fresh")
-                self._data = self._load_example()
-            self.save()
+            self._load_from_legacy_path()
         self._dirty = False
+
+    def _load_from_legacy_path(self):
+        legacy = APP_DIR / "config.json"
+        if legacy.exists():
+            try:
+                with open(legacy, "r",
+                          encoding="utf-8") as f:
+                    self._data = json.load(f)
+                log.info(
+                    f"Config loaded from legacy "
+                    f"path: {legacy}")
+                self.save()
+                log.info(
+                    f"Config migrated to "
+                    f"{self._path.resolve()}")
+            except Exception as e:
+                log.warning(f"Legacy config: {e}")
+                self._data = self._load_example()
+        else:
+            log.info(
+                "No config found -- starting fresh")
+            self._data = self._load_example()
+        self.save()
 
     def save(self):
         try:

@@ -28,6 +28,7 @@ Shows roadmap info and what is coming.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame
 )
+from core.themes import get_theme as _get_theme
 
 TAB_INFO = {
     "digital": {
@@ -87,8 +88,10 @@ class StubTab(QWidget):
         title_text = info.get(
             "title",
             self._label.split("  ")[-1].strip())
+        _t = _get_theme(
+            self._cfg.get("ui.theme", "Dark") if self._cfg else "Dark")
         title = QLabel(f"<b>{title_text}</b>")
-        title.setStyleSheet("color:#3fbe6f;")
+        title.setStyleSheet(f"color:{_t.accent};")
         cl.addWidget(title)
 
         if info.get("desc"):
@@ -99,7 +102,7 @@ class StubTab(QWidget):
         if info.get("coming"):
             sep = QFrame()
             sep.setFrameShape(QFrame.Shape.HLine)
-            sep.setStyleSheet("color:#1a1a1a;margin:8px 0;")
+            sep.setStyleSheet(f"color:{_t.border};margin:8px 0;")
             cl.addWidget(sep)
             coming = QLabel(
                 f"Coming in {info['coming']}  "
@@ -120,7 +123,7 @@ class StubTab(QWidget):
             hint = QLabel(
                 "Use the launch bar above to "
                 "install or configure required software.")
-            hint.setStyleSheet("color:#446644;margin-top:12px;")
+            hint.setStyleSheet(f"color:{_t.accent};margin-top:12px;")
             cl.addWidget(hint)
 
         cl.addStretch()

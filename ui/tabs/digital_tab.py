@@ -19,6 +19,7 @@ from __future__ import annotations
 # <https://www.gnu.org/licenses/>.
 import sys
 import logging
+from core.themes import get_theme
 from datetime import datetime, timezone
 
 from ui.panel import SquelchPanel
@@ -166,6 +167,7 @@ class DigitalTab(SquelchPanel, QWidget):
         """HRD-style digital TX text box."""
         from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QPlainTextEdit,
                                       QPushButton, QLabel, QComboBox)
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         bar = QFrame()
         bar.setFrameShape(QFrame.Shape.StyledPanel)
         bar.setStyleSheet(
@@ -176,7 +178,7 @@ class DigitalTab(SquelchPanel, QWidget):
         hl.setSpacing(6)
 
         lbl = QLabel("TX:")
-        lbl.setStyleSheet("color:#3fbe6f;font-weight:bold;min-width:24px;")
+        lbl.setStyleSheet(f"color:{_t.accent};font-weight:bold;min-width:24px;")
         hl.addWidget(lbl)
 
         self._tx_text = QPlainTextEdit()
@@ -215,7 +217,7 @@ class DigitalTab(SquelchPanel, QWidget):
         hl.addWidget(clr_btn)
 
         self._tx_status = QLabel("Ready")
-        self._tx_status.setStyleSheet("color:#666;font-size:10px;min-width:80px;")
+        self._tx_status.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;min-width:80px;")
         hl.addWidget(self._tx_status)
         return bar
 
@@ -282,21 +284,22 @@ class DigitalTab(SquelchPanel, QWidget):
             self._tx_status.setText("No active TX bridge")
 
     def _build_status_indicators(self, lay: "QHBoxLayout") -> None:
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         self._decoder_lbl = QLabel("● No decoder running")
         self._decoder_lbl.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._decoder_lbl)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
         self._protocol_lbl = QLabel("—")
         self._protocol_lbl.setStyleSheet(
-            "color:#3fbe6f;font-weight:bold;font-family:'Courier New';")
+            f"color:{_t.accent};font-weight:bold;font-family:'Courier New';")
         lay.addWidget(self._protocol_lbl)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
         self._tg_lbl = QLabel("TG: —")
         self._tg_lbl.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._tg_lbl)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
         self._enc_lbl = QLabel("")
-        self._enc_lbl.setStyleSheet("color:#cc4444;font-weight:bold;")
+        self._enc_lbl.setStyleSheet(f"color:{_t.error_color};font-weight:bold;")
         lay.addWidget(self._enc_lbl)
 
     def _build_status_audio_control(self, lay: "QHBoxLayout") -> None:
@@ -320,9 +323,11 @@ class DigitalTab(SquelchPanel, QWidget):
         lay.addWidget(clear_btn)
 
     def _build_status_bar(self) -> "QFrame":
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         bar = QFrame()
         bar.setFixedHeight(36)
-        bar.setStyleSheet("background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
+        bar.setStyleSheet(
+            f"background:{_t.bg_secondary};border-bottom:1px solid {_t.border};")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(10, 4, 10, 4)
         lay.setSpacing(12)
@@ -630,13 +635,13 @@ class DigitalTab(SquelchPanel, QWidget):
         """
         self._route_lbl.setText(
             f"Audio: SDR → {center_hz/1e6:.3f}MHz")
-        self._route_lbl.setStyleSheet(
-            "color:#3fbe6f;")
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
+        self._route_lbl.setStyleSheet(f"color:{_t.accent};")
 
 
-def _vsep() -> QFrame:
+def _vsep(border: str = "#2a2a2a") -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("color:#1e1e1e;")
+    f.setStyleSheet(f"color:{border};")
     f.setFixedWidth(1)
     return f

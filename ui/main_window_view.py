@@ -13,7 +13,7 @@ class _MainWindowViewMixin:
     cfg: "Config"
 
     def _set_theme(self, name: str):
-        from core.themes import build_stylesheet as get_stylesheet
+        from core.themes import get_stylesheet
         fs = max(8, min(20, self.cfg.get("ui.font_size", 11)))
         self.setStyleSheet(get_stylesheet(name, fs))
         self.cfg.set("ui.theme", name)
@@ -24,7 +24,7 @@ class _MainWindowViewMixin:
         size = max(8, min(20, size))
         # Update global QSS (cascades theme + font together)
         try:
-            from core.themes import build_stylesheet as get_stylesheet
+            from core.themes import get_stylesheet
             theme = self.cfg.get("ui.theme", "Dark")
             self.setStyleSheet(get_stylesheet(theme, size))
         except Exception:

@@ -270,6 +270,13 @@ class PanelShell(QMainWindow):
         wm.addAction("Reset to default").triggered.connect(
             lambda: self._apply_preset("HF Ops"))
 
+        # ── Snap Layout menu ──────────────────────────────────────────
+        sl = wm.addMenu("Snap Layout")
+        for layout_name in ("Left | Right", "Top | Bottom", "2×2 Grid"):
+            act = sl.addAction(layout_name)
+            act.triggered.connect(
+                lambda _=False, n=layout_name: self._apply_snap_layout(n))
+
         # ── View menu ─────────────────────────────────────────────────
         vm = mb.addMenu("&View")
         back = vm.addAction("⬅  Back to tab mode")
@@ -344,6 +351,87 @@ class PanelShell(QMainWindow):
         except Exception as e:
             QMessageBox.warning(
                 self, "Load failed", f"Could not load workspace:\n{e}")
+
+    # ── Snap layouts ───────────────────────────────────────────────────────
+
+    def _apply_snap_layout(self, layout: str):
+        """Tile all visible panels into a named snap layout."""
+        visible = [d for d in self._docks.values() if not d.isHidden()]
+        if not visible:
+            return
+        if layout == "Left | Right":
+            self._snap_lr(visible)
+        elif layout == "Top | Bottom":
+            self._snap_tb(visible)
+        elif layout == "2×2 Grid":
+            self._snap_grid(visible)
+        log.info(f"Snap layout applied: {layout}")
+
+    def _snap_lr(self, visible: list) -> None:
+        """Split visible panels into left and right columns (tabbed within each)."""
+        L = Qt.DockWidgetArea.LeftDockWidgetArea
+        R = Qt.DockWidgetArea.RightDockWidgetArea
+        mid = max(1, len(visible) // 2)
+        left, right = visible[:mid], visible[mid:]
+        for d in left:
+            self.addDockWidget(L, d); d.show()
+        for i in range(1, len(left)):
+            self.tabifyDockWidget(left[0], left[i])
+        for d in right:
+            self.addDockWidget(R, d); d.show()
+        for i in range(1, len(right)):
+            self.tabifyDockWidget(right[0], right[i])
+        if left and right:
+            w = self.width()
+            self.resizeDocks([left[0], right[0]], [w // 2, w // 2],
+                             Qt.Orientation.Horizontal)
+
+    def _snap_tb(self, visible: list) -> None:
+        """Split visible panels into top and bottom rows (tabbed within each)."""
+        T = Qt.DockWidgetArea.TopDockWidgetArea
+        B = Qt.DockWidgetArea.BottomDockWidgetArea
+        mid = max(1, len(visible) // 2)
+        top, bot = visible[:mid], visible[mid:]
+        for d in top:
+            self.addDockWidget(T, d); d.show()
+        for i in range(1, len(top)):
+            self.tabifyDockWidget(top[0], top[i])
+        for d in bot:
+            self.addDockWidget(B, d); d.show()
+        for i in range(1, len(bot)):
+            self.tabifyDockWidget(bot[0], bot[i])
+        if top and bot:
+            h = self.height()
+            self.resizeDocks([top[0], bot[0]], [h // 2, h // 2],
+                             Qt.Orientation.Vertical)
+
+    def _snap_grid(self, visible: list) -> None:
+        """Tile up to 4 panels in a 2×2 grid; extras tabbed onto top-left."""
+        vs = visible[:4]
+        extra = visible[4:]
+        L = Qt.DockWidgetArea.LeftDockWidgetArea
+        R = Qt.DockWidgetArea.RightDockWidgetArea
+        H = Qt.Orientation.Horizontal
+        V = Qt.Orientation.Vertical
+        self.addDockWidget(L, vs[0]); vs[0].show()
+        if len(vs) >= 2:
+            self.splitDockWidget(vs[0], vs[1], H)
+            vs[1].show()
+        if len(vs) >= 3:
+            self.splitDockWidget(vs[0], vs[2], V)
+            vs[2].show()
+        if len(vs) == 4:
+            self.splitDockWidget(vs[1], vs[3], V)
+            vs[3].show()
+        w, h = self.width(), self.height()
+        if len(vs) >= 2:
+            self.resizeDocks([vs[0], vs[1]], [w // 2, w // 2], H)
+        if len(vs) >= 3:
+            self.resizeDocks([vs[0], vs[2]], [h // 2, h // 2], V)
+        if len(vs) == 4:
+            self.resizeDocks([vs[1], vs[3]], [h // 2, h // 2], V)
+        for d in extra:
+            self.tabifyDockWidget(vs[0], d)
 
     # ── Persistence ────────────────────────────────────────────────────────
 

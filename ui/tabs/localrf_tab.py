@@ -461,8 +461,18 @@ class LocalRFTab(SquelchPanel, QWidget):
             f"({path.split('/')[-1].split(chr(92))[-1]})")
         self._populate(reps)
 
+    def set_map_tab(self, map_tab) -> None:
+        """Wire a MapTab so repeater pins update the map on search."""
+        self._map_tab = map_tab
+
     def _populate(self, repeaters: list[Repeater]):
         self._repeaters = repeaters
+        try:
+            mt = getattr(self, "_map_tab", None)
+            if mt is not None:
+                mt.set_repeaters(repeaters)
+        except Exception:
+            pass
         self._search_btn.setEnabled(True)
         self._search_btn.setText("🔍 Search")
 

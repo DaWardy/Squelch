@@ -151,6 +151,7 @@ def build_map_html(config,
                    center_on_station: bool = True,
                    heard_stations: dict | None = None,
                    hearing_me: dict | None = None,
+                   winlink_gateways: list | None = None,
                    ) -> str:
     """Build self-contained Leaflet map HTML for QWebEngineView."""
     now_utc = datetime.now(timezone.utc)
@@ -163,23 +164,41 @@ def build_map_html(config,
     zoom   = 6 if (center_on_station and (my_lat or my_lon)) else 2
 
     return _render_html(
-        center          = center,
-        zoom            = zoom,
-        my_lat          = my_lat,
-        my_lon          = my_lon,
-        my_call         = my_call,
-        my_grid         = grid,
-        grayline_json   = grayline_json,
-        grayline_status = grayline_status,
-        qso_paths       = _qso_path_data(log_db, show_qso_paths),
-        aprs_stations   = aprs_stations or [],
-        aircraft        = _fetch_adsb() if show_adsb else [],
-        repeaters       = _repeater_marker_data(repeaters),
-        grid_squares    = _grid_square_data(grid, my_lat, my_lon),
-        utc_str         = now_utc.strftime("%H:%M UTC"),
-        heard_stations  = _resolve_station_coords(heard_stations or {}),
-        hearing_me      = _resolve_station_coords(hearing_me or {}),
+        center              = center,
+        zoom                = zoom,
+        my_lat              = my_lat,
+        my_lon              = my_lon,
+        my_call             = my_call,
+        my_grid             = grid,
+        grayline_json       = grayline_json,
+        grayline_status     = grayline_status,
+        qso_paths           = _qso_path_data(log_db, show_qso_paths),
+        aprs_stations       = aprs_stations or [],
+        aircraft            = _fetch_adsb() if show_adsb else [],
+        repeaters           = _repeater_marker_data(repeaters),
+        grid_squares        = _grid_square_data(grid, my_lat, my_lon),
+        utc_str             = now_utc.strftime("%H:%M UTC"),
+        heard_stations      = _resolve_station_coords(heard_stations or {}),
+        hearing_me          = _resolve_station_coords(hearing_me or {}),
+        winlink_gateways    = _winlink_gateway_data(winlink_gateways),
     )
+
+
+def _winlink_gateway_data(gateways: list | None) -> list[dict]:
+    """Return slim dicts for Winlink gateway map markers."""
+    if not gateways:
+        return []
+    return [
+        {"callsign": g.get("callsign", ""),
+         "lat":      g.get("lat", 0.0),
+         "lon":      g.get("lon", 0.0),
+         "freq":     g.get("frequency", "—"),
+         "mode":     g.get("mode", ""),
+         "dist":     g.get("distance", "—"),
+         "grid":     g.get("grid", "")}
+        for g in gateways
+        if g.get("lat") and g.get("lon")
+    ]
 
 
 def _resolve_station_coords(stations: dict) -> list[dict]:
@@ -282,8 +301,9 @@ var AIRCRAFT   = {json.dumps(ctx['aircraft'])};
 var REPEATERS  = {json.dumps(ctx['repeaters'])};
 var GRIDS      = {json.dumps(ctx['grid_squares'])};
 var GRAYLINE   = {ctx['grayline_json']};
-var HEARD      = {json.dumps(ctx['heard_stations'])};
-var HEARING_ME = {json.dumps(ctx['hearing_me'])};
+var HEARD        = {json.dumps(ctx['heard_stations'])};
+var HEARING_ME   = {json.dumps(ctx['hearing_me'])};
+var WINLINK_GW   = {json.dumps(ctx['winlink_gateways'])};
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -438,6 +458,25 @@ HEARD.forEach(function(s) {{
       +(s.freq_mhz?(s.freq_mhz.toFixed(4)+' MHz  '):'')
       +(s.source||'decode')
       +(s.snr_db?'<br>SNR '+s.snr_db+' dB':'')
+      +'</div>')
+    .addTo(map);
+}});
+
+// ── Winlink RMS gateways — purple upward triangles ────────────
+WINLINK_GW.forEach(function(g) {{
+  var icon = L.divIcon({{
+    html: '<div style="width:0;height:0;'
+         +'border-left:7px solid transparent;'
+         +'border-right:7px solid transparent;'
+         +'border-bottom:13px solid #cc66ff;'
+         +'opacity:0.9;"></div>',
+    className:'', iconSize:[14,13], iconAnchor:[7,13]
+  }});
+  L.marker([g.lat, g.lon], {{icon:icon}})
+    .bindPopup('<div class="qso-popup">'
+      +'<b style="color:#cc66ff">'+g.callsign+'</b> Winlink RMS<br>'
+      +(g.grid||'')+(g.dist?' • '+g.dist:'')+'<br>'
+      +g.freq+'  '+(g.mode||'')
       +'</div>')
     .addTo(map);
 }});

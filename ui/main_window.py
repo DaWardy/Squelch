@@ -456,7 +456,19 @@ class MainWindow(
         from ui.tabs.map_tab import MapTab
         tab = MapTab(self.cfg, ldb)
         self.location.on_location_change(tab.on_location_change)
+        # Wire Winlink tab → map once both are loaded
+        from PyQt6.QtCore import QTimer as _QT
+        _QT.singleShot(2000, lambda: self._wire_winlink_map(tab))
         return tab
+
+    def _wire_winlink_map(self, map_tab) -> None:
+        """Forward gateway list from WinlinkTab to MapTab."""
+        try:
+            wl = self._tab_map.get("winlink")
+            if wl and hasattr(wl, "set_map_tab"):
+                wl.set_map_tab(map_tab)
+        except Exception:
+            pass
 
     def _build_tab(self, key: str, label: str, ldb) -> "QWidget":
         """Instantiate one tab widget. Imports are lazy (local)."""

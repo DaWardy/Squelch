@@ -10,6 +10,7 @@ Advanced mode — build custom DSP chains like GNU Radio.
 
 import logging
 import json
+from core.themes import get_theme as _fg_get_theme
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -167,9 +168,11 @@ class FlowgraphTab(QWidget):
         l.addWidget(self._template_combo)
 
     def _build_toolbar(self) -> "QFrame":
+        _t = _fg_get_theme(self.cfg.get("ui.theme", "Dark"))
         tb = QFrame()
         tb.setFixedHeight(38)
-        tb.setStyleSheet("background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
+        tb.setStyleSheet(
+            f"background:{_t.bg_secondary};border-bottom:1px solid {_t.border};")
         l = QHBoxLayout(tb)
         l.setContentsMargins(6, 4, 6, 4)
         l.setSpacing(4)

@@ -28,6 +28,7 @@ Decode list, auto-sequence state display, QSO log feed.
 
 import logging
 import threading
+from core.themes import get_theme as _modes_get_theme
 from ui.widgets.launch_bar import LaunchBar
 from core.launcher import get_launcher
 from core.guest_op import operating_callsign
@@ -174,9 +175,10 @@ class ModesTab(SquelchPanel, QWidget):
         self._mode_tabs.currentChanged.connect(self._on_mode_tab)
         root.addWidget(self._mode_tabs)
         
+        _t = _modes_get_theme(self.cfg.get("ui.theme", "Dark"))
         div = QFrame()
         div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet("color:#1a1a1a;")
+        div.setStyleSheet(f"color:{_t.border};")
         root.addWidget(div)
         
 

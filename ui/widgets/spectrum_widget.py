@@ -51,6 +51,7 @@ except ImportError:
     HAS_SD = False
 
 from core.band_plan import segments_in_range, band_at_freq, SEG_COLORS, SegType
+from core.themes import get_theme as _sw_get_theme
 from core.constants import FFT_SIZE
 
 # FFT config
@@ -210,7 +211,9 @@ class SpectrumWidget(QWidget):
             ["5 kHz", "10 kHz", "25 kHz", "48 kHz", "96 kHz", "192 kHz"])
         self._span_combo.setCurrentIndex(3)
         self._span_combo.setFixedWidth(75)
-        self._span_combo.setStyleSheet("background:#1a1a1a;border:1px solid #333;")
+        _t = _sw_get_theme(self.cfg.get("ui.theme", "Dark"))
+        self._span_combo.setStyleSheet(
+            f"background:{_t.bg_secondary};border:1px solid {_t.border};")
         self._span_combo.currentIndexChanged.connect(self._on_span)
         bar.addWidget(self._span_combo)
         bar.addWidget(QLabel("Gain:"))
@@ -331,12 +334,14 @@ class SpectrumWidget(QWidget):
             self._stream.start()
             dev_name = sd.query_devices(dev)["name"] if dev is not None else "default"
             self._src_lbl.setText(f"● {dev_name[:20]}")
-            self._src_lbl.setStyleSheet("color:#3fbe6f; ")
+            _t = _sw_get_theme(self.cfg.get("ui.theme", "Dark"))
+            self._src_lbl.setStyleSheet(f"color:{_t.accent}; ")
             log.info(f"Spectrum audio: {dev_name}")
         except Exception as e:
             log.warning(f"Spectrum audio start failed: {e}")
+            _t = _sw_get_theme(self.cfg.get("ui.theme", "Dark"))
             self._src_lbl.setText("● No audio")
-            self._src_lbl.setStyleSheet("color:#cc4444; ")
+            self._src_lbl.setStyleSheet(f"color:{_t.error_color}; ")
 
     def _stop_audio(self):
         if self._stream:

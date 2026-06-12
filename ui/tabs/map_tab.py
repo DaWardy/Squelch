@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 import logging
+from core.themes import get_theme as _map_get_theme
 from datetime import datetime, timezone
 
 from ui.panel import SquelchPanel
@@ -147,15 +148,16 @@ class MapTab(SquelchPanel, QWidget):
         self._timer.start(MAP_REFRESH_S * 1000)
 
     def _build_toolbar(self) -> QFrame:
+        _t = _map_get_theme(self.cfg.get("ui.theme", "Dark"))
         bar = QFrame()
         bar.setFixedHeight(38)
         bar.setStyleSheet(
-            "background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
+            f"background:{_t.bg_secondary};border-bottom:1px solid {_t.border};")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(8)
         self._toolbar_add_layer_toggles(lay)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
         lay.addWidget(QLabel("QSOs:"))
         self._qso_filter = QComboBox()
         self._qso_filter.addItems(
@@ -220,9 +222,11 @@ class MapTab(SquelchPanel, QWidget):
 
     def _build_fallback_toolbar(self) -> "QFrame":
         """Controls bar for the Qt fallback map."""
+        _t = _map_get_theme(self.cfg.get("ui.theme", "Dark"))
         bar = QFrame()
         bar.setFixedHeight(36)
-        bar.setStyleSheet("background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
+        bar.setStyleSheet(
+            f"background:{_t.bg_secondary};border-bottom:1px solid {_t.border};")
         tl = QHBoxLayout(bar)
         tl.setContentsMargins(8, 4, 8, 4)
         tl.setSpacing(8)
@@ -608,10 +612,10 @@ class MapTab(SquelchPanel, QWidget):
             QTimer.singleShot(0, self._refresh_map)
 
 
-def _vsep() -> QFrame:
+def _vsep(border: str = "#2a2a2a") -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("color:#1e1e1e;")
+    f.setStyleSheet(f"color:{border};")
     f.setFixedWidth(1)
     return f
 

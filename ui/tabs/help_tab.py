@@ -18,6 +18,7 @@ from __future__ import annotations
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 import logging
+from core.themes import get_theme as _ht_get_theme
 from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
@@ -1416,8 +1417,9 @@ class HelpTab(SquelchPanel, QWidget):
         root.addWidget(splitter, 1)
 
     def _build_nav(self) -> QWidget:
+        _t = _ht_get_theme(self.cfg.get("ui.theme", "Dark"))
         w   = QWidget()
-        w.setStyleSheet("background:#0a0a0a;")
+        w.setStyleSheet(f"background:{_t.bg_primary};")
         lay = QVBoxLayout(w)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(4)

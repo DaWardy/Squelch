@@ -3,13 +3,16 @@ from __future__ import annotations
 import subprocess, sys, webbrowser
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QScrollArea, QPushButton, QFrame)
+from core.themes import get_theme as _sg_get_theme
 
 class _SDRSetupGuideMixin:
     def _build_rtltcp(self, outer):
+        _t = _sg_get_theme(
+            self.cfg.get("ui.theme", "Dark") if getattr(self, "cfg", None) else "Dark")
         w = QWidget(); vl = QVBoxLayout(w)
         vl.setContentsMargins(20,20,20,20)
         h = QLabel("RTL-TCP Mode — rtl_tcp running on 127.0.0.1:1234")
-        h.setStyleSheet("font-size:14px;font-weight:bold;color:#3fbe6f;")
+        h.setStyleSheet(f"font-size:14px;font-weight:bold;color:{_t.accent};")
         vl.addWidget(h)
         vl.addWidget(QLabel("SoapySDR not installed — using RTL-TCP as sample source.\nSelect RTL-TCP server from the Device dropdown above."))
         b = QPushButton("Install SoapySDR for full support")
@@ -35,8 +38,10 @@ class _SDRSetupGuideMixin:
         inner = QWidget(); vl = QVBoxLayout(inner)
         vl.setContentsMargins(20,20,20,20); vl.setSpacing(16)
         scroll.setWidget(inner)
+        _t = _sg_get_theme(
+            self.cfg.get("ui.theme", "Dark") if getattr(self, "cfg", None) else "Dark")
         h = QLabel("SDR Setup — SoapySDR not installed")
-        h.setStyleSheet("font-size:16px;font-weight:bold;color:#3fbe6f;")
+        h.setStyleSheet(f"font-size:16px;font-weight:bold;color:{_t.accent};")
         vl.addWidget(h)
         det = self._detect_connected_hardware()
         if det:
@@ -77,7 +82,11 @@ class _SDRSetupGuideMixin:
             gl.addLayout(rl)
             if detail:
                 dl = QLabel(detail); dl.setWordWrap(True)
-                dl.setStyleSheet("font-family:'Courier New';font-size:10px;color:#aaa;margin-left:8px;")
+                _t2 = _sg_get_theme(
+                    self.cfg.get("ui.theme","Dark") if getattr(self,"cfg",None) else "Dark")
+                dl.setStyleSheet(
+                    f"font-family:'Courier New';font-size:10px;"
+                    f"color:{_t2.fg_muted};margin-left:8px;")
                 gl.addWidget(dl)
         parent.addWidget(frame)
 
@@ -87,8 +96,10 @@ class _SDRSetupGuideMixin:
 
     def _build_no_pyqtgraph(self, layout):
         w = QWidget(); vl = QVBoxLayout(w); vl.setContentsMargins(20,20,20,20)
+        _t = _sg_get_theme(
+            self.cfg.get("ui.theme", "Dark") if getattr(self, "cfg", None) else "Dark")
         h = QLabel("Spectrum display unavailable — pyqtgraph not installed")
-        h.setStyleSheet("font-size:14px;font-weight:bold;color:#ee8822;")
+        h.setStyleSheet(f"font-size:14px;font-weight:bold;color:{_t.warn_color};")
         vl.addWidget(h)
         vl.addWidget(QLabel("Install: pip install pyqtgraph\n   or:  conda install -c conda-forge pyqtgraph"))
         b = QPushButton("pyqtgraph docs"); b.clicked.connect(lambda: self._open_url("https://pyqtgraph.readthedocs.io/"))

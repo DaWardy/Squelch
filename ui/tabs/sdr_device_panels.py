@@ -80,11 +80,7 @@ class _SDRDevicePanelsMixin:
 
         vl.addWidget(grp); return w
 
-    def _sdrplay_panel(self, model: str) -> QWidget:
-        w = QWidget(); vl = QVBoxLayout(w)
-        grp = QGroupBox(f"SDRplay {model}"); gl = QVBoxLayout(grp)
-
-        # Antenna selection (varies by model)
+    def _build_rsp_rf_controls(self, gl, model: str) -> None:
         ants = {"RSP1A": ["ANT A"], "RSP2": ["ANT A", "ANT B", "Hi-Z"],
                 "RSPdx": ["ANT A", "ANT B", "ANT C"],
                 "RSP1":  ["ANT A"], "RSPduo": ["Tuner 1", "Tuner 2"]}
@@ -94,8 +90,6 @@ class _SDRDevicePanelsMixin:
         ant.setCurrentText(self.cfg.get(f"sdr.rsp.{model}.antenna", ant_opts[0]))
         ant.currentTextChanged.connect(self._on_rsp_antenna)
         rl.addWidget(ant); gl.addLayout(rl); self._rsp_ant = ant
-
-        # Bandwidth
         rl2 = QHBoxLayout(); rl2.addWidget(QLabel("IF bandwidth:"))
         bw = QComboBox()
         bw.addItems(["200 kHz","300 kHz","600 kHz","1.536 MHz","5 MHz","6 MHz","7 MHz","8 MHz"])
@@ -103,43 +97,40 @@ class _SDRDevicePanelsMixin:
         bw.currentIndexChanged.connect(self._on_rsp_bandwidth)
         rl2.addWidget(bw); gl.addLayout(rl2); self._rsp_bw = bw
 
-        # Notch filters
+    def _build_rsp_optional_controls(self, gl, model: str) -> None:
         if model in ("RSP1A", "RSPdx"):
             notch = QCheckBox("AM/FM notch filter")
             notch.setChecked(self.cfg.get(f"sdr.rsp.{model}.notch", False))
             notch.toggled.connect(self._on_rsp_notch)
             gl.addWidget(notch); self._rsp_notch = notch
-
             dab = QCheckBox("DAB notch filter")
             dab.setChecked(self.cfg.get(f"sdr.rsp.{model}.dab_notch", False))
             dab.toggled.connect(self._on_rsp_dab_notch)
             gl.addWidget(dab); self._rsp_dab = dab
-
-        # Bias tee
         if model in ("RSP1A", "RSP2", "RSPdx", "RSPduo"):
             bias = QCheckBox("Bias Tee")
             bias.setChecked(self.cfg.get(f"sdr.rsp.{model}.bias", False))
             bias.toggled.connect(self._on_rsp_bias)
             gl.addWidget(bias); self._rsp_bias = bias
-
-        # AGC / IF gain reduction
         agc = QCheckBox("Hardware AGC")
         agc.setChecked(self.cfg.get(f"sdr.rsp.{model}.agc", True))
         agc.toggled.connect(self._on_rsp_agc)
         gl.addWidget(agc); self._rsp_agc = agc
-
         rl3 = QHBoxLayout(); rl3.addWidget(QLabel("IF gain reduction:"))
         ifgr = QSpinBox(); ifgr.setRange(20, 59); ifgr.setSuffix(" dB")
         ifgr.setValue(self.cfg.get(f"sdr.rsp.{model}.ifgr", 40))
         ifgr.valueChanged.connect(self._on_rsp_ifgr)
         rl3.addWidget(ifgr); gl.addLayout(rl3); self._rsp_ifgr = ifgr
-
-        # IQ correction
         iq = QCheckBox("IQ correction")
         iq.setChecked(self.cfg.get(f"sdr.rsp.{model}.iq_correction", True))
         iq.toggled.connect(self._on_rsp_iq)
         gl.addWidget(iq); self._rsp_iq = iq
 
+    def _sdrplay_panel(self, model: str) -> QWidget:
+        w = QWidget(); vl = QVBoxLayout(w)
+        grp = QGroupBox(f"SDRplay {model}"); gl = QVBoxLayout(grp)
+        self._build_rsp_rf_controls(gl, model)
+        self._build_rsp_optional_controls(gl, model)
         vl.addWidget(grp); return w
 
     # ── RSP callbacks ─────────────────────────────────────────────────

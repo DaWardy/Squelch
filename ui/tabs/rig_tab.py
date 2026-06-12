@@ -342,32 +342,46 @@ class RigTab(SquelchPanel, QWidget):
     
 
 
+    def _build_vfo_a_col(self, vab) -> None:
+        va_col = QVBoxLayout()
+        va_hdr = QHBoxLayout()
+        self._vfo_a_ind = QLabel("▶ A")   # ▶ = active/TX indicator
+        self._vfo_a_ind.setStyleSheet("font-weight:bold; color:#3fbe6f;")
+        self._vfo_a_ind.setToolTip("VFO A — current TX VFO")
+        va_hdr.addWidget(self._vfo_a_ind)
+        va_hdr.addStretch()
+        self._vfo_a_lbl = QLabel("—")
+        self._vfo_a_lbl.setStyleSheet(
+            "font-size:15px; font-weight:bold; font-family:monospace;")
+        self._vfo_a_lbl.setToolTip("VFO A frequency")
+        va_col.addLayout(va_hdr)
+        va_col.addWidget(self._vfo_a_lbl)
+        vab.addLayout(va_col, 2)
+
+    def _build_vfo_b_col(self, vab) -> None:
+        vb_col = QVBoxLayout()
+        vb_hdr = QHBoxLayout()
+        self._vfo_b_ind = QLabel("  B")
+        self._vfo_b_ind.setStyleSheet("color:#888888;")
+        self._vfo_b_ind.setToolTip("VFO B — RX only (▶ = TX in split mode)")
+        vb_hdr.addWidget(self._vfo_b_ind)
+        vb_hdr.addStretch()
+        self._vfo_b_lbl = QLabel("—")
+        self._vfo_b_lbl.setStyleSheet(
+            "font-size:15px; font-weight:bold; "
+            "font-family:monospace; color:#888888;")
+        self._vfo_b_lbl.setToolTip("VFO B frequency — TX in split mode")
+        vb_col.addLayout(vb_hdr)
+        vb_col.addWidget(self._vfo_b_lbl)
+        vab.addLayout(vb_col, 2)
+
     def _build_vfo_ab_section(self, inner):
             # ── VFO A/B + Split (C-03, Hank) ─────────────────────────────────
-            # A seasoned operator needs to see both VFOs and control split easily.
             # TX VFO is shown clearly — critical for "no unexpected TX" (C-08).
             vfo_ab_grp = QGroupBox("VFO A / B")
             vab = QHBoxLayout(vfo_ab_grp)
             vab.setSpacing(8)
-    
-            # VFO A row
-            va_col = QVBoxLayout()
-            va_hdr = QHBoxLayout()
-            self._vfo_a_ind = QLabel("▶ A")   # ▶ = active/TX indicator
-            self._vfo_a_ind.setStyleSheet(
-                "font-weight:bold; color:#3fbe6f;")
-            self._vfo_a_ind.setToolTip("VFO A — current TX VFO")
-            va_hdr.addWidget(self._vfo_a_ind)
-            va_hdr.addStretch()
-            self._vfo_a_lbl = QLabel("—")
-            self._vfo_a_lbl.setStyleSheet(
-                "font-size:15px; font-weight:bold; font-family:monospace;")
-            self._vfo_a_lbl.setToolTip("VFO A frequency")
-            va_col.addLayout(va_hdr)
-            va_col.addWidget(self._vfo_a_lbl)
-            vab.addLayout(va_col, 2)
-    
-            # A↔B swap + split controls
+            self._build_vfo_a_col(vab)
             ctrl_col = QVBoxLayout()
             ctrl_col.setSpacing(4)
             swap_btn = QPushButton("A↔B")
@@ -385,24 +399,7 @@ class RigTab(SquelchPanel, QWidget):
             ctrl_col.addWidget(self._split_btn)
             ctrl_col.addStretch()
             vab.addLayout(ctrl_col, 1)
-    
-            # VFO B row
-            vb_col = QVBoxLayout()
-            vb_hdr = QHBoxLayout()
-            self._vfo_b_ind = QLabel("  B")
-            self._vfo_b_ind.setStyleSheet("color:#888888;")
-            self._vfo_b_ind.setToolTip("VFO B — RX only (▶ = TX in split mode)")
-            vb_hdr.addWidget(self._vfo_b_ind)
-            vb_hdr.addStretch()
-            self._vfo_b_lbl = QLabel("—")
-            self._vfo_b_lbl.setStyleSheet(
-                "font-size:15px; font-weight:bold; "
-                "font-family:monospace; color:#888888;")
-            self._vfo_b_lbl.setToolTip("VFO B frequency — TX in split mode")
-            vb_col.addLayout(vb_hdr)
-            vb_col.addWidget(self._vfo_b_lbl)
-            vab.addLayout(vb_col, 2)
-    
+            self._build_vfo_b_col(vab)
             self._rig_root.addWidget(vfo_ab_grp)
     
 

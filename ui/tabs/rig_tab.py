@@ -49,6 +49,7 @@ from PyQt6.QtGui import QFont, QWheelEvent
 from ui.widgets.freq_display import FreqDisplay
 from ui.widgets.spectrum_widget import SpectrumWidget
 from core.rig import RigController, RigStatus, SMETER_LABELS
+from core.themes import get_theme as _get_rig_theme
 from core.band_plan import (
     suggested_mode, band_at_freq, DIGITAL_FREQS, BAND_EDGES
 )
@@ -297,7 +298,9 @@ class RigTab(SquelchPanel, QWidget):
         arrow_row.addWidget(QLabel("Band:"))
         self._band_jump_combo = QComboBox()
         self._band_jump_combo.setFixedWidth(70)
-        self._band_jump_combo.setStyleSheet("background:#1a1a1a;border:1px solid #333;")
+        _t = _get_rig_theme(self.cfg.get("ui.theme", "Dark"))
+        self._band_jump_combo.setStyleSheet(
+            f"background:{_t.bg_secondary};border:1px solid {_t.border};")
         self._populate_band_combo()
         arrow_row.addWidget(self._band_jump_combo)
         go_btn = QPushButton("Go")
@@ -343,10 +346,11 @@ class RigTab(SquelchPanel, QWidget):
 
 
     def _build_vfo_a_col(self, vab) -> None:
+        _t = _get_rig_theme(self.cfg.get("ui.theme", "Dark"))
         va_col = QVBoxLayout()
         va_hdr = QHBoxLayout()
         self._vfo_a_ind = QLabel("▶ A")   # ▶ = active/TX indicator
-        self._vfo_a_ind.setStyleSheet("font-weight:bold; color:#3fbe6f;")
+        self._vfo_a_ind.setStyleSheet(f"font-weight:bold; color:{_t.accent};")
         self._vfo_a_ind.setToolTip("VFO A — current TX VFO")
         va_hdr.addWidget(self._vfo_a_ind)
         va_hdr.addStretch()
@@ -359,17 +363,18 @@ class RigTab(SquelchPanel, QWidget):
         vab.addLayout(va_col, 2)
 
     def _build_vfo_b_col(self, vab) -> None:
+        _t = _get_rig_theme(self.cfg.get("ui.theme", "Dark"))
         vb_col = QVBoxLayout()
         vb_hdr = QHBoxLayout()
         self._vfo_b_ind = QLabel("  B")
-        self._vfo_b_ind.setStyleSheet("color:#888888;")
+        self._vfo_b_ind.setStyleSheet(f"color:{_t.fg_secondary};")
         self._vfo_b_ind.setToolTip("VFO B — RX only (▶ = TX in split mode)")
         vb_hdr.addWidget(self._vfo_b_ind)
         vb_hdr.addStretch()
         self._vfo_b_lbl = QLabel("—")
         self._vfo_b_lbl.setStyleSheet(
-            "font-size:15px; font-weight:bold; "
-            "font-family:monospace; color:#888888;")
+            f"font-size:15px; font-weight:bold; "
+            f"font-family:monospace; color:{_t.fg_secondary};")
         self._vfo_b_lbl.setToolTip("VFO B frequency — TX in split mode")
         vb_col.addLayout(vb_hdr)
         vb_col.addWidget(self._vfo_b_lbl)
@@ -1025,28 +1030,29 @@ class RigTab(SquelchPanel, QWidget):
 
     def _update_vfo_tx_indicator(self, split: bool = False):
         """Show clearly which VFO is TX (▶ marker) — critical for C-08."""
+        _t = _get_rig_theme(self.cfg.get("ui.theme", "Dark"))
         if split:
             self._vfo_a_ind.setText("  A")
-            self._vfo_a_ind.setStyleSheet("color:#888888;")
+            self._vfo_a_ind.setStyleSheet(f"color:{_t.fg_secondary};")
             self._vfo_a_ind.setToolTip("VFO A — RX only in split mode")
             self._vfo_b_ind.setText("▶ B TX")
             self._vfo_b_ind.setStyleSheet(
-                "font-weight:bold; color:#ee8822;")
+                f"font-weight:bold; color:{_t.warn_color};")
             self._vfo_b_ind.setToolTip("VFO B — TRANSMIT in split mode")
             self._vfo_b_lbl.setStyleSheet(
-                "font-size:15px; font-weight:bold; "
-                "font-family:monospace; color:#ee8822;")
+                f"font-size:15px; font-weight:bold; "
+                f"font-family:monospace; color:{_t.warn_color};")
         else:
             self._vfo_a_ind.setText("▶ A TX")
             self._vfo_a_ind.setStyleSheet(
-                "font-weight:bold; color:#3fbe6f;")
+                f"font-weight:bold; color:{_t.accent};")
             self._vfo_a_ind.setToolTip("VFO A — TRANSMIT (simplex)")
             self._vfo_b_ind.setText("  B")
-            self._vfo_b_ind.setStyleSheet("color:#888888;")
+            self._vfo_b_ind.setStyleSheet(f"color:{_t.fg_secondary};")
             self._vfo_b_ind.setToolTip("VFO B — standby")
             self._vfo_b_lbl.setStyleSheet(
-                "font-size:15px; font-weight:bold; "
-                "font-family:monospace; color:#888888;")
+                f"font-size:15px; font-weight:bold; "
+                f"font-family:monospace; color:{_t.fg_secondary};")
 
     def _refresh_vfo_displays(self):
         """Update VFO A and B frequency labels from the rig (or cache)."""
@@ -1110,7 +1116,8 @@ class RigTab(SquelchPanel, QWidget):
         self._scan_start.setEnabled(False)
         self._scan_stop.setEnabled(True)
         self._scan_status.setText("Scanning…")
-        self._scan_status.setStyleSheet("color:#3fbe6f; ")
+        self._scan_status.setStyleSheet(
+            f"color:{_get_rig_theme(self.cfg.get('ui.theme', 'Dark')).accent}; ")
 
     def _stop_scan(self):
         self._scan_running = False

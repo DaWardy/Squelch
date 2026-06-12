@@ -288,12 +288,9 @@ def _saved_paths() -> dict:
     return {}
 
 
-def check_external():
-    head("External Programs")
-    pf = Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
-    pf86 = Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
-
-    checks = [
+def _build_checks_list(pf, pf86) -> list:
+    """Return the list of (name, paths, desc, url, required) tuples to check."""
+    return [
         ("WSJT-X", [
             pf/"WSJT-X/bin/wsjtx.exe",
             pf86/"WSJT-X/bin/wsjtx.exe",
@@ -303,7 +300,6 @@ def check_external():
             Path(r"D:\WSJT\wsjtx\bin\wsjtx.exe"),
         ], "FT8/FT4/WSPR digital modes",
            "https://wsjt.sourceforge.io/wsjtx.html", True),
-
         ("JS8Call", [
             pf/"JS8Call/js8call.exe",
             pf/"JS8Call/bin/js8call.exe",
@@ -312,7 +308,6 @@ def check_external():
             Path(r"C:\JS8Call\js8call.exe"),
         ], "JS8 keyboard messaging",
            "https://js8call.com/", False),
-
         ("Fldigi", [
             pf/"Fldigi/fldigi.exe",
             pf/"Fldigi-4.2.11/fldigi.exe",
@@ -323,7 +318,6 @@ def check_external():
             pf86/"Fldigi-4.2.11/fldigi.exe",
         ], "PSK31/RTTY/CW/SSTV digital modes",
            "https://sourceforge.net/projects/fldigi/", False),
-
         ("VARA HF", [
             Path(r"C:\VARA\VARA.exe"),
             Path(r"C:\VARA\VARAHF.exe"),
@@ -333,7 +327,6 @@ def check_external():
             pf/"VARA HF/VARAHF.exe",
         ], "Winlink HF modem (required for HF Winlink)",
            "https://rosmodem.com/vara-hf/", False),
-
         ("VARA FM", [
             Path(r"C:\VARA FM\VARAFM.exe"),
             Path(r"C:\VARA FM\VARA FM.exe"),
@@ -341,7 +334,6 @@ def check_external():
             pf/"VARA FM/VARAFM.exe",
         ], "Winlink VHF/UHF modem (required for VHF Winlink)",
            "https://rosmodem.com/vara-fm/", False),
-
         ("DSD+ (closed source)", [
             Path(r"C:\DSDPlusFull\DSDPlus.exe"),
             Path(r"C:\DSDPlus\DSDPlus.exe"),
@@ -349,7 +341,6 @@ def check_external():
             pf/"DSDPlus/DSDPlus.exe",
         ], "P25/DMR/NXDN/YSF digital voice decode",
            "https://www.dsdplus.com/", False),
-
         ("Hamlib (rigctld)", [
             Path(r"C:\hamlib\bin\rigctld.exe"),
             Path(r"C:\Hamlib\bin\rigctld.exe"),
@@ -357,14 +348,12 @@ def check_external():
             pf86/"Hamlib/bin/rigctld.exe",
         ], "CAT control for 300+ rigs (IC-7100, FT-991A, etc.)",
            "https://hamlib.org/", False),
-
         ("CHIRP", [
             pf/"CHIRP/chirp.exe",
             pf/"CHIRP/chirpw.exe",
             pf86/"CHIRP/chirp.exe",
         ], "Radio programming — Baofeng, IC-7100, FT-991A and 200+ radios",
            "https://chirpmyradio.com/", False),
-
         ("Winlink Express", [
             Path(r"C:\RMS Express\RMS Express.exe"),
             pf/"RMS Express/RMS Express.exe",
@@ -372,6 +361,13 @@ def check_external():
         ], "Winlink email client (optional — Squelch has built-in Winlink)",
            "https://downloads.winlink.org/User%20Programs/", False),
     ]
+
+
+def check_external():
+    head("External Programs")
+    pf = Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
+    pf86 = Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
+    checks = _build_checks_list(pf, pf86)
 
     results = {}
     saved = _saved_paths()

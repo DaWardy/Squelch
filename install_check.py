@@ -520,9 +520,13 @@ def main():
                         "-r", "requirements.txt",
                         "--no-cache-dir", "--upgrade"])
 
+    results = _run_all_checks(args)
+    print_summary(results)
+    _prompt_installer_if_needed(results)
+
+
+def _run_all_checks(args) -> dict:
     results = {}
-    # Each check is isolated — one failing crash can't prevent others
-    # or the final summary from running
     for name, fn in [
         ("Python",          check_python),
         ("Python packages", lambda: check_python_packages(args.verbose)),
@@ -538,10 +542,10 @@ def main():
         except Exception as e:
             fail(f"{name} check crashed: {e}")
             results[name] = False
+    return results
 
-    print_summary(results)
 
-    # Offer to launch the installer if packages are missing
+def _prompt_installer_if_needed(results: dict) -> None:
     if not results.get("Python packages", True):
         print()
         print(f"  {YELLOW}{BOLD}Python packages are missing.{RESET}")

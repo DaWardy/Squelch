@@ -90,9 +90,10 @@ class MapTab(SquelchPanel, QWidget):
         self.cfg     = config
         self.log_db  = log_db
         self._timer  = None
-        self._repeaters      = []
-        self._aprs_stations  = []
-        self._satellites     = []
+        self._repeaters        = []
+        self._aprs_stations    = []
+        self._satellites       = []
+        self._winlink_gateways = []
         self._build()
         # PSK timer started lazily when callsign is configured
         from PyQt6.QtCore import QTimer as _QT
@@ -209,6 +210,13 @@ class MapTab(SquelchPanel, QWidget):
             "Connect in Local RF tab first")
         self._show_aprs.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_aprs)
+        self._show_wl_gw = QCheckBox("Winlink GW")
+        self._show_wl_gw.setChecked(True)
+        self._show_wl_gw.setToolTip(
+            "Show Winlink RMS gateway pins\n"
+            "Fetch via Winlink tab → Gateways → Refresh")
+        self._show_wl_gw.toggled.connect(lambda _: self._refresh_map())
+        lay.addWidget(self._show_wl_gw)
 
     def _build_fallback_toolbar(self) -> "QFrame":
         """Controls bar for the Qt fallback map."""
@@ -276,19 +284,24 @@ class MapTab(SquelchPanel, QWidget):
             reps = self._repeaters \
                    if self._show_rep.isChecked() else []
 
+            wl_gws = (self._winlink_gateways
+                      if getattr(self, "_show_wl_gw", None)
+                         and self._show_wl_gw.isChecked()
+                      else [])
             html = build_map_html(
-                config            = self.cfg,
-                log_db            = self.log_db,
-                repeaters         = reps,
-                aprs_stations     = (self._aprs_stations
+                config              = self.cfg,
+                log_db              = self.log_db,
+                repeaters           = reps,
+                aprs_stations       = (self._aprs_stations
                     if self._show_aprs.isChecked() else []),
-                show_grayline     = self._show_gl.isChecked(),
-                show_qso_paths    = self._show_qso.isChecked(),
-                show_adsb         = self._show_adsb.isChecked(),
-                show_aprs         = self._show_aprs.isChecked(),
-                center_on_station = True,
-                heard_stations    = getattr(self, "_heard_stations", {}),
-                hearing_me        = getattr(self, "_hearing_me", {}),
+                show_grayline       = self._show_gl.isChecked(),
+                show_qso_paths      = self._show_qso.isChecked(),
+                show_adsb           = self._show_adsb.isChecked(),
+                show_aprs           = self._show_aprs.isChecked(),
+                center_on_station   = True,
+                heard_stations      = getattr(self, "_heard_stations", {}),
+                hearing_me          = getattr(self, "_hearing_me", {}),
+                winlink_gateways    = wl_gws,
             )
             self._view.setHtml(html)
 
@@ -329,6 +342,12 @@ class MapTab(SquelchPanel, QWidget):
         self._refresh_map()
 
     # ── Public API ────────────────────────────────────────────
+
+    def set_winlink_gateways(self, gateways: list):
+        """Called by Winlink tab after gateway fetch completes."""
+        self._winlink_gateways = gateways
+        if getattr(self, "_show_wl_gw", None) and self._show_wl_gw.isChecked():
+            QTimer.singleShot(0, self._refresh_map)
 
     def set_repeaters(self, repeaters: list):
         """Called by Local RF tab when search results arrive."""

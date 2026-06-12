@@ -706,86 +706,66 @@ class WinlinkTab(SquelchPanel, QWidget):
         self._p2p_body.clear()
         self._p2p_subj.clear()
 
-    def _build_templates_tab(self) -> QWidget:
-        """
-        Template library — category tree on left,
-        form on right. Populates compose tab on Insert.
-        """
-        w   = QWidget()
-        lay = QHBoxLayout(w)
-        lay.setContentsMargins(4, 4, 4, 4)
-        lay.setSpacing(6)
-
-        # ── Left: category / template tree ────────────────
+    def _build_tmpl_tree(self) -> "QWidget":
+        """Left panel: category/template tree."""
         left = QWidget()
         left.setMaximumWidth(220)
         ll   = QVBoxLayout(left)
         ll.setContentsMargins(0, 0, 0, 0)
-
         ll.addWidget(QLabel("Templates"))
-
         self._tmpl_tree = QTreeWidget()
         self._tmpl_tree.setHeaderHidden(True)
         self._tmpl_tree.setStyleSheet(
-            "QTreeWidget{background:#080808;"
-            ""
-            "border:1px solid #1a1a1a;}"
-            "QTreeWidget::item:selected{"
-            "background:#1a2a1a;color:#3fbe6f;}")
-        self._tmpl_tree.currentItemChanged.connect(
-            self._on_tmpl_select)
+            "QTreeWidget{background:#080808;border:1px solid #1a1a1a;}"
+            "QTreeWidget::item:selected{background:#1a2a1a;color:#3fbe6f;}")
+        self._tmpl_tree.currentItemChanged.connect(self._on_tmpl_select)
         ll.addWidget(self._tmpl_tree, 1)
-
-        # Populate tree from TEMPLATE_CATEGORIES
         try:
             from winlink.templates import TEMPLATE_CATEGORIES
             for cat in TEMPLATE_CATEGORIES:
-                cat_item = QTreeWidgetItem(
-                    [f"{cat.icon}  {cat.name}"])
-                cat_item.setForeground(
-                    0, QColor("#3fbe6f"))
+                cat_item = QTreeWidgetItem([f"{cat.icon}  {cat.name}"])
+                cat_item.setForeground(0, QColor("#3fbe6f"))
                 for name, fn, desc in cat.templates:
                     t_item = QTreeWidgetItem([name])
-                    t_item.setData(
-                        0, Qt.ItemDataRole.UserRole,
-                        (fn, desc))
+                    t_item.setData(0, Qt.ItemDataRole.UserRole, (fn, desc))
                     t_item.setToolTip(0, desc)
                     cat_item.addChild(t_item)
                 self._tmpl_tree.addTopLevelItem(cat_item)
                 cat_item.setExpanded(True)
         except Exception as e:
             log.debug(f"Template tree: {e}")
+        return left
 
-        lay.addWidget(left)
-
-        # ── Right: template form / preview ────────────────
-        right   = QWidget()
-        rl      = QVBoxLayout(right)
+    def _build_tmpl_preview_panel(self) -> "QWidget":
+        """Right panel: description, preview, insert button."""
+        right = QWidget()
+        rl    = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
-
         self._tmpl_desc = QLabel("Select a template →")
-        self._tmpl_desc.setStyleSheet(
-            "")
+        self._tmpl_desc.setStyleSheet("")
         rl.addWidget(self._tmpl_desc)
-
-        # Preview pane
         self._tmpl_preview = QTextEdit()
         self._tmpl_preview.setReadOnly(True)
         self._tmpl_preview.setStyleSheet(
-            "background:#080808;"
-            "font-family:'Courier New';"
+            "background:#080808;font-family:'Courier New';"
             "border:1px solid #1a1a1a;")
         rl.addWidget(self._tmpl_preview, 1)
-
-        # Insert button
         insert_btn = QPushButton("📋 Insert into Compose")
         insert_btn.setToolTip(
             "Copy this template into the Compose tab\n"
             "Edit the fields there before sending")
         insert_btn.clicked.connect(self._insert_template)
         rl.addWidget(insert_btn)
+        return right
 
-        lay.addWidget(right, 1)
+    def _build_templates_tab(self) -> "QWidget":
+        """Template library — category tree on left, preview on right."""
+        w   = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(6)
+        lay.addWidget(self._build_tmpl_tree())
+        lay.addWidget(self._build_tmpl_preview_panel(), 1)
         self._current_tmpl_fn = None
         return w
 

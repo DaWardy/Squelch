@@ -776,31 +776,27 @@ class FlowgraphCanvas(QWidget):
             Qt.AlignmentFlag.AlignLeft,
             node.block_name[:20])
 
-        # Input ports
+        self._draw_node_ports(p, node)
+
+    def _draw_node_ports(self, p: QPainter, node: GraphNode):
         p.setFont(QFont("Courier New", 9))
         for port in node.inputs:
             px, py = node.port_pos(port, True)
             p.setBrush(QBrush(QColor("#4488ff")))
             p.setPen(QPen(QColor("#111"), 1))
-            p.drawEllipse(
-                QRectF(px - 5, py - 5, 10, 10))
+            p.drawEllipse(QRectF(px - 5, py - 5, 10, 10))
             p.setPen(QPen(QColor("#888")))
-            p.drawText(
-                QRectF(px + 7, py - 8, 50, 16),
-                Qt.AlignmentFlag.AlignVCenter, port)
-
-        # Output ports
+            p.drawText(QRectF(px + 7, py - 8, 50, 16),
+                       Qt.AlignmentFlag.AlignVCenter, port)
         for port in node.outputs:
             px, py = node.port_pos(port, False)
             p.setBrush(QBrush(QColor("#44cc44")))
             p.setPen(QPen(QColor("#111"), 1))
-            p.drawEllipse(
-                QRectF(px - 5, py - 5, 10, 10))
+            p.drawEllipse(QRectF(px - 5, py - 5, 10, 10))
             p.setPen(QPen(QColor("#888")))
-            p.drawText(
-                QRectF(px - 60, py - 8, 54, 16),
-                Qt.AlignmentFlag.AlignVCenter |
-                Qt.AlignmentFlag.AlignRight, port)
+            p.drawText(QRectF(px - 60, py - 8, 54, 16),
+                       Qt.AlignmentFlag.AlignVCenter |
+                       Qt.AlignmentFlag.AlignRight, port)
 
     def _draw_connection(self, p: QPainter,
                           conn: dict):

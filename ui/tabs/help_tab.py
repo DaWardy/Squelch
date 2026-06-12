@@ -1504,71 +1504,51 @@ class HelpTab(SquelchPanel, QWidget):
         self._content.setHtml(html)
         self._current_article = title
 
+    @staticmethod
+    def _flush_pre(html: list, pre_lines: list) -> None:
+        html.append("<pre>" + "\n".join(pre_lines) + "</pre>")
+        pre_lines.clear()
+
+    def _render_content_lines(self, lines: list, html: list) -> None:
+        import re
+        in_pre = False
+        pre_lines: list = []
+        for line in lines:
+            if line.startswith("## "):
+                if in_pre:
+                    self._flush_pre(html, pre_lines); in_pre = False
+                html.append(f"<h2>{line[3:]}</h2>")
+            elif line.startswith("# "):
+                html.append(f"<h1>{line[2:]}</h1>")
+            elif line.startswith("  "):
+                in_pre = True
+                pre_lines.append(line)
+            else:
+                if in_pre:
+                    self._flush_pre(html, pre_lines); in_pre = False
+                if line.strip():
+                    line = re.sub(r'`([^`]+)`', r'<code>\1</code>', line)
+                    html.append(f"<p>{line}</p>")
+                else:
+                    html.append("<br>")
+        if in_pre:
+            self._flush_pre(html, pre_lines)
+
     def _render_content(self, title, cat, content) -> str:
-        lines = content.strip().splitlines()
-        html  = [
+        html = [
             "<style>"
-            "body{font-family:'Segoe UI',sans-serif;"
-            "line-height:1.6;}"
+            "body{font-family:'Segoe UI',sans-serif;line-height:1.6;}"
             "h1{color:#3fbe6f;margin-bottom:4px;}"
             "h2{margin-top:16px;}"
             "code{background:#141414;color:#44aaff;"
             "font-family:'Courier New';padding:1px 4px;}"
-            "pre{background:#141414;"
-            "font-family:'Courier New';"
+            "pre{background:#141414;font-family:'Courier New';"
             "padding:10px;border-left:3px solid #3fbe6f;}"
             "p{margin:4px 0;}"
             "</style>"
-            f"<p style=''>"
-            f"{cat}</p>"
+            f"<p style=''>{cat}</p>"
         ]
-        in_pre = False
-        pre_lines = []
-
-        for line in lines:
-            if line.startswith("## "):
-                if in_pre:
-                    html.append(
-                        "<pre>" +
-                        "\n".join(pre_lines) +
-                        "</pre>")
-                    pre_lines = []
-                    in_pre = False
-                html.append(
-                    f"<h2>{line[3:]}</h2>")
-            elif line.startswith("# "):
-                html.append(
-                    f"<h1>{line[2:]}</h1>")
-            elif line.startswith("  "):
-                # Indented — treat as code block
-                if not in_pre:
-                    in_pre = True
-                pre_lines.append(line)
-            else:
-                if in_pre:
-                    html.append(
-                        "<pre>" +
-                        "\n".join(pre_lines) +
-                        "</pre>")
-                    pre_lines = []
-                    in_pre = False
-                if line.strip():
-                    # Inline code: backtick
-                    import re
-                    line = re.sub(
-                        r'`([^`]+)`',
-                        r'<code>\1</code>',
-                        line)
-                    html.append(f"<p>{line}</p>")
-                else:
-                    html.append("<br>")
-
-        if in_pre:
-            html.append(
-                "<pre>" +
-                "\n".join(pre_lines) +
-                "</pre>")
-
+        self._render_content_lines(content.strip().splitlines(), html)
         return "\n".join(html)
 
     def _show_welcome(self):

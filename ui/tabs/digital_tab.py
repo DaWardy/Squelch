@@ -281,69 +281,53 @@ class DigitalTab(SquelchPanel, QWidget):
         else:
             self._tx_status.setText("No active TX bridge")
 
-    def _build_status_bar(self) -> QFrame:
-        bar = QFrame()
-        bar.setFixedHeight(36)
-        bar.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
-        lay = QHBoxLayout(bar)
-        lay.setContentsMargins(10, 4, 10, 4)
-        lay.setSpacing(12)
-
+    def _build_status_indicators(self, lay: "QHBoxLayout") -> None:
         self._decoder_lbl = QLabel("● No decoder running")
-        self._decoder_lbl.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._decoder_lbl.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._decoder_lbl)
-
         lay.addWidget(_vsep())
-
         self._protocol_lbl = QLabel("—")
         self._protocol_lbl.setStyleSheet(
-            "color:#3fbe6f;"
-            "font-weight:bold;font-family:'Courier New';")
+            "color:#3fbe6f;font-weight:bold;font-family:'Courier New';")
         lay.addWidget(self._protocol_lbl)
-
         lay.addWidget(_vsep())
-
         self._tg_lbl = QLabel("TG: —")
-        self._tg_lbl.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._tg_lbl.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._tg_lbl)
-
         lay.addWidget(_vsep())
-
         self._enc_lbl = QLabel("")
-        self._enc_lbl.setStyleSheet(
-            "color:#cc4444;"
-            "font-weight:bold;")
+        self._enc_lbl.setStyleSheet("color:#cc4444;font-weight:bold;")
         lay.addWidget(self._enc_lbl)
 
+    def _build_status_audio_control(self, lay: "QHBoxLayout") -> None:
         lay.addStretch()
-
-        # Audio device indicator — shows configured decode input, clickable to settings
-        audio_in = (self.cfg.get("audio.digital_input", "") or "not set") if self.cfg else "—"
+        audio_in = (
+            self.cfg.get("audio.digital_input", "") or "not set"
+        ) if self.cfg else "—"
         self._audio_lbl = QLabel(f"🎙 {audio_in}")
         self._audio_lbl.setStyleSheet(
             "font-size:10px;font-family:'Courier New';"
             "color:#888;text-decoration:underline;cursor:pointer;")
         self._audio_lbl.setToolTip(
-            "Decode audio input device\n"
-            "Click to open Audio Settings")
+            "Decode audio input device\nClick to open Audio Settings")
         self._audio_lbl.mousePressEvent = lambda _: self._open_audio_settings()
         lay.addWidget(self._audio_lbl)
-
         lay.addWidget(_vsep())
-
-        # Clear button
         clear_btn = QPushButton("Clear")
         clear_btn.setFixedWidth(55)
         clear_btn.setFixedHeight(24)
         clear_btn.clicked.connect(self._clear_log)
         lay.addWidget(clear_btn)
 
+    def _build_status_bar(self) -> "QFrame":
+        bar = QFrame()
+        bar.setFixedHeight(36)
+        bar.setStyleSheet("background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(10, 4, 10, 4)
+        lay.setSpacing(12)
+        self._build_status_indicators(lay)
+        self._build_status_audio_control(lay)
         return bar
 
     def _build_decode_header(self) -> "QHBoxLayout":

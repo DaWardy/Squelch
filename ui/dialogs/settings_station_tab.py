@@ -41,71 +41,54 @@ def _flatten(d: dict, prefix: str = "") -> dict:
 class _SettingsStationTab:
     """Mixed into SettingsDialog."""
 
-    def _tab_station(self) -> QWidget:
-        w = _scrolled()
-        f = QFormLayout(w)
-        f.setSpacing(10)
-        f.setContentsMargins(16, 16, 16, 16)
-
-        # Callsign
+    def _build_station_identity_section(self, f: "QFormLayout") -> None:
         self._callsign = QLineEdit()
         self._callsign.setMaxLength(12)
         self._callsign.setPlaceholderText("e.g. W1AW")
-        self._callsign.setToolTip(
-            "Your FCC callsign. Used in all transmissions.")
+        self._callsign.setToolTip("Your FCC callsign. Used in all transmissions.")
         f.addRow("Callsign:", self._callsign)
-
-        # Operator name
         self._op_name = QLineEdit()
         self._op_name.setMaxLength(50)
         self._op_name.setPlaceholderText("e.g. John")
         f.addRow("Operator Name:", self._op_name)
-
-        # Grid square
         self._grid = QLineEdit()
         self._grid.setMaxLength(8)
         self._grid.setPlaceholderText("e.g. DM79rr")
-        self._grid.setToolTip(
-            "Maidenhead grid square. Used in FT8, beacons, logs.")
+        self._grid.setToolTip("Maidenhead grid square. Used in FT8, beacons, logs.")
         f.addRow("Grid Square:", self._grid)
-
-        # ITU Region
         self._itu_region = QComboBox()
         self._itu_region.addItems([
             "Region 2 — Americas (default)",
             "Region 1 — Europe / Africa / Middle East",
             "Region 3 — Asia / Pacific",
         ])
-        self._itu_region.setToolTip(
-            "ITU region determines band edges for the band plan.")
+        self._itu_region.setToolTip("ITU region determines band edges for the band plan.")
         f.addRow("ITU Region:", self._itu_region)
-
-        # License class
         self._license = QComboBox()
-        self._license.addItems([
-            "Technician", "General", "Extra",
-            "Other / Non-US"])
-        self._license.setToolTip(
-            "Shows privilege overlays on the band plan.")
+        self._license.addItems(["Technician", "General", "Extra", "Other / Non-US"])
+        self._license.setToolTip("Shows privilege overlays on the band plan.")
         f.addRow("License Class:", self._license)
 
+    def _build_station_contest_section(self, f: "QFormLayout") -> None:
         f.addRow(_sep())
-
-        # Station callsign vs operator callsign
         self._station_call = QLineEdit()
         self._station_call.setMaxLength(12)
-        self._station_call.setPlaceholderText(
-            "Leave blank to use main callsign")
+        self._station_call.setPlaceholderText("Leave blank to use main callsign")
         self._station_call.setToolTip(
             "Station callsign if different from operator "
             "(e.g. club station K4ABC with op W1AW)")
         f.addRow("Station Callsign:", self._station_call)
-
         self._contest_exchange = QLineEdit()
         self._contest_exchange.setMaxLength(30)
-        self._contest_exchange.setPlaceholderText(
-            "e.g. CO or 003 or 5NN001")
+        self._contest_exchange.setPlaceholderText("e.g. CO or 003 or 5NN001")
         f.addRow("Contest Exchange:", self._contest_exchange)
 
+    def _tab_station(self) -> "QWidget":
+        w = _scrolled()
+        f = QFormLayout(w)
+        f.setSpacing(10)
+        f.setContentsMargins(16, 16, 16, 16)
+        self._build_station_identity_section(f)
+        self._build_station_contest_section(f)
         return w
 

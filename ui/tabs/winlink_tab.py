@@ -856,8 +856,18 @@ class WinlinkTab(SquelchPanel, QWidget):
         threading.Thread(target=_fetch, daemon=True,
                          name="GWFetch").start()
 
+    def set_map_tab(self, map_tab) -> None:
+        """Wire a MapTab so gateway pins appear on the map after fetch."""
+        self._map_tab = map_tab
+
     def _populate_gateways(self, gateways: list):
         """Fill the gateway table with fetched data."""
+        try:
+            mt = getattr(self, "_map_tab", None)
+            if mt is not None:
+                mt.set_winlink_gateways(gateways)
+        except Exception:
+            pass
         try:
             self._gw_table.setRowCount(0)
             for gw in gateways:

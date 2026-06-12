@@ -267,79 +267,70 @@ NOAA 19
                 result.append(pos)
         return result
 
+    @staticmethod
+    def _eci_to_geodetic(
+            r: "tuple", jd: float, fr: float
+    ) -> "tuple[float, float, float]":
+        """Convert ECI position vector to (lat_deg, lon_deg, alt_km)."""
+        rx, ry, rz = r
+        a  = 6378.137       # Earth semi-major axis km
+        f  = 1 / 298.257    # flattening
+        e2 = 2 * f - f * f
+
+        t   = (jd + fr - 2451545.0) / 36525
+        gst = (280.46061837 + 360.98564736629 *
+               (jd + fr - 2451545.0) +
+               0.000387933 * t * t) % 360
+        gst = math.radians(gst)
+
+        lon = math.degrees(math.atan2(ry, rx) - gst)
+        lon = ((lon + 180) % 360) - 180
+        p   = math.sqrt(rx**2 + ry**2)
+        lat = math.degrees(math.atan2(rz, p * (1 - e2)))
+
+        for _ in range(5):
+            s_lat = math.sin(math.radians(lat))
+            N     = a / math.sqrt(1 - e2 * s_lat**2)
+            lat   = math.degrees(math.atan2(rz + e2 * N * s_lat, p))
+
+        alt = (p / math.cos(math.radians(lat)) -
+               a / math.sqrt(1 - e2 * math.sin(math.radians(lat))**2))
+        return lat, lon, alt
+
     def _compute_position(
-            self, name: str,
-            sat,
+            self, name: str, sat,
             obs_lat: float, obs_lon: float
     ) -> Optional[SatPosition]:
         """Compute satellite ECI → geographic position."""
         try:
-            now  = datetime.now(timezone.utc)
-            yr   = now.year
-            mo   = now.month
-            day  = now.day
-            hr   = now.hour
-            mn   = now.minute
-            sc   = now.second + now.microsecond / 1e6
-
-            jd, fr = jday(yr, mo, day, hr, mn, sc)
+            now = datetime.now(timezone.utc)
+            jd, fr = jday(now.year, now.month, now.day,
+                          now.hour, now.minute,
+                          now.second + now.microsecond / 1e6)
             e, r, v = sat.sgp4(jd, fr)
             if e != 0:
                 return None
 
-            # ECI position (km) → geographic
-            rx, ry, rz = r
             vx, vy, vz = v
             vel = math.sqrt(vx**2 + vy**2 + vz**2)
+            lat, lon, alt = self._eci_to_geodetic(r, jd, fr)
 
-            # Geocentric to geodetic
-            a  = 6378.137    # Earth semi-major axis km
-            f  = 1 / 298.257 # flattening
-            e2 = 2*f - f*f
-
-            # Greenwich Sidereal Time
-            t   = (jd + fr - 2451545.0) / 36525
-            gst = (280.46061837 + 360.98564736629 *
-                   (jd + fr - 2451545.0) +
-                   0.000387933 * t*t) % 360
-            gst = math.radians(gst)
-
-            lon  = math.degrees(math.atan2(ry, rx) - gst)
-            lon  = ((lon + 180) % 360) - 180
-            p    = math.sqrt(rx**2 + ry**2)
-            lat  = math.degrees(math.atan2(
-                rz, p * (1 - e2)))
-
-            # Converge to geodetic lat
-            for _ in range(5):
-                s_lat = math.sin(math.radians(lat))
-                N     = a / math.sqrt(1 - e2 * s_lat**2)
-                lat   = math.degrees(math.atan2(
-                    rz + e2 * N * s_lat, p))
-
-            alt = p / math.cos(math.radians(lat)) - \
-                  a / math.sqrt(1 - e2 *
-                      math.sin(math.radians(lat))**2)
-
-            # Compute az/el from observer
             el_deg = az_deg = rng_km = 0.0
             if obs_lat or obs_lon:
                 el_deg, az_deg, rng_km = \
-                    self._azel(obs_lat, obs_lon, 0,
-                               lat, lon, alt)
+                    self._azel(obs_lat, obs_lon, 0, lat, lon, alt)
 
             return SatPosition(
-                name      = name,
-                lat       = round(lat, 3),
-                lon       = round(lon, 3),
-                alt_km    = round(alt, 1),
-                vel_kms   = round(vel, 2),
-                el_deg    = round(el_deg, 1),
-                az_deg    = round(az_deg, 1),
-                range_km  = round(rng_km, 0),
-                doppler_hz = self._doppler(
-                    vel, el_deg, 145_000_000),
-                timestamp = time.time(),
+                name       = name,
+                lat        = round(lat, 3),
+                lon        = round(lon, 3),
+                alt_km     = round(alt, 1),
+                vel_kms    = round(vel, 2),
+                el_deg     = round(el_deg, 1),
+                az_deg     = round(az_deg, 1),
+                range_km   = round(rng_km, 0),
+                doppler_hz = self._doppler(vel, el_deg, 145_000_000),
+                timestamp  = time.time(),
             )
         except Exception as e:
             log.debug(f"Position {name}: {e}")

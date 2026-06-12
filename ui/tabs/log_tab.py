@@ -537,19 +537,9 @@ class LogTab(SquelchPanel, QWidget):
         "CW":"599","FT8":"-10","FT4":"-10","WSPR":"-10",
     }
 
-    def _build_manual_entry_dialog(self):
-        """Build and return (dialog, fields_dict) for manual QSO entry.
-
-        fields_dict keys: cs_edit, band_combo, mode_combo,
-                          rst_sent, rst_rcvd, grid_edit, name_edit, comment_edit
-        """
+    def _build_manual_entry_fields(self, lay: "QFormLayout") -> "dict":
+        """Populate *lay* with QSO entry widgets; return fields dict."""
         from PyQt6.QtWidgets import QComboBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle(self.tr("Manual QSO Entry"))
-        dlg.setMinimumWidth(420)
-        lay = QFormLayout(dlg)
-        lay.setSpacing(8)
-
         cs_edit = QLineEdit()
         cs_edit.setPlaceholderText("e.g. W4XYZ")
         cs_edit.setMaxLength(15)
@@ -593,23 +583,27 @@ class LogTab(SquelchPanel, QWidget):
         comment_edit.setMaxLength(200)
         lay.addRow("Comment:", comment_edit)
 
+        return {
+            "cs_edit": cs_edit, "band_combo": band_combo,
+            "mode_combo": mode_combo, "rst_sent": rst_sent,
+            "rst_rcvd": rst_rcvd, "grid_edit": grid_edit,
+            "name_edit": name_edit, "comment_edit": comment_edit,
+        }
+
+    def _build_manual_entry_dialog(self):
+        """Build and return (dialog, fields_dict) for manual QSO entry."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(self.tr("Manual QSO Entry"))
+        dlg.setMinimumWidth(420)
+        lay = QFormLayout(dlg)
+        lay.setSpacing(8)
+        fields = self._build_manual_entry_fields(lay)
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         lay.addRow(btns)
-
-        fields = {
-            "cs_edit":      cs_edit,
-            "band_combo":   band_combo,
-            "mode_combo":   mode_combo,
-            "rst_sent":     rst_sent,
-            "rst_rcvd":     rst_rcvd,
-            "grid_edit":    grid_edit,
-            "name_edit":    name_edit,
-            "comment_edit": comment_edit,
-        }
         return dlg, fields
 
     def _manual_entry(self):

@@ -156,14 +156,7 @@ class WinlinkTab(SquelchPanel, QWidget):
 
         return bar
 
-    def _build_inbox_tab(self) -> QWidget:
-        """Inbox/Outbox for stored Winlink messages."""
-        w   = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(4)
-
-        # Toolbar
+    def _build_inbox_toolbar(self) -> "QHBoxLayout":
         tb = QHBoxLayout()
         folder_combo = QComboBox()
         folder_combo.addItems(
@@ -187,40 +180,47 @@ class WinlinkTab(SquelchPanel, QWidget):
         tb.addWidget(delete_btn)
 
         tb.addStretch()
-
         self._unread_lbl = QLabel("")
-        self._unread_lbl.setStyleSheet(
-            "color:#3fbe6f;")
+        self._unread_lbl.setStyleSheet("color:#3fbe6f;")
         tb.addWidget(self._unread_lbl)
-        lay.addLayout(tb)
+        return tb
 
-        # Message list
-        self._msg_list = QTableWidget(0, 4)
-        self._msg_list.setHorizontalHeaderLabels([
-            "From", "Subject", "Date", "Status"])
-        h = self._msg_list.horizontalHeader()
+    def _build_inbox_message_list(self) -> "QTableWidget":
+        t = QTableWidget(0, 4)
+        t.setHorizontalHeaderLabels(
+            ["From", "Subject", "Date", "Status"])
+        h = t.horizontalHeader()
         h.setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents)
         h.setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch)
-        self._msg_list.setEditTriggers(
+        t.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers)
-        self._msg_list.setSelectionBehavior(
+        t.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows)
-        self._msg_list.setAlternatingRowColors(True)
-        self._msg_list.setStyleSheet(
+        t.setAlternatingRowColors(True)
+        t.setStyleSheet(
             "QTableWidget{background:#0a0a0a;"
             "border:1px solid #1a1a1a;"
             "alternate-background-color:#0d0d0d;}"
             "QHeaderView::section{background:#141414;"
             "border:none;}")
-        self._msg_list.clicked.connect(
-            self._on_msg_select)
-        self._msg_list.doubleClicked.connect(
-            self._on_msg_open)
+        t.clicked.connect(self._on_msg_select)
+        t.doubleClicked.connect(self._on_msg_open)
+        return t
+
+    def _build_inbox_tab(self) -> "QWidget":
+        """Inbox/Outbox for stored Winlink messages."""
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(4)
+
+        lay.addLayout(self._build_inbox_toolbar())
+
+        self._msg_list = self._build_inbox_message_list()
         lay.addWidget(self._msg_list, 1)
 
-        # Preview pane
         self._msg_preview = QTextEdit()
         self._msg_preview.setReadOnly(True)
         self._msg_preview.setMaximumHeight(160)
@@ -231,7 +231,6 @@ class WinlinkTab(SquelchPanel, QWidget):
         self._msg_preview.setPlaceholderText(
             "Click a message to preview it here…")
         lay.addWidget(self._msg_preview)
-
         return w
 
     def _refresh_inbox(self, _=None):

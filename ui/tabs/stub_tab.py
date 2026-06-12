@@ -78,24 +78,7 @@ class StubTab(QWidget):
         self._label  = label
         self._build()
 
-    def _build(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        info = TAB_INFO.get(self._key, {})
-
-        # Launch bar for tabs that have software
-        tab_key = info.get("tab_key")
-        if tab_key and self._cfg:
-            try:
-                from ui.widgets.launch_bar import LaunchBar
-                bar = LaunchBar(tab_key, self._cfg)
-                root.addWidget(bar)
-            except Exception:
-                pass
-
-        # Content area
+    def _build_stub_content(self, info: dict, tab_key: "str | None") -> "QWidget":
         content = QWidget()
         cl = QVBoxLayout(content)
         cl.setContentsMargins(40, 40, 40, 40)
@@ -105,54 +88,57 @@ class StubTab(QWidget):
             "title",
             self._label.split("  ")[-1].strip())
         title = QLabel(f"<b>{title_text}</b>")
-        title.setStyleSheet(
-            "color:#3fbe6f;")
+        title.setStyleSheet("color:#3fbe6f;")
         cl.addWidget(title)
 
         if info.get("desc"):
             desc = QLabel(info["desc"])
             desc.setWordWrap(True)
-            desc.setStyleSheet(
-                "")
             cl.addWidget(desc)
 
         if info.get("coming"):
             sep = QFrame()
             sep.setFrameShape(QFrame.Shape.HLine)
-            sep.setStyleSheet(
-                "color:#1a1a1a;margin:8px 0;")
+            sep.setStyleSheet("color:#1a1a1a;margin:8px 0;")
             cl.addWidget(sep)
-
             coming = QLabel(
                 f"Coming in {info['coming']}  "
                 f"— check ROADMAP.md for details.")
-            coming.setStyleSheet(
-                ""
-                "font-style:italic;")
+            coming.setStyleSheet("font-style:italic;")
             cl.addWidget(coming)
 
         needs = info.get("needs", [])
         if needs:
-            needs_lbl = QLabel(
-                "Required software:")
+            needs_lbl = QLabel("Required software:")
             needs_lbl.setStyleSheet(
-                ""
                 "font-weight:bold;margin-top:8px;")
             cl.addWidget(needs_lbl)
             for item in needs:
-                il = QLabel(f"  • {item}")
-                il.setStyleSheet(
-                    "")
-                cl.addWidget(il)
+                cl.addWidget(QLabel(f"  • {item}"))
 
         if tab_key and self._cfg:
             hint = QLabel(
                 "Use the launch bar above to "
                 "install or configure required software.")
-            hint.setStyleSheet(
-                "color:#446644;"
-                "margin-top:12px;")
+            hint.setStyleSheet("color:#446644;margin-top:12px;")
             cl.addWidget(hint)
 
         cl.addStretch()
-        root.addWidget(content, 1)
+        return content
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        info    = TAB_INFO.get(self._key, {})
+        tab_key = info.get("tab_key")
+
+        if tab_key and self._cfg:
+            try:
+                from ui.widgets.launch_bar import LaunchBar
+                root.addWidget(LaunchBar(tab_key, self._cfg))
+            except Exception:
+                pass
+
+        root.addWidget(self._build_stub_content(info, tab_key), 1)

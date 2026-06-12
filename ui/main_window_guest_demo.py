@@ -66,18 +66,10 @@ class _MainWindowGuestDemoMixin:
         bar.setVisible(enabled)
 
 
-    def _open_guest_operator(self):
-        """Guest Operator: a student or visitor operates the station. TX stays
-        enabled. Captures the guest's callsign for correct identification and
-        offers a readable contact script. Used by students learning to operate."""
-        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout,
-                                     QLineEdit, QCheckBox, QPushButton,
-                                     QHBoxLayout, QLabel, QTextEdit)
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Guest Operator")
-        dlg.setMinimumWidth(520)
-        lay = QVBoxLayout(dlg)
-
+    def _build_guest_dialog_form(self, lay) -> "tuple":
+        """Add intro + form + script view to *lay*; return (guest_edit, supervised, script_view)."""
+        from PyQt6.QtWidgets import (QFormLayout, QLineEdit, QCheckBox,
+                                     QLabel, QTextEdit)
         intro = QLabel(
             "A guest or student operator is getting on the air at this "
             "station. Transmit stays enabled — this is for real, supervised "
@@ -91,10 +83,8 @@ class _MainWindowGuestDemoMixin:
         guest_edit.setPlaceholderText("Guest / student callsign, e.g. KE2XYZ")
         guest_edit.setMaxLength(12)
         form.addRow("Guest callsign:", guest_edit)
-
-        station_lbl = QLabel(self.cfg.callsign or "(station callsign not set)")
-        form.addRow("Station callsign:", station_lbl)
-
+        form.addRow("Station callsign:",
+                    QLabel(self.cfg.callsign or "(station callsign not set)"))
         supervised = QCheckBox("Operating under a control operator (supervised)")
         supervised.setChecked(self.cfg.get("guest.supervised", True))
         form.addRow("", supervised)
@@ -105,6 +95,21 @@ class _MainWindowGuestDemoMixin:
         script_view.setMinimumHeight(220)
         lay.addWidget(QLabel("Contact script (read aloud for voice contacts):"))
         lay.addWidget(script_view)
+        return guest_edit, supervised, script_view
+
+    def _open_guest_operator(self):
+        """Guest Operator: a student or visitor operates the station. TX stays
+        enabled. Captures the guest's callsign for correct identification and
+        offers a readable contact script. Used by students learning to operate."""
+        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPushButton,
+                                     QHBoxLayout)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Guest Operator")
+        dlg.setMinimumWidth(520)
+        lay = QVBoxLayout(dlg)
+
+        guest_edit, supervised, script_view = \
+            self._build_guest_dialog_form(lay)
 
         def _refresh_script():
             from core.guest_op import voice_contact_script
@@ -117,9 +122,9 @@ class _MainWindowGuestDemoMixin:
         supervised.toggled.connect(lambda _: _refresh_script())
         _refresh_script()
 
-        row = QHBoxLayout()
         clear_btn = QPushButton("End Guest Session")
         save_btn  = QPushButton("Start / Update")
+        row = QHBoxLayout()
         row.addWidget(clear_btn)
         row.addStretch()
         row.addWidget(save_btn)

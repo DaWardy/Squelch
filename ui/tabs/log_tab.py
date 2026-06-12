@@ -872,16 +872,10 @@ class LogTab(SquelchPanel, QWidget):
             return
         self._show_edit_dialog(qso)
 
-    def _show_edit_dialog(self, qso):
-        """Open a pre-filled QSO entry dialog for editing."""
+    def _build_edit_qso_form(self, dlg: "QDialog", qso) -> "tuple":
+        """Build the edit form; return field widgets as a tuple."""
         from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QLineEdit,
-            QComboBox, QDialogButtonBox, QDateTimeEdit)
-
-        dlg = QDialog(self)
-        dlg.setWindowTitle(
-            f"Edit QSO — {qso.call}")
-        dlg.setMinimumWidth(360)
+            QFormLayout, QLineEdit, QComboBox, QDialogButtonBox)
         f = QFormLayout(dlg)
         f.setSpacing(8)
         f.setContentsMargins(12, 12, 12, 12)
@@ -918,10 +912,9 @@ class LogTab(SquelchPanel, QWidget):
         grid.setMaxLength(8)
         f.addRow("Their Grid:", grid)
 
-        name = QLineEdit(qso.name or "")
-        f.addRow("Name:", name)
-
+        name    = QLineEdit(qso.name or "")
         comment = QLineEdit(qso.comment or "")
+        f.addRow("Name:", name)
         f.addRow("Comment:", comment)
 
         btns = QDialogButtonBox(
@@ -930,11 +923,10 @@ class LogTab(SquelchPanel, QWidget):
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         f.addRow(btns)
+        return call, band, mode, rst_s, rst_r, grid, name, comment
 
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        # Apply changes
+    def _apply_qso_edit(self, qso, call, band, mode,
+                        rst_s, rst_r, grid, name, comment):
         try:
             qso.call     = call.text().strip().upper()
             qso.band     = band.currentText()
@@ -951,6 +943,17 @@ class LogTab(SquelchPanel, QWidget):
             QMessageBox.warning(
                 self, "Save Failed",
                 f"Could not save changes:\n{e}")
+
+    def _show_edit_dialog(self, qso):
+        """Open a pre-filled QSO entry dialog for editing."""
+        from PyQt6.QtWidgets import QDialog
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Edit QSO — {qso.call}")
+        dlg.setMinimumWidth(360)
+        fields = self._build_edit_qso_form(dlg, qso)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._apply_qso_edit(qso, *fields)
 
     def _delete_qso_row(self, row: int):
         """Delete QSO at row with confirmation."""

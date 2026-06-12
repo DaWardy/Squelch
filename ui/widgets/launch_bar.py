@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 
 from core.launcher import get_launcher, AppDef
+from core.themes import get_theme as _lb_get_theme
 
 log = logging.getLogger(__name__)
 
@@ -123,10 +124,12 @@ class LaunchBar(QWidget):
         self._build()
 
     def _build(self):
+        _t = _lb_get_theme(
+            self._cfg.get("ui.theme", "Dark") if self._cfg else "Dark")
         self.setFixedHeight(38)
         self.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
+            f"background:{_t.bg_secondary};"
+            f"border-bottom:1px solid {_t.border};")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(6)
@@ -147,7 +150,7 @@ class LaunchBar(QWidget):
             self._btns.append(btn)
             lay.addWidget(btn)
 
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
 
         # Rescan button
         rescan = QPushButton(self.tr("↺ Rescan"))
@@ -180,9 +183,9 @@ class LaunchBar(QWidget):
             btn._refresh()
 
 
-def _vsep() -> QFrame:
+def _vsep(border: str = "#2a2a2a") -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("color:#1e1e1e;")
+    f.setStyleSheet(f"color:{border};")
     f.setFixedWidth(1)
     return f

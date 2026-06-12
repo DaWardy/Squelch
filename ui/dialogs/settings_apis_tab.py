@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QFormLayout, QScrollArea, QFrame,
     QLabel, QLineEdit, QComboBox, QSpinBox, QCheckBox, QHBoxLayout,
     QVBoxLayout, QPushButton, QGroupBox, QDoubleSpinBox)
 from PyQt6.QtCore import Qt
+from core.themes import get_theme as _api_get_theme
 
 def _scrolled() -> QWidget:
     """Return a plain widget (most tabs don't need scrolling)."""
@@ -108,7 +109,8 @@ class _SettingsApisTab:
             "URL callbacks: append ?key=<secret> to your endpoint URL.\n"
             "SMS alerts: requires a TextAnywhere (Clockwork) API token.")
         ha_note.setWordWrap(True)
-        ha_note.setStyleSheet("color:#888;font-size:10px;")
+        _t = _api_get_theme(self.cfg.get("ui.theme", "Dark"))
+        ha_note.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;")
         f.addRow("", ha_note)
         self._hamalert_user = QLineEdit()
         self._hamalert_user.setPlaceholderText("HamAlert callsign/username")

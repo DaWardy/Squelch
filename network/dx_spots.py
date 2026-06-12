@@ -167,6 +167,39 @@ class SpotFeed:
 
     # ── PSKReporter ───────────────────────────────────────────────────────
 
+    def _parse_psk_reports(self, reports: list,
+                           spotter_override: "str | None" = None) -> "list[Spot]":
+        """Parse a PSKReporter receptionReport list into Spot objects."""
+        spots = []
+        for rx in reports:
+            try:
+                spot = Spot(
+                    callsign    = api_callsign(rx.get("senderCallsign")),
+                    freq_hz     = api_int(rx.get("frequency"), 0),
+                    mode        = api_string(rx.get("mode"), 10),
+                    snr         = api_int(rx.get("sNR"), 0, -30, 30),
+                    spotter     = (spotter_override or
+                                   api_callsign(rx.get("receiverCallsign"))),
+                    grid        = api_string(rx.get("senderLocator"), 8),
+                    dxcc        = api_string(rx.get("DXCC"), 50),
+                    country     = api_string(rx.get("country"), 50),
+                    cq_zone     = api_int(rx.get("cqZone"), 0) if not spotter_override else 0,
+                    distance_km = api_float(rx.get("distance"), 0) if not spotter_override else 0.0,
+                    bearing_deg = api_float(rx.get("azimuth"), 0) if not spotter_override else 0.0,
+                    source      = "pskreporter",
+                    band        = self._band,
+                    i_am_hearing = spotter_override is not None,
+                )
+                if not spot.callsign:
+                    continue
+                spot.is_hearing_me = (spot.callsign == self._my_call)
+                if not spotter_override:
+                    spot.i_am_hearing = (spot.spotter == self._my_call)
+                spots.append(spot)
+            except Exception as e:
+                log.debug(f"PSKReporter spot parse: {e}")
+        return spots
+
     def _poll_pskreporter(self):
         if not self._my_call:
             return
@@ -181,80 +214,24 @@ class SpotFeed:
         resp = self._get(PSKREPORTER_URL, params)
         if not resp:
             return
-
         data = self._safe_json(resp)
         if not data:
             return
 
-        new_spots = []
-        for rx in data.get("receptionReport", []):
-            try:
-                spot = Spot(
-                    callsign    = api_callsign(rx.get("senderCallsign")),
-                    freq_hz     = api_int(rx.get("frequency"), 0),
-                    mode        = api_string(rx.get("mode"), 10),
-                    snr         = api_int(rx.get("sNR"), 0, -30, 30),
-                    spotter     = api_callsign(rx.get("receiverCallsign")),
-                    grid        = api_string(rx.get("senderLocator"), 8),
-                    dxcc        = api_string(rx.get("DXCC"), 50),
-                    country     = api_string(rx.get("country"), 50),
-                    cq_zone     = api_int(rx.get("cqZone"), 0),
-                    distance_km = api_float(rx.get("distance"), 0),
-                    bearing_deg = api_float(rx.get("azimuth"), 0),
-                    source      = "pskreporter",
-                    band        = self._band,
-                )
-                if not spot.callsign:
-                    continue
-                # Flag direction
-                spot.is_hearing_me = (
-                    spot.callsign == self._my_call)
-                spot.i_am_hearing  = (
-                    spot.spotter == self._my_call)
-                new_spots.append(spot)
-            except Exception as e:
-                log.debug(f"PSKReporter spot parse: {e}")
-
+        new_spots = self._parse_psk_reports(data.get("receptionReport", []))
         self._add_spots(new_spots)
 
-        # Also query who we're hearing
-        params2 = dict(params)
+        # Also query who we're hearing (receiver role)
+        params2 = {k: v for k, v in params.items() if k != "senderCallsign"}
         params2["receiverCallsign"] = self._my_call
-        del params2["senderCallsign"]
         resp2 = self._get(PSKREPORTER_URL, params2)
         if resp2:
             data2 = self._safe_json(resp2)
             if data2:
-                for rx in data2.get("receptionReport", []):
-                    try:
-                        spot = Spot(
-                            callsign    = api_callsign(
-                                rx.get("senderCallsign")),
-                            freq_hz     = api_int(
-                                rx.get("frequency"), 0),
-                            mode        = api_string(
-                                rx.get("mode"), 10),
-                            snr         = api_int(
-                                rx.get("sNR"), 0, -30, 30),
-                            spotter     = self._my_call,
-                            grid        = api_string(
-                                rx.get("senderLocator"), 8),
-                            dxcc        = api_string(
-                                rx.get("DXCC"), 50),
-                            country     = api_string(
-                                rx.get("country"), 50),
-                            cq_zone     = 0,
-                            distance_km = 0.0,
-                            bearing_deg = 0.0,
-                            source      = "pskreporter",
-                            band        = self._band,
-                            i_am_hearing = True,
-                        )
-                        if spot.callsign:
-                            new_spots.append(spot)
-                    except Exception:
-                        pass
-                self._add_spots(new_spots)
+                heard = self._parse_psk_reports(
+                    data2.get("receptionReport", []),
+                    spotter_override=self._my_call)
+                self._add_spots(heard)
 
     # ── RBN ───────────────────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QFormLayout, QScrollArea, QFrame,
     QLabel, QLineEdit, QComboBox, QSpinBox, QCheckBox, QHBoxLayout,
     QVBoxLayout, QPushButton, QGroupBox, QDoubleSpinBox)
 from PyQt6.QtCore import Qt
+from core.themes import get_theme as _sdr_get_theme
 
 
 class _SettingsSdrTab:
@@ -17,8 +18,9 @@ class _SettingsSdrTab:
         lay = QVBoxLayout(w)
         lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(10)
+        _t = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         hdr = QLabel("SDR Hardware Drivers")
-        hdr.setStyleSheet("font-weight:bold;color:#3fbe6f;")
+        hdr.setStyleSheet(f"font-weight:bold;color:{_t.accent};")
         lay.addWidget(hdr)
         sub = QLabel(
             "Install SoapySDR plugins for your SDR hardware. "
@@ -58,6 +60,7 @@ class _SettingsSdrTab:
 
     def _build_sdr_driver_checkboxes(self, gl: "QVBoxLayout") -> None:
         from PyQt6.QtWidgets import QFrame
+        _t2 = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         cb_style = (
             "QCheckBox{font-weight:bold;font-size:13px;spacing:8px;padding:2px 0;}"
             "QCheckBox::indicator{width:18px;height:18px;border:2px solid #888;"
@@ -76,12 +79,12 @@ class _SettingsSdrTab:
             row.addWidget(cb)
             nl = QLabel("        " + note)
             nl.setWordWrap(True)
-            nl.setStyleSheet("color:#aaaaaa;font-size:11px;")
+            nl.setStyleSheet(f"color:{_t2.fg_muted};font-size:11px;")
             row.addWidget(nl)
             gl.addLayout(row)
             sep = QFrame()
             sep.setFrameShape(QFrame.Shape.HLine)
-            sep.setStyleSheet("color:#333;max-height:1px;")
+            sep.setStyleSheet(f"color:{_t2.border};max-height:1px;")
             gl.addWidget(sep)
 
     def _build_sdr_select_row(self) -> "QHBoxLayout":

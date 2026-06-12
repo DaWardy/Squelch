@@ -231,186 +231,134 @@ class PropagationSideView(QWidget):
 
     # ── Painting ──────────────────────────────────────────────────────────
 
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        W, H = self.width(), self.height()
-
-        # Background: sky → space gradient
+    def _draw_background(self, p: "QPainter", H: int) -> bool:
+        """Fill sky gradient; return False if no path is set (caller should return)."""
         sky = QLinearGradient(0, 0, 0, H)
-        sky.setColorAt(0.0, QColor("#020410"))    # space
-        sky.setColorAt(0.5, QColor("#0a1830"))    # high atmosphere
-        sky.setColorAt(0.9, QColor("#1a3050"))    # troposphere
+        sky.setColorAt(0.0, QColor("#020410"))
+        sky.setColorAt(0.5, QColor("#0a1830"))
+        sky.setColorAt(0.9, QColor("#1a3050"))
         p.fillRect(self.rect(), QBrush(sky))
-
-        # If no path set, show "set a target" prompt
         if self._path_km <= 0:
             p.setPen(QColor("#888888"))
             p.setFont(QFont("", 10))
-            p.drawText(
-                self.rect(), Qt.AlignmentFlag.AlignCenter,
-                "Enter a Path-to target above to visualize propagation\n"
-                "(grid square, callsign, ZIP, or city)")
-            return
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
+                       "Enter a Path-to target above to visualize propagation\n"
+                       "(grid square, callsign, ZIP, or city)")
+            return False
+        return True
 
-        # Reserve top 5% for labels, bottom 18% for the ground curve
-        top    = int(H * 0.05)
-        ground = int(H * 0.82)
-
-        # The plot maps:
-        #   x = distance along the great circle (0 → path_km)
-        #   y = altitude above ground (0 → some max above F-layer)
-        # We exaggerate vertical scale heavily — real ionosphere is
-        # ~300 km high vs 3000 km path, almost flat. Educational view
-        # needs the bounce to be visible, so we plot in normalized units.
-        path = max(self._path_km, 1.0)
-        # Margin so labels don't crowd the edges
-        x0   = 60
-        x1   = W - 20
-        plot_w = max(50, x1 - x0)
-
-        # Curved Earth: parabolic approximation of the surface dropping
-        # toward the horizon between the two stations.
-        # Earth bulge sagitta over distance d: s ≈ d² / (8R)
-        # Then scaled into the available vertical range.
-        sagitta = (path ** 2) / (8 * EARTH_R_KM)
-        # Scale so a typical HF path's bulge fits in ~10% of the plot
-        bulge_px = min(H * 0.10, sagitta / 50.0 * H * 0.10)
-
-        # ── Draw Earth surface with terrain ───────────────────────────
-        import math
-        terrain_pts: list[float] = []
-        n_samples = 60
-        max_terrain_px = max(8, int(H * 0.10))
-
+    def _build_terrain_sampler(self, n_samples: int,
+                               max_terrain_px: int) -> "tuple[list, object]":
+        """Return (terrain_pts, _terrain_px_fn) for n_samples+1 points."""
+        terrain_pts: "list[float]" = []
         if self._terrain_elev and len(self._terrain_elev) >= n_samples:
-            # Real SRTM elevation data — normalise to pixel scale.
-            # Find the range across this path so mountains are visible.
-            elev = self._terrain_elev[:n_samples + 1]
-            elev_min = min(elev)
-            elev_max = max(elev)
-            elev_range = max(elev_max - elev_min, 1.0)
-            for v in elev:
-                # Taper endpoints to baseline so TX/RX masts land cleanly
-                terrain_pts.append(v)
+            elev      = self._terrain_elev[:n_samples + 1]
+            elev_min  = min(elev)
+            elev_range = max(max(elev) - elev_min, 1.0)
+            terrain_pts.extend(elev)
+
             def _terrain_px(i: int) -> float:
                 t = i / n_samples
-                taper = min(1.0, 6 * t * (1 - t))   # smooth at edges
-                norm = (terrain_pts[i] - elev_min) / elev_range
-                return norm * max_terrain_px * taper
+                taper = min(1.0, 6 * t * (1 - t))
+                return (terrain_pts[i] - elev_min) / elev_range * max_terrain_px * taper
         else:
-            # No terrain data — deterministic sine noise (seed from path km)
             seed = int(self._path_km) % 997
             for i in range(n_samples + 1):
                 t = i / n_samples
-                elev = (0.55 * math.sin(t * 7.3 + seed * 0.13) +
-                        0.30 * math.sin(t * 19.1 + seed * 0.27) +
-                        0.15 * math.sin(t * 41.7 + seed * 0.41))
-                taper = min(1.0, 4 * t * (1 - t))
-                terrain_pts.append(elev * taper)
+                e = (0.55 * math.sin(t * 7.3  + seed * 0.13) +
+                     0.30 * math.sin(t * 19.1 + seed * 0.27) +
+                     0.15 * math.sin(t * 41.7 + seed * 0.41))
+                terrain_pts.append(e * min(1.0, 4 * t * (1 - t)))
 
             def _terrain_px(i: int) -> float:
                 return terrain_pts[i] * max_terrain_px
 
-        # Build ground polygon
+        return terrain_pts, _terrain_px
+
+    def _draw_terrain(self, p: "QPainter", ground: int, x0: int, x1: int,
+                      plot_w: int, H: int, bulge_px: float):
+        """Draw the curved Earth surface with terrain relief."""
+        n_samples = 60
+        max_terrain_px = max(8, int(H * 0.10))
+        _, _terrain_px = self._build_terrain_sampler(n_samples, max_terrain_px)
+
         ground_path = QPainterPath()
         ground_path.moveTo(x0, ground)
         for i in range(n_samples + 1):
             t = i / n_samples
-            px = x0 + t * plot_w
-            bulge = bulge_px * 4 * t * (1 - t)
-            py = ground + bulge - _terrain_px(i)
-            ground_path.lineTo(px, py)
+            ground_path.lineTo(x0 + t * plot_w,
+                               ground + bulge_px * 4 * t * (1 - t) - _terrain_px(i))
         ground_path.lineTo(x1, H)
         ground_path.lineTo(x0, H)
         ground_path.closeSubpath()
 
-        ground_grad = QLinearGradient(0, ground - max_terrain_px, 0, H)
-        ground_grad.setColorAt(0.0, QColor("#4a6038"))
-        ground_grad.setColorAt(0.3, QColor("#3a5028"))
-        ground_grad.setColorAt(1.0, QColor("#1a2810"))
-        p.fillPath(ground_path, QBrush(ground_grad))
+        gg = QLinearGradient(0, ground - max_terrain_px, 0, H)
+        gg.setColorAt(0.0, QColor("#4a6038"))
+        gg.setColorAt(0.3, QColor("#3a5028"))
+        gg.setColorAt(1.0, QColor("#1a2810"))
+        p.fillPath(ground_path, QBrush(gg))
 
         p.setPen(QPen(QColor("#5a7038"), 2))
         surface = QPainterPath()
         surface.moveTo(x0, ground)
         for i in range(n_samples + 1):
             t = i / n_samples
-            px = x0 + t * plot_w
-            bulge = bulge_px * 4 * t * (1 - t)
-            surface.lineTo(px, ground + bulge - _terrain_px(i))
+            surface.lineTo(x0 + t * plot_w,
+                           ground + bulge_px * 4 * t * (1 - t) - _terrain_px(i))
         p.drawPath(surface)
 
-
-        # ── Path-loss contours ────────────────────────────────────────
-        # Show approximate received-signal strength along the path
-        # using free-space path loss + EIRP. Gives operators a rough
-        # idea of whether their station can close the path.
-        _sky_h = locals().get("sky_h", H // 3)
+    def _draw_path_loss_bar(self, p: "QPainter", x0: int, plot_w: int,
+                            top: int, H: int):
+        """Draw EIRP/FSPL signal-strength bar and terrain source label."""
         if self._eirp_dbw != 0.0 and self._path_km > 0 and self._freq_mhz > 0:
-            import math
-            # FSPL = 20*log10(km) + 20*log10(MHz) + 92.45 (dB)
-            fspl = (20 * math.log10(max(self._path_km, 1)) +
-                    20 * math.log10(max(self._freq_mhz, 0.1)) + 92.45)
-            prx_dbm = (self._eirp_dbw * 10) - fspl  # rough Prx in dBm-ish
-            # Normalise to a position in the sky region
-            # S9 ≈ -73 dBm, usable floor ≈ -130 dBm
-            # Draw a "signal strength" bar across the top of the sky
-            norm = max(0.0, min(1.0, (prx_dbm + 130) / 57))
-            bar_w = int(plot_w * norm)
+            fspl    = (20 * math.log10(max(self._path_km, 1)) +
+                       20 * math.log10(max(self._freq_mhz, 0.1)) + 92.45)
+            prx_dbm = (self._eirp_dbw * 10) - fspl
+            norm    = max(0.0, min(1.0, (prx_dbm + 130) / 57))
+            bar_w   = int(plot_w * norm)
             if bar_w > 4:
-                sig_y = top + int((_sky_h - 20) * 0.75)
+                sig_y    = top + int((H // 3 - 20) * 0.75)
                 sig_grad = QLinearGradient(x0, sig_y, x0 + bar_w, sig_y)
                 sig_grad.setColorAt(0.0, QColor("#ff440044"))
                 sig_grad.setColorAt(0.5, QColor("#ffaa0066"))
                 sig_grad.setColorAt(1.0, QColor("#00ff8866"))
                 p.fillRect(x0, sig_y, bar_w, 8, QBrush(sig_grad))
-                # Label
                 p.setPen(QColor("#99aabb"))
                 p.setFont(QFont("", 7))
-                p.drawText(x0 + bar_w + 4, sig_y + 7,
-                           f"Prx≈{prx_dbm:.0f} dBm")
-                # EIRP label
+                p.drawText(x0 + bar_w + 4, sig_y + 7, f"Prx≈{prx_dbm:.0f} dBm")
                 p.drawText(x0 + 2, sig_y + 7,
                            f"EIRP {self._eirp_dbw:.0f} dBW → FSPL {fspl:.0f} dB")
-
-        # Terrain label (source + "Fetching..." status)
         if self._terrain_label:
+            ground = int(self.height() * 0.82)
             p.setPen(QColor("#778899"))
             p.setFont(QFont("", 7))
             p.drawText(x0 + 2, ground - 3, self._terrain_label)
 
-        # ── Ionosphere F-layer band ───────────────────────────────────
-        # Drawn at fixed altitude above the curved ground
-        f_top    = top + int((ground - top) * 0.15)
-        f_bot    = top + int((ground - top) * 0.35)
-        iono_grad = QLinearGradient(0, f_top, 0, f_bot)
-        iono_grad.setColorAt(0.0, QColor(120,  80, 200, 30))
-        iono_grad.setColorAt(0.5, QColor(150, 100, 220, 70))
-        iono_grad.setColorAt(1.0, QColor(120,  80, 200, 30))
-        p.fillRect(QRectF(x0, f_top, plot_w, f_bot - f_top),
-                   QBrush(iono_grad))
+    def _draw_ionosphere(self, p: "QPainter", x0: int, x1: int,
+                         plot_w: int, top: int,
+                         ground: int) -> "tuple[int, int]":
+        """Draw F-layer band and return (f_top, f_bot)."""
+        f_top = top + int((ground - top) * 0.15)
+        f_bot = top + int((ground - top) * 0.35)
+        ig = QLinearGradient(0, f_top, 0, f_bot)
+        ig.setColorAt(0.0, QColor(120,  80, 200, 30))
+        ig.setColorAt(0.5, QColor(150, 100, 220, 70))
+        ig.setColorAt(1.0, QColor(120,  80, 200, 30))
+        p.fillRect(QRectF(x0, f_top, plot_w, f_bot - f_top), QBrush(ig))
         p.setPen(QPen(QColor(170, 120, 230, 120), 1, Qt.PenStyle.DashLine))
-        p.drawLine(x0, (f_top + f_bot) // 2,
-                   x1, (f_top + f_bot) // 2)
-
-        # F-layer label
+        p.drawLine(x0, (f_top + f_bot) // 2, x1, (f_top + f_bot) // 2)
         p.setPen(QColor("#b48eea"))
         p.setFont(QFont("", 8))
-        p.drawText(
-            x0 + 4, f_top - 2,
-            f"F-layer  ~{F_LAYER_KM:.0f} km")
+        p.drawText(x0 + 4, f_top - 2, f"F-layer  ~{F_LAYER_KM:.0f} km")
+        return f_top, f_bot
 
-        # ── TX / RX station markers ───────────────────────────────────
-        tx_x = x0
-        rx_x = x1
-        tx_y = ground
-        rx_y = ground
-        # Antenna mast (visual cue)
+    def _draw_station_markers(self, p: "QPainter",
+                              tx_x: int, tx_y: int,
+                              rx_x: int, rx_y: int):
+        """Draw TX/RX antenna mast markers."""
         p.setPen(QPen(QColor("#3fbe6f"), 2))
         p.drawLine(tx_x, tx_y - 18, tx_x, tx_y)
         p.drawLine(rx_x, rx_y - 18, rx_x, rx_y)
-        # Whip top markers
         p.setBrush(QBrush(QColor("#3fbe6f")))
         p.drawEllipse(QPointF(tx_x, tx_y - 18), 3, 3)
         p.drawEllipse(QPointF(rx_x, rx_y - 18), 3, 3)
@@ -419,41 +367,57 @@ class PropagationSideView(QWidget):
         p.drawText(tx_x - 6, tx_y - 22, "TX")
         p.drawText(rx_x - 6, rx_y - 22, "RX")
 
-        # ── Draw the propagation path(s) ──────────────────────────────
-        mode = self._propagation_mode()
-        msg  = self._draw_propagation_path(
-            p, mode, tx_x, rx_x, tx_y, rx_y, ground, f_top, f_bot,
-            bulge_px, path, top)
-
-        # ── Top-banner labels (two clear lines) ──────────────────────
+    def _draw_banner_labels(self, p: "QPainter", x0: int, top: int,
+                            H: int, mode: str, msg: str):
+        """Draw top info banner and bottom mode message."""
         p.setPen(QColor("#cccccc"))
         p.setFont(QFont("", 9))
-        line1 = (f"{self._target or 'Path'}  •  "
-                 f"{self._path_km:,.0f} km")
+        line1 = f"{self._target or 'Path'}  •  {self._path_km:,.0f} km"
         if self._freq_mhz > 0:
             line1 += f"  •  TX {self._freq_mhz:.3f} MHz"
         p.drawText(x0, top + 13, line1)
-
-        # FOT = Frequency of Optimum Transmission ≈ 0.85 × MUF.
-        # Render on its own clearly-spaced second line.
         if self._muf_mhz > 0:
-            fot = round(0.85 * self._muf_mhz, 1)
+            fot   = round(0.85 * self._muf_mhz, 1)
             line2 = (f"LUF {self._luf_mhz:.1f} MHz  |  "
                      f"FOT {fot:.1f} MHz  |  "
                      f"MUF {self._muf_mhz:.1f} MHz")
             p.setPen(QColor("#9fb8d4"))
             p.setFont(QFont("", 8))
             p.drawText(x0, top + 27, line2)
-
-        # ── Mode message at the bottom ────────────────────────────────
         if msg:
-            color = {
-                "groundwave": "#ffcc00",
-                "nvis":       "#66ddff",
-                "skywave":    "#66ddff",
-                "beyond":     "#ff7777",
-                "absorbed":   "#dd9966",
-            }.get(mode, "#999999")
+            color = {"groundwave": "#ffcc00", "nvis": "#66ddff",
+                     "skywave": "#66ddff", "beyond": "#ff7777",
+                     "absorbed": "#dd9966"}.get(mode, "#999999")
             p.setPen(QColor(color))
             p.setFont(QFont("", 9, QFont.Weight.Bold))
             p.drawText(x0, H - 6, msg)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        W, H = self.width(), self.height()
+
+        if not self._draw_background(p, H):
+            return
+
+        top    = int(H * 0.05)
+        ground = int(H * 0.82)
+        path   = max(self._path_km, 1.0)
+        x0, x1 = 60, W - 20
+        plot_w  = max(50, x1 - x0)
+
+        # Earth bulge: sagitta ≈ d²/(8R), scaled to ~10% of plot height
+        sagitta  = (path ** 2) / (8 * EARTH_R_KM)
+        bulge_px = min(H * 0.10, sagitta / 50.0 * H * 0.10)
+
+        self._draw_terrain(p, ground, x0, x1, plot_w, H, bulge_px)
+        self._draw_path_loss_bar(p, x0, plot_w, top, H)
+        f_top, f_bot = self._draw_ionosphere(p, x0, x1, plot_w, top, ground)
+        self._draw_station_markers(p, x0, ground, x1, ground)
+
+        mode = self._propagation_mode()
+        msg  = self._draw_propagation_path(
+            p, mode, x0, x1, ground, ground, ground, f_top, f_bot,
+            bulge_px, path, top)
+
+        self._draw_banner_labels(p, x0, top, H, mode, msg)

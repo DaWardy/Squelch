@@ -462,13 +462,14 @@ class MainWindow(
         return tab
 
     def _wire_winlink_map(self, map_tab) -> None:
-        """Forward gateway list from WinlinkTab to MapTab."""
-        try:
-            wl = self._tab_map.get("winlink")
-            if wl and hasattr(wl, "set_map_tab"):
-                wl.set_map_tab(map_tab)
-        except Exception:
-            pass
+        """Forward gateway list and repeaters to MapTab from other tabs."""
+        for tab_key in ("winlink", "localrf"):
+            try:
+                tab = self._tab_map.get(tab_key)
+                if tab and hasattr(tab, "set_map_tab"):
+                    tab.set_map_tab(map_tab)
+            except Exception:
+                pass
 
     def _build_tab(self, key: str, label: str, ldb) -> "QWidget":
         """Instantiate one tab widget. Imports are lazy (local)."""

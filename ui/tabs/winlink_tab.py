@@ -18,6 +18,7 @@ from __future__ import annotations
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 import logging
+from core.themes import get_theme
 from datetime import datetime, timezone
 
 from ui.panel import SquelchPanel
@@ -50,12 +51,12 @@ STATE_COLORS = {
 }
 
 
-def _vsep():
+def _vsep(border: str = "#2a2a2a"):
     """Vertical separator line."""
     from PyQt6.QtWidgets import QFrame
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("color:#1a1a1a;")
+    f.setStyleSheet(f"color:{border};")
     return f
 
 
@@ -86,6 +87,7 @@ class WinlinkTab(SquelchPanel, QWidget):
     # ── Build ─────────────────────────────────────────────────
 
     def _build(self):
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -109,11 +111,12 @@ class WinlinkTab(SquelchPanel, QWidget):
         root.addWidget(tabs, 1)
 
     def _build_status_bar(self) -> QFrame:
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         bar = QFrame()
         bar.setFixedHeight(36)
         bar.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
+            f"background:{_t.bg_secondary};"
+            f"border-bottom:1px solid {_t.border};")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(10, 4, 10, 4)
 
@@ -123,7 +126,7 @@ class WinlinkTab(SquelchPanel, QWidget):
             "font-family:'Courier New';")
         lay.addWidget(self._hf_lbl)
 
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
 
         self._fm_lbl = QLabel("VARA FM: ●  Disconnected")
         self._fm_lbl.setStyleSheet(
@@ -181,7 +184,8 @@ class WinlinkTab(SquelchPanel, QWidget):
 
         tb.addStretch()
         self._unread_lbl = QLabel("")
-        self._unread_lbl.setStyleSheet("color:#3fbe6f;")
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
+        self._unread_lbl.setStyleSheet(f"color:{_t.accent};")
         tb.addWidget(self._unread_lbl)
         return tb
 

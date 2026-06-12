@@ -25,6 +25,7 @@ PSKReporter and WSPRnet spot feeds.
 """
 
 import logging
+from core.themes import get_theme
 from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -117,12 +118,13 @@ class BandConditionsTab(SquelchPanel, QWidget):
 
     def _build_header_bar(self) -> QHBoxLayout:
         from PyQt6.QtWidgets import QPushButton, QDoubleSpinBox
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         hdr = QHBoxLayout()
         self._summary_lbl = QLabel(self.tr("Fetching solar data…"))
-        self._summary_lbl.setStyleSheet("font-weight:bold;color:#3fbe6f;")
+        self._summary_lbl.setStyleSheet(f"font-weight:bold;color:{_t.accent};")
         hdr.addWidget(self._summary_lbl)
         self._muf_lbl = QLabel("")
-        self._muf_lbl.setStyleSheet("color:#888888; font-size:10px;")
+        self._muf_lbl.setStyleSheet(f"color:{_t.fg_secondary}; font-size:10px;")
         self._muf_lbl.setToolTip(
             "Estimated Maximum Usable Frequency for a ~3000 km F2 path "
             "based on current SFI. Updates with solar data.")
@@ -154,8 +156,9 @@ class BandConditionsTab(SquelchPanel, QWidget):
     def _header_add_path_group(self, hdr) -> None:
         """Add path-to field, Go button, and band filter to the header layout."""
         from PyQt6.QtWidgets import QLineEdit, QPushButton, QComboBox
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         path_lbl = QLabel("Path to:")
-        path_lbl.setStyleSheet("color:#888888; font-size:10px;")
+        path_lbl.setStyleSheet(f"color:{_t.fg_secondary}; font-size:10px;")
         hdr.addWidget(path_lbl)
         self._path_edit = QLineEdit()
         self._path_edit.setPlaceholderText("grid / call / city")
@@ -206,9 +209,10 @@ class BandConditionsTab(SquelchPanel, QWidget):
         ll.addWidget(rec_grp)
         self._aurora_widget = QGroupBox("")
         aw = QVBoxLayout(self._aurora_widget)
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         self._aurora_lbl = QLabel("")
         self._aurora_lbl.setWordWrap(True)
-        self._aurora_lbl.setStyleSheet("color:#ffaa00;")
+        self._aurora_lbl.setStyleSheet(f"color:{_t.warn_color};")
         aw.addWidget(self._aurora_lbl)
         self._aurora_widget.hide()
         ll.addWidget(self._aurora_widget)
@@ -340,8 +344,9 @@ class BandConditionsTab(SquelchPanel, QWidget):
             "Source: Amazon open terrain data (NASA SRTM, public domain).")
         self._terrain_dl_btn.clicked.connect(self._download_terrain_tiles)
         ctrl_row.addWidget(self._terrain_dl_btn)
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         self._terrain_status = QLabel("")
-        self._terrain_status.setStyleSheet("color:#888;font-size:10px;")
+        self._terrain_status.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;")
         ctrl_row.addWidget(self._terrain_status, 1)
         svl.addLayout(ctrl_row)
         self._prop_sideview = PropagationSideView()

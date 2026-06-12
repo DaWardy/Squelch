@@ -64,13 +64,48 @@ class _MainWindowProfileMixin:
             log.warning(f"Profile switch: {e}")
 
 
+    def _rename_profile_action(self, dlg, pm, lst) -> None:
+        from PyQt6.QtWidgets import QInputDialog, QMessageBox
+        it = lst.currentItem()
+        if not it:
+            return
+        new, ok = QInputDialog.getText(
+            dlg, "Rename Profile", "New name:", text=it.text())
+        if ok and new.strip():
+            try:
+                pm.rename(it.text(), new.strip())
+                it.setText(new.strip())
+                self._populate_profiles()
+            except Exception as e:
+                QMessageBox.warning(dlg, "Rename failed", str(e))
+
+    def _delete_profile_action(self, dlg, pm, lst) -> None:
+        from PyQt6.QtWidgets import QMessageBox
+        it = lst.currentItem()
+        if not it:
+            return
+        if pm.count() <= 1:
+            QMessageBox.information(
+                dlg, "Cannot delete",
+                "At least one profile must remain.")
+            return
+        if (QMessageBox.question(
+                dlg, "Delete Profile",
+                f"Delete profile '{it.text()}'? This cannot be undone.")
+                == QMessageBox.StandardButton.Yes):
+            try:
+                pm.delete(it.text())
+                lst.takeItem(lst.row(it))
+                self._populate_profiles()
+            except Exception as e:
+                QMessageBox.warning(dlg, "Delete failed", str(e))
+
     def _manage_profiles_dialog(self):
-        """Rename or delete operator profiles (edit path the user wanted)."""
+        """Rename or delete operator profiles."""
         from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QListWidget,
-                                     QHBoxLayout, QPushButton, QInputDialog,
-                                     QMessageBox, QLabel)
+                                     QHBoxLayout, QPushButton, QLabel)
         from core.profiles import get_profile_manager
-        pm = get_profile_manager()
+        pm  = get_profile_manager()
         dlg = QDialog(self)
         dlg.setWindowTitle("Manage Operator Profiles")
         dlg.setMinimumWidth(380)
@@ -81,50 +116,19 @@ class _MainWindowProfileMixin:
         lst = QListWidget()
         lst.addItems(pm.list_profiles())
         lay.addWidget(lst)
-        row = QHBoxLayout()
         rename_b = QPushButton("Rename")
         delete_b = QPushButton("Delete")
         close_b  = QPushButton("Close")
-        row.addWidget(rename_b); row.addWidget(delete_b)
-        row.addStretch(); row.addWidget(close_b)
+        row = QHBoxLayout()
+        row.addWidget(rename_b)
+        row.addWidget(delete_b)
+        row.addStretch()
+        row.addWidget(close_b)
         lay.addLayout(row)
-
-        def _rename():
-            it = lst.currentItem()
-            if not it:
-                return
-            new, ok = QInputDialog.getText(
-                dlg, "Rename Profile", "New name:", text=it.text())
-            if ok and new.strip():
-                try:
-                    pm.rename(it.text(), new.strip())
-                    it.setText(new.strip())
-                    self._populate_profiles()
-                except Exception as e:
-                    QMessageBox.warning(dlg, "Rename failed", str(e))
-
-        def _delete():
-            it = lst.currentItem()
-            if not it:
-                return
-            if pm.count() <= 1:
-                QMessageBox.information(
-                    dlg, "Cannot delete",
-                    "At least one profile must remain.")
-                return
-            if QMessageBox.question(
-                    dlg, "Delete Profile",
-                    f"Delete profile '{it.text()}'? This cannot be undone."
-                    ) == QMessageBox.StandardButton.Yes:
-                try:
-                    pm.delete(it.text())
-                    lst.takeItem(lst.row(it))
-                    self._populate_profiles()
-                except Exception as e:
-                    QMessageBox.warning(dlg, "Delete failed", str(e))
-
-        rename_b.clicked.connect(_rename)
-        delete_b.clicked.connect(_delete)
+        rename_b.clicked.connect(
+            lambda: self._rename_profile_action(dlg, pm, lst))
+        delete_b.clicked.connect(
+            lambda: self._delete_profile_action(dlg, pm, lst))
         close_b.clicked.connect(dlg.accept)
         dlg.exec()
 

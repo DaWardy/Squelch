@@ -210,84 +210,57 @@ class MapTab(SquelchPanel, QWidget):
         self._show_aprs.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_aprs)
 
-    def _build_no_webengine(self, layout):
-        """
-        Fallback map — pure Qt drawing, no WebEngine needed.
-        Shows gray line terminator, station marker, QSO paths.
-        Works on Python 3.14 and any system without WebEngine.
-        """
-        from ui.tabs.map_fallback import WorldMapWidget
-
-        # Controls toolbar
+    def _build_fallback_toolbar(self) -> "QFrame":
+        """Controls bar for the Qt fallback map."""
         bar = QFrame()
         bar.setFixedHeight(36)
-        bar.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
+        bar.setStyleSheet("background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
         tl = QHBoxLayout(bar)
         tl.setContentsMargins(8, 4, 8, 4)
         tl.setSpacing(8)
-
         self._show_gl = QCheckBox("Gray line")
         self._show_gl.setChecked(True)
         self._show_gl.setToolTip(
             "Show the day/night terminator\n"
             "Best DX propagation near the gray line")
-        self._show_gl.toggled.connect(
-            self._refresh_fallback_map)
+        self._show_gl.toggled.connect(self._refresh_fallback_map)
         tl.addWidget(self._show_gl)
-
         self._show_qso = QCheckBox("QSO paths")
         self._show_qso.setChecked(True)
-        self._show_qso.setToolTip(
-            "Draw great circle paths to logged QSOs")
-        self._show_qso.toggled.connect(
-            self._refresh_fallback_map)
+        self._show_qso.setToolTip("Draw great circle paths to logged QSOs")
+        self._show_qso.toggled.connect(self._refresh_fallback_map)
         tl.addWidget(self._show_qso)
-
         self._show_aprs = QCheckBox("APRS")
         self._show_aprs.setChecked(True)
-        self._show_aprs.setToolTip(
-            "Show APRS stations — connect in Local RF tab")
-        self._show_aprs.toggled.connect(
-            self._refresh_fallback_map)
+        self._show_aprs.setToolTip("Show APRS stations — connect in Local RF tab")
+        self._show_aprs.toggled.connect(self._refresh_fallback_map)
         tl.addWidget(self._show_aprs)
-
         tl.addStretch()
-
         note = QLabel("ℹ  Qt fallback renderer")
         note.setStyleSheet("")
         tl.addWidget(note)
-
         refresh_btn = QPushButton("↺")
         refresh_btn.setFixedSize(28, 26)
-        refresh_btn.setToolTip(
-            "Refresh gray line and QSO paths")
-        refresh_btn.clicked.connect(
-            self._refresh_fallback_map)
+        refresh_btn.setToolTip("Refresh gray line and QSO paths")
+        refresh_btn.clicked.connect(self._refresh_fallback_map)
         tl.addWidget(refresh_btn)
+        return bar
 
-        layout.addWidget(bar)
-
-        # Map canvas
+    def _build_no_webengine(self, layout):
+        """Fallback map — pure Qt drawing, no WebEngine needed."""
+        from ui.tabs.map_fallback import WorldMapWidget
+        layout.addWidget(self._build_fallback_toolbar())
         self._fallback_map = WorldMapWidget()
         layout.addWidget(self._fallback_map, 1)
-
-        # Status bar
         self._gl_bar = QLabel("Computing gray line…")
         self._gl_bar.setFixedHeight(24)
-        self._gl_bar.setAlignment(
-            Qt.AlignmentFlag.AlignCenter)
+        self._gl_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._gl_bar.setStyleSheet(
-            "background:#0a0a0a;"
-            "font-family:'Courier New';"
+            "background:#0a0a0a;font-family:'Courier New';"
             "border-top:1px solid #1a1a1a;")
         layout.addWidget(self._gl_bar)
-
-        # Auto-refresh every 60 seconds
         self._fb_timer = QTimer(self)
-        self._fb_timer.timeout.connect(
-            self._refresh_fallback_map)
+        self._fb_timer.timeout.connect(self._refresh_fallback_map)
         self._fb_timer.start(60_000)
 
     # ── Map rendering ──────────────────────────────────────────

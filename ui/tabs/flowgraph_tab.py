@@ -133,73 +133,52 @@ class FlowgraphTab(QWidget):
             "border-top:1px solid #1a1a1a;")
         root.addWidget(self._status)
 
-    def _build_toolbar(self) -> QFrame:
-        tb = QFrame()
-        tb.setFixedHeight(38)
-        tb.setStyleSheet(
-            "background:#0d0d0d;"
-            "border-bottom:1px solid #1a1a1a;")
-        l = QHBoxLayout(tb)
-        l.setContentsMargins(6, 4, 6, 4)
-        l.setSpacing(4)
+    @staticmethod
+    def _tb_btn(label: str, tip: str, slot, color: str = "") -> "QPushButton":
+        b = QPushButton(label)
+        b.setFixedHeight(28)
+        b.setToolTip(tip)
+        b.clicked.connect(slot)
+        if color:
+            b.setStyleSheet(f"background:{color};border-radius:3px;")
+        return b
 
-        def btn(label, tip, slot,
-                color=""):
-            b = QPushButton(label)
-            b.setFixedHeight(28)
-            b.setToolTip(tip)
-            b.clicked.connect(slot)
-            if color:
-                b.setStyleSheet(
-                    f"background:{color};"
-                    "border-radius:3px;")
-            return b
-
-        self._run_btn = btn(
-            "▶  Run", "Start the flowgraph",
-            self._toggle_run, "#1a3a1a")
+    def _build_toolbar_file_buttons(self, l: "QHBoxLayout") -> None:
+        self._run_btn = self._tb_btn(
+            "▶  Run", "Start the flowgraph", self._toggle_run, "#1a3a1a")
         l.addWidget(self._run_btn)
-
-        l.addWidget(btn(
-            "New",  "New flowgraph (Ctrl+N)",
-            self._new_graph))
-        l.addWidget(btn(
-            "Open", "Open flowgraph file",
-            self._open_graph))
-        l.addWidget(btn(
-            "Save", "Save flowgraph",
-            self._save_graph))
-        l.addWidget(btn(
-            "Import GRC",
-            "Import a GNU Radio Companion .grc file",
+        l.addWidget(self._tb_btn("New",  "New flowgraph (Ctrl+N)", self._new_graph))
+        l.addWidget(self._tb_btn("Open", "Open flowgraph file",    self._open_graph))
+        l.addWidget(self._tb_btn("Save", "Save flowgraph",         self._save_graph))
+        l.addWidget(self._tb_btn(
+            "Import GRC", "Import a GNU Radio Companion .grc file",
             self._import_grc))
 
+    def _build_toolbar_template_selector(self, l: "QHBoxLayout") -> None:
         l.addSpacing(8)
         l.addWidget(QLabel("Template:"))
         self._template_combo = QComboBox()
         self._template_combo.addItems([
-            "— select —",
-            "FM Broadcast Receiver",
-            "NFM Voice Scanner",
-            "APRS Receiver",
-            "AM Receiver",
-            "IQ Recording",
-            "Spectrum Monitor",
+            "— select —", "FM Broadcast Receiver", "NFM Voice Scanner",
+            "APRS Receiver", "AM Receiver", "IQ Recording", "Spectrum Monitor",
         ])
-        self._template_combo.setToolTip(
-            "Load a preconfigured flowgraph template")
-        self._template_combo.currentTextChanged.connect(
-            self._load_template)
+        self._template_combo.setToolTip("Load a preconfigured flowgraph template")
+        self._template_combo.currentTextChanged.connect(self._load_template)
         l.addWidget(self._template_combo)
 
+    def _build_toolbar(self) -> "QFrame":
+        tb = QFrame()
+        tb.setFixedHeight(38)
+        tb.setStyleSheet("background:#0d0d0d;border-bottom:1px solid #1a1a1a;")
+        l = QHBoxLayout(tb)
+        l.setContentsMargins(6, 4, 6, 4)
+        l.setSpacing(4)
+        self._build_toolbar_file_buttons(l)
+        self._build_toolbar_template_selector(l)
         l.addStretch()
-
         self._uptime_lbl = QLabel("")
-        self._uptime_lbl.setStyleSheet(
-            ""
-            "font-family:'Courier New';")
+        self._uptime_lbl.setStyleSheet("font-family:'Courier New';")
         l.addWidget(self._uptime_lbl)
-
         return tb
 
     def _build_block_browser(self) -> QWidget:

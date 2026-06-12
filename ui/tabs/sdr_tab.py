@@ -35,26 +35,17 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QSplitter, QPushButton, QLabel, QComboBox,
     QGroupBox, QSlider, QSpinBox, QDoubleSpinBox,
-    QFrame, QProgressBar, QCheckBox, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox,
-    QSizePolicy, QScrollArea, QLineEdit, QButtonGroup
-,
-    QDialog
-,
-    QDialogButtonBox
-,
-    QFileDialog
+    QFrame, QProgressBar, QCheckBox, QMessageBox,
+    QSizePolicy, QScrollArea, QLineEdit, QButtonGroup,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
-from PyQt6.QtGui import QWheelEvent, QDesktopServices, QFont
-from PyQt6.QtCore import QUrl
+from PyQt6.QtGui import QWheelEvent, QFont
 
 from ui.widgets.launch_bar import LaunchBar
 from network.signal_id import get_identifier
 from sdr.soapy_device import (
     SoapyManager, SDRDevice, get_sdr_manager, HAS_SOAPY)
-from sdr.iq_recorder import (
-    IQRecorder, IQPlayer, list_recordings, Recording)
+from sdr.iq_recorder import IQRecorder, IQPlayer
 from core.band_plan import band_at_freq, BAND_EDGES
 from core.constants import BAND_EDGES_R2 as BAND_EDGES, FFT_SIZE
 from core.themes import get_theme as _sdr_get_theme
@@ -124,35 +115,16 @@ def _make_colormap(palette_name: str):
     return pg.ColorMap(pos, rgba)
 
 
-def _safe_recordings_path(cfg, default="recordings") -> Path:
-    """
-    Resolve IQ recordings path from config.
-    Blocks path traversal attempts (e.g. ../../Windows/System32).
-    Falls back to default if path is unsafe or outside user data.
-    """
-    raw = str(cfg.get("paths.iq_recordings", default) or default)
-    # Strip null bytes and control characters
-    raw = raw.replace("\x00", "").strip()
-    # Block traversal patterns
-    if ".." in raw or raw.startswith("/"):
-        import logging
-        logging.getLogger(__name__).warning(
-            f"Blocked unsafe recordings path: {raw!r}")
-        raw = default
-    p = Path(raw)
-    # If relative, anchor to APPDATA/Squelch/recordings
-    if not p.is_absolute():
-        from core.config import USER_DIR
-        p = USER_DIR / raw
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
 
 from ui.tabs.sdr_setup_guide  import _SDRSetupGuideMixin
 from ui.tabs.sdr_device_panels import _SDRDevicePanelsMixin
+from ui.tabs.sdr_recording import _SDRRecordingMixin, _safe_recordings_path
+from ui.tabs.sdr_scanner import _SDRScannerMixin
+from ui.tabs.sdr_signal_id import _SDRSignalIDMixin
 
 
-class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
+class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
+             _SDRRecordingMixin, _SDRScannerMixin, _SDRSignalIDMixin, QWidget):
     panel_id    = "sdr"
     panel_title = "SDR"
 
@@ -1381,354 +1353,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             self._spec_plot.addItem(region)
             self._seg_items.append(region)
 
-    # ── IQ Recorder ──────────────────────────────────────────────────────
-
-    def _toggle_record(self):
-        if self._recorder.is_recording:
-            rec = self._recorder.stop()
-            self._rec_btn.setText("⏺ Record")
-            self._rec_btn.setStyleSheet(
-                "background:#3a1a1a;color:#cc4444;"
-                "border:1px solid #cc4444;border-radius:4px;")
-            self._rec_status.setText(
-                self.tr("Recording saved"))
-            self._rec_status.setStyleSheet(
-                "color:#3fbe6f;"
-                "font-family:'Courier New';")
-            self._refresh_recordings()
-        else:
-            hw = (self._current.display_name
-                  if self._current else "")
-            # Enrich SigMF metadata with operator info (C-13, Priya)
-            cs   = self.cfg.callsign or ""
-            grid = self.cfg.grid or ""
-            notes = (f"operator:{cs} grid:{grid}".strip()
-                     if cs or grid else "")
-            lat = self.cfg.get("location.lat", 0.0)
-            lon = self.cfg.get("location.lon", 0.0)
-            stem = self._recorder.start(
-                self._center_hz,
-                self._manager._sample_rate,
-                hardware=hw,
-                notes=notes,
-                lat=lat, lon=lon)
-            if stem:
-                self._rec_btn.setText("■ Stop")
-                self._rec_btn.setStyleSheet(
-                    "background:#cc2222;color:#fff;"
-                    "border:1px solid #ff4444;"
-                    "border-radius:4px;")
-
-    def _toggle_play(self):
-        if self._player.is_playing:
-            self._player.pause()
-            self._play_btn.setText("▶ Play")
-        else:
-            self._player.play()
-            self._play_btn.setText("⏸ Pause")
-            self._stop_btn.setEnabled(True)
-
-    def _stop_playback(self):
-        self._player.stop()
-        self._play_btn.setText("▶ Play")
-        self._stop_btn.setEnabled(False)
-        self._play_bar.setValue(0)
-
-    def _load_recording(self):
-        idx = self._rec_combo.currentIndex()
-        recs = list_recordings(
-            _safe_recordings_path(self.cfg))
-        if 0 <= idx < len(recs):
-            rec = recs[idx]
-            if self._player.load(rec):
-                self._player.on_samples(
-                    self._on_samples)
-                self._player.on_progress(
-                    self._on_play_progress)
-                self._player.on_end(
-                    lambda: QTimer.singleShot(
-                        0, self._stop_playback))
-                self._set_freq(rec.center_hz)
-                self._rec_status.setText(
-                    f"Loaded: {rec.name}")
-            else:
-                QMessageBox.warning(
-                    self, self.tr("Load Failed"),
-                    self.tr("Recording file not found."))
-
-
-    def _open_recording_file(self, p) -> "Recording | None":
-        """Parse a recording file path and return a Recording, or None on error.
-
-        Handles .sigmf-meta, .sigmf-data (finds sibling meta), raw IQ
-        (.cf32/.iq/.bin — prompts for sample rate), and unknown formats.
-        Returns None without showing a dialog only for the unsupported-format
-        case (caller checks for None and warns).
-        """
-        from pathlib import Path as _P
-        from PyQt6.QtWidgets import QMessageBox, QInputDialog
-        from sdr.iq_recorder import Recording
-        p = _P(p)
-        if p.suffix == ".sigmf-meta":
-            return Recording.from_meta_file(p)
-        if p.suffix == ".sigmf-data":
-            meta = p.with_suffix(".sigmf-meta")
-            if meta.exists():
-                return Recording.from_meta_file(meta)
-            QMessageBox.warning(
-                self, self.tr("Missing metadata"),
-                self.tr("This .sigmf-data file has no sibling "
-                        ".sigmf-meta — sample rate and center frequency are unknown."))
-            return None
-        if p.suffix.lower() in (".cf32", ".iq", ".bin"):
-            sr, ok = QInputDialog.getInt(
-                self, self.tr("Sample rate"),
-                self.tr("Sample rate (Hz) — required for raw IQ files:"),
-                2_400_000, 8_000, 100_000_000, 1)
-            if not ok:
-                return None
-            try:
-                duration = p.stat().st_size / 8 / sr
-            except Exception:
-                duration = 0.0
-            return Recording(
-                name=p.stem, data_path=p, meta_path=p,
-                center_hz=getattr(self, "_center_hz", 0),
-                sample_rate=sr, datatype="cf32_le",
-                duration_s=duration, file_size=p.stat().st_size)
-        QMessageBox.information(
-            self, self.tr("Unsupported format"),
-            self.tr(
-                f"'{p.suffix}' files are not currently supported.\n"
-                "Supported: .sigmf-meta, .sigmf-data, .cf32, .iq, .bin\n\n"
-                "WAV audio is not IQ data — use Squelch's Record button "
-                "or a SigMF-compliant capture tool."))
-        return None
-
-    def _browse_recording(self):
-        """Open any SigMF / raw IQ file from anywhere on disk."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
-        path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Open IQ recording"), "",
-            "All supported (*.sigmf-meta *.sigmf-data *.cf32 *.iq *.bin);;"
-            "SigMF metadata (*.sigmf-meta);;"
-            "SigMF data (*.sigmf-data);;"
-            "Raw complex64 IQ (*.cf32 *.iq *.bin);;"
-            "All files (*)")
-        if not path:
-            return
-        rec = self._open_recording_file(path)
-        if not rec:
-            return
-        if not self._player.load(rec):
-            QMessageBox.warning(self, self.tr("Load Failed"),
-                                self.tr("Recording file not found or unreadable."))
-            return
-        self._player.on_samples(self._on_samples)
-        self._player.on_progress(self._on_play_progress)
-        self._player.on_end(lambda: QTimer.singleShot(0, self._stop_playback))
-        self._set_freq(rec.center_hz)
-        self._rec_status.setText(f"Loaded: {rec.name}")
-
-    def _on_play_progress(self, pos_s: float,
-                           dur_s: float):
-        if dur_s > 0:
-            pct = int(pos_s / dur_s * 100)
-            QTimer.singleShot(0,
-                lambda p=pct: self._play_bar.setValue(p))
-
-    def _refresh_recordings(self):
-        recs = list_recordings(
-            _safe_recordings_path(self.cfg))
-        self._rec_combo.clear()
-        for r in recs:
-            self._rec_combo.addItem(r.display_name)
-
-    # ── Scanner ───────────────────────────────────────────────────────────
-
-    def _start_scan(self):
-        try:
-            lo = int(float(
-                self._scan_from.text()) * 1_000_000)
-            hi = int(float(
-                self._scan_to.text()) * 1_000_000)
-        except ValueError:
-            QMessageBox.warning(
-                self, self.tr("Scanner"),
-                self.tr("Invalid frequency range."))
-            return
-        self._scan_lo  = lo
-        self._scan_hi  = hi
-        self._scan_cur = lo
-        self._scan_running = True
-        interval = int(
-            self._scan_dwell.value() * 1000)
-        self._scan_timer.setInterval(interval)
-        self._scan_timer.start()
-        self._scan_start.setEnabled(False)
-        self._scan_stop.setEnabled(True)
-
-    def _stop_scan(self):
-        self._scan_running = False
-        self._scan_timer.stop()
-        self._scan_start.setEnabled(True)
-        self._scan_stop.setEnabled(False)
-
-    def _scan_step(self):
-        if not self._scan_running:
-            return
-        step = SDR_STEP_SIZES[self._step_idx]
-        self._scan_cur += step
-        if self._scan_cur > self._scan_hi:
-            self._scan_cur = self._scan_lo
-        self._set_freq(self._scan_cur)
-
-    # ── TX ────────────────────────────────────────────────────────────────
-
-    def _tx_iq_file(self):
-        from PyQt6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Select IQ File"),
-            str(_safe_recordings_path(self.cfg)),
-            "SigMF Data (*.sigmf-data);All (*)")
-        if path:
-            QMessageBox.information(
-                self, self.tr("TX IQ"),
-                self.tr(
-                    "IQ file TX will be available in "
-                    "a future update.\n"
-                    "File selected: " +
-                    Path(path).name))
-
-    # ── Signal routing to Digital tab ────────────────────────────────────
-
-    def set_decoder_callback(self, cb):
-        """Set callback for routed IQ samples."""
-        self._decoder_cb = cb
-
-    # ── Help ──────────────────────────────────────────────────────────────
-
-    def _identify_signal(self, bandwidth_hz: int, freq_hz: int):
-        """Identify signal at clicked frequency (async via Artemis DB)."""
-        from PyQt6.QtCore import QTimer
-        def _done(matches):
-            QTimer.singleShot(
-                0, lambda m=matches: self._show_signal_id_dialog(
-                    m, bandwidth_hz, freq_hz))
-        get_identifier().identify_async(bandwidth_hz, freq_hz, _done)
-
-    def _show_signal_id_dialog(self, matches, bandwidth_hz: int,
-                                freq_hz: int) -> None:
-        """Show Artemis signal-ID results in a dialog (must run on main thread)."""
-        from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTableWidget,
-                                      QTableWidgetItem, QHeaderView,
-                                      QDialogButtonBox)
-        bw_k = bandwidth_hz / 1e3
-        fq_m = freq_hz / 1e6
-        if not matches:
-            QMessageBox.information(
-                self, self.tr("Signal ID"),
-                f"No match found for {bw_k:.1f} kHz bandwidth "
-                f"at {fq_m:.3f} MHz.\n\n"
-                "Try adjusting bandwidth selection.")
-            return
-        dlg = QDialog(self)
-        dlg.setWindowTitle(self.tr("Signal Identification"))
-        dlg.setMinimumWidth(500)
-        lay = QVBoxLayout(dlg)
-        lbl = QLabel(
-            f"Bandwidth: {bw_k:.1f} kHz  Frequency: {fq_m:.3f} MHz\n"
-            f"Top {len(matches)} matches from Artemis database:")
-        lay.addWidget(lbl)
-        tbl = QTableWidget(len(matches), 4)
-        tbl.setHorizontalHeaderLabels(
-            ["Signal", "Modulation", "Bandwidth", "Confidence"])
-        tbl.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch)
-        tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        tbl.setStyleSheet("font-family:'Courier New';")
-        for row, match in enumerate(matches):
-            tbl.setItem(row, 0, QTableWidgetItem(match.name))
-            tbl.setItem(row, 1, QTableWidgetItem(match.modulation))
-            tbl.setItem(row, 2, QTableWidgetItem(
-                f"{match.bandwidth_hz/1e3:.1f} kHz"))
-            tbl.setItem(row, 3, QTableWidgetItem(
-                f"{match.confidence*100:.0f}%"))
-        lay.addWidget(tbl)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        btns.accepted.connect(dlg.accept)
-        lay.addWidget(btns)
-        dlg.exec()
-
-    def _open_adsb_map(self):
-        """Open dump1090 aircraft map in browser."""
-        # Write receiver.json first so station shows on map
-        if self.cfg:
-            try:
-                self.location_mgr.write_dump1090_receiver_json()
-            except Exception:
-                pass
-        QDesktopServices.openUrl(
-            QUrl("http://localhost:8080"))
-
-    def _check_dump1090_status(self):
-        """Check if dump1090 is running and update button."""
-        import threading
-        def _check():
-            running = False
-            try:
-                # Checking local-only service (localhost)
-                # Not user-supplied URL - safe to connect
-                import urllib.request
-                urllib.request.urlopen(  # nosec B310
-                    "http://localhost:8080/data/aircraft.json",
-                    timeout=1)
-                running = True
-            except Exception:
-                pass
-            QTimer.singleShot(0,
-                lambda r=running: self._update_dump1090_btn(r))
-        threading.Thread(target=_check, daemon=True).start()
-
-    def _update_dump1090_btn(self, running: bool):
-        if hasattr(self, '_adsb_map_btn'):
-            if running:
-                self._adsb_map_btn.setText(
-                    "🗺  Open ADS-B Aircraft Map  ●")
-                self._adsb_map_btn.setEnabled(True)
-                self._adsb_map_btn.setToolTip(
-                    "dump1090-fa is running\n"
-                    "Your station marker is shown on the map.\n"
-                    "Opens http://localhost:8080")
-            else:
-                self._adsb_map_btn.setText(
-                    "🗺  Open ADS-B Map (dump1090 not running)")
-                self._adsb_map_btn.setEnabled(False)
-                self._adsb_map_btn.setToolTip(
-                    "dump1090-fa is not running.\n"
-                    "Configure path in Settings → Paths & Executables\n"
-                    "then launch from the Paths dialog.")
-
-    def _open_sdr_guide(self):
-        from PyQt6.QtGui import QDesktopServices
-        from PyQt6.QtCore import QUrl
-        QDesktopServices.openUrl(QUrl(
-            "https://github.com/dawardy/squelch"
-            "/blob/main/README.md#sdr-setup"))
-
-    # ── Public API ────────────────────────────────────────────────────────
-
-    def _decoder_cb(self, text: str):
-        """Called by the audio decoder with a decoded line of text."""
-        try:
-            self._decode_log.append(text.strip())
-        except RuntimeError:
-            pass
-
-    def set_center_freq_from_rig(self, hz: int):
-        """Called by rig tab when VFO changes."""
-        if self._current:
-            self._set_freq(hz)
+    # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
+    # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,
+    # _SDRSignalIDMixin (see imports above).
 
 
 def _sep(border: str = "#2a2a2a") -> QFrame:

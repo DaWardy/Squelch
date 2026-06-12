@@ -161,23 +161,27 @@ def _probe_py_launcher(preferred: tuple[str, ...]) -> list[str]:
     return candidates
 
 
+def _try_probe_exe(name: str) -> str | None:
+    """Return sys.executable path for `name`, or None if not found/errors."""
+    try:
+        r = subprocess.run(
+            [name, "-c", "import sys; print(sys.executable)"],
+            capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
 def _probe_direct_executables(preferred: tuple[str, ...],
                                existing: list[str]) -> list[str]:
     """Probe direct executable names (python3.12, python312, etc.)."""
     candidates: list[str] = list(existing)
     for ver in preferred:
         for name in (f"python{ver}", f"python{ver.replace('.', '')}"):
-            try:
-                r = subprocess.run(
-                    [name, "-c", "import sys; print(sys.executable)"],
-                    capture_output=True, text=True, timeout=5)
-                if r.returncode == 0:
-                    path = r.stdout.strip()
-                    if path and path not in candidates:
-                        candidates.append(path)
-                        info(f"Found {name}: {path}")
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass
+            path = _try_probe_exe(name)
+            if path and path not in candidates:
+                candidates.append(path)
+                info(f"Found {name}: {path}")
     return candidates
 
 

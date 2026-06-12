@@ -444,32 +444,27 @@ class ModesTab(SquelchPanel, QWidget):
         self._main_splitter.setSizes([300, 700])
         # Start cycle timer
 
-    def _build_decode_right_panel(self) -> "QWidget":
-        """Right half of the modes splitter: decode table + activity log."""
-        right = QWidget()
-        rl = QVBoxLayout(right)
-        rl.setContentsMargins(4, 8, 8, 8)
-        rl.setSpacing(4)
-        decode_hdr = QHBoxLayout()
-        decode_hdr.addWidget(QLabel("Decoded Signals"))
-        decode_hdr.addStretch()
+    def _build_decode_signals_section(self, rl: "QVBoxLayout") -> None:
+        hdr = QHBoxLayout()
+        hdr.addWidget(QLabel("Decoded Signals"))
+        hdr.addStretch()
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("Filter callsign…")
         self._filter_edit.setFixedWidth(130)
         self._filter_edit.textChanged.connect(self._filter_decodes)
-        decode_hdr.addWidget(self._filter_edit)
+        hdr.addWidget(self._filter_edit)
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setFixedHeight(24)
         self._clear_btn.clicked.connect(self._clear_decodes)
-        decode_hdr.addWidget(self._clear_btn)
+        hdr.addWidget(self._clear_btn)
         export_btn = QPushButton("⬇ Export")
         export_btn.setFixedHeight(24)
         export_btn.setToolTip(
             "Export all decoded signals to CSV or ADIF.\n"
             "ADIF can be imported into most log programs.")
         export_btn.clicked.connect(self._export_decodes)
-        decode_hdr.addWidget(export_btn)
-        rl.addLayout(decode_hdr)
+        hdr.addWidget(export_btn)
+        rl.addLayout(hdr)
         self._decode_table = QTableWidget(0, len(DECODE_HEADERS))
         self._decode_table.setHorizontalHeaderLabels(DECODE_HEADERS)
         self._decode_table.horizontalHeader().setSectionResizeMode(
@@ -493,14 +488,16 @@ class ModesTab(SquelchPanel, QWidget):
             "QHeaderView::section{background:#141414;border:none;padding:3px;}")
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
         rl.addWidget(self._decode_table, 3)
-        activity_hdr = QHBoxLayout()
-        activity_hdr.addWidget(QLabel("Activity / TX Log"))
-        activity_hdr.addStretch()
+
+    def _build_activity_log_section(self, rl: "QVBoxLayout") -> None:
+        hdr = QHBoxLayout()
+        hdr.addWidget(QLabel("Activity / TX Log"))
+        hdr.addStretch()
         clr = QPushButton("Clear")
         clr.setFixedHeight(22)
         clr.clicked.connect(lambda: self._activity_log.clear())
-        activity_hdr.addWidget(clr)
-        rl.addLayout(activity_hdr)
+        hdr.addWidget(clr)
+        rl.addLayout(hdr)
         self._activity_log = QTextEdit()
         self._activity_log.setReadOnly(True)
         self._activity_log.setMaximumHeight(120)
@@ -508,6 +505,15 @@ class ModesTab(SquelchPanel, QWidget):
             "background:#080808;color:#3fbe6f;"
             "font-family:'Courier New';border:1px solid #1a1a1a;")
         rl.addWidget(self._activity_log)
+
+    def _build_decode_right_panel(self) -> "QWidget":
+        """Right half of the modes splitter: decode table + activity log."""
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(4, 8, 8, 8)
+        rl.setSpacing(4)
+        self._build_decode_signals_section(rl)
+        self._build_activity_log_section(rl)
         return right
 
 
@@ -606,66 +612,51 @@ class ModesTab(SquelchPanel, QWidget):
         self._dx_table.doubleClicked.connect(self._tune_to_dx_spot)
         return self._dx_table
 
+    def _build_sota_pota_controls(self) -> "QHBoxLayout":
+        ctrl = QHBoxLayout()
+        self._sp_mode = QComboBox()
+        self._sp_mode.addItems(["SOTA", "POTA", "Both"])
+        self._sp_mode.setFixedWidth(80)
+        self._sp_mode.currentTextChanged.connect(self._filter_sota_pota)
+        ctrl.addWidget(QLabel("Show:"))
+        ctrl.addWidget(self._sp_mode)
+        self._sp_status = QLabel("Not started")
+        ctrl.addStretch()
+        ctrl.addWidget(self._sp_status)
+        sp_start = QPushButton("▶ Start")
+        sp_start.setFixedHeight(22)
+        sp_start.setFixedWidth(60)
+        sp_start.setToolTip(
+            "Fetch SOTA/POTA activator spots\nUpdates every 5 minutes")
+        sp_start.clicked.connect(self._start_sota_pota)
+        ctrl.addWidget(sp_start)
+        return ctrl
+
+    def _build_sota_pota_table(self) -> "QTableWidget":
+        t = QTableWidget(0, 5)
+        t.setHorizontalHeaderLabels(
+            ["Callsign", "Freq", "Mode", "Reference", "Name"])
+        h = t.horizontalHeader()
+        h.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        t.setFixedHeight(88)
+        t.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;border:1px solid #1a1a1a;}"
+            "QHeaderView::section{background:#141414;border:none;}")
+        t.doubleClicked.connect(self._tune_to_sota_pota)
+        return t
+
     def _build_sota_pota_panel(self):
         """SOTA and POTA activator spots panel."""
-        from PyQt6.QtWidgets import (
-            QGroupBox, QTableWidget, QTableWidgetItem,
-            QHeaderView, QHBoxLayout, QComboBox, QLabel)
-
         sp_grp = QGroupBox("SOTA / POTA Spots")
         sp_grp.setMaximumHeight(150)
         sl = QVBoxLayout(sp_grp)
         sl.setContentsMargins(4, 4, 4, 4)
         sl.setSpacing(3)
-
-        # Controls
-        ctrl = QHBoxLayout()
-        self._sp_mode = QComboBox()
-        self._sp_mode.addItems(["SOTA", "POTA", "Both"])
-        self._sp_mode.setFixedWidth(80)
-        self._sp_mode.currentTextChanged.connect(
-            self._filter_sota_pota)
-        ctrl.addWidget(QLabel("Show:"))
-        ctrl.addWidget(self._sp_mode)
-
-        self._sp_status = QLabel("Not started")
-        self._sp_status.setStyleSheet(
-            "")
-        ctrl.addStretch()
-        ctrl.addWidget(self._sp_status)
-
-        sp_start = QPushButton("▶ Start")
-        sp_start.setFixedHeight(22)
-        sp_start.setFixedWidth(60)
-        sp_start.setToolTip(
-            "Fetch SOTA/POTA activator spots\n"
-            "Updates every 5 minutes")
-        sp_start.clicked.connect(self._start_sota_pota)
-        ctrl.addWidget(sp_start)
-        sl.addLayout(ctrl)
-
-        # Spot table
-        self._sp_table = QTableWidget(0, 5)
-        self._sp_table.setHorizontalHeaderLabels([
-            "Callsign", "Freq", "Mode",
-            "Reference", "Name"])
-        h = self._sp_table.horizontalHeader()
-        h.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(
-            4, QHeaderView.ResizeMode.Stretch)
-        self._sp_table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers)
-        self._sp_table.setFixedHeight(88)
-        self._sp_table.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;"
-            "border:1px solid #1a1a1a;}"
-            "QHeaderView::section{background:#141414;"
-            "border:none;}")
-        self._sp_table.doubleClicked.connect(
-            self._tune_to_sota_pota)
+        sl.addLayout(self._build_sota_pota_controls())
+        self._sp_table = self._build_sota_pota_table()
         sl.addWidget(self._sp_table)
-
         self.layout().addWidget(sp_grp)
         self._sota_spots = []
         self._pota_spots = []

@@ -41,36 +41,23 @@ def _flatten(d: dict, prefix: str = "") -> dict:
 class _SettingsAppearanceTab:
     """Mixed into SettingsDialog."""
 
-    def _tab_appearance(self) -> QWidget:
-        w = _scrolled()
-        f = QFormLayout(w)
-        f.setSpacing(10)
-        f.setContentsMargins(16, 16, 16, 16)
-
+    def _build_appearance_theme_section(self, f: "QFormLayout") -> None:
         _section(f, "Theme")
         self._theme = QComboBox()
-        self._theme.addItems([
-            "System", "Dark", "Light",
-            "High Contrast", "Night"])
-        self._theme.setToolTip(
-            "Night mode uses deep red to preserve dark adaptation.")
+        self._theme.addItems(["System", "Dark", "Light", "High Contrast", "Night"])
+        self._theme.setToolTip("Night mode uses deep red to preserve dark adaptation.")
         f.addRow("Theme:", self._theme)
-
         _section(f, "Font")
         self._font_size = QComboBox()
         for size, label in [
-            (10, "Small (10pt)"),
-            (11, "Normal (11pt) — default"),
-            (13, "Large (13pt)"),
-            (15, "X-Large (15pt)"),
-            (18, "XX-Large (18pt)"),
+            (10, "Small (10pt)"), (11, "Normal (11pt) — default"),
+            (13, "Large (13pt)"), (15, "X-Large (15pt)"), (18, "XX-Large (18pt)"),
         ]:
             self._font_size.addItem(label, size)
         self._font_size.setToolTip(
             "Affects all labels, tooltips, and help text. "
             "Larger sizes for accessibility.")
         f.addRow("Font Size:", self._font_size)
-
         self._units = QComboBox()
         self._units.addItem("Metric (km, meters)", "metric")
         self._units.addItem("Imperial (miles, feet)", "imperial")
@@ -79,31 +66,32 @@ class _SettingsAppearanceTab:
             "(Local RF, log, satellites, map).")
         f.addRow("Units:", self._units)
 
+    def _build_appearance_layout_section(self, f: "QFormLayout") -> None:
         _section(f, "Layout")
         self._layout_locked = QCheckBox(
             "Lock UI layout (prevent accidental tab reorder)")
         f.addRow("", self._layout_locked)
-
-        self._show_tooltips = QCheckBox(
-            "Show extended tooltips")
+        self._show_tooltips = QCheckBox("Show extended tooltips")
         self._show_tooltips.setChecked(True)
         f.addRow("", self._show_tooltips)
-
         self._clock_utc = QCheckBox(
             "Show UTC time in top bar (uncheck for local)")
         self._clock_utc.setChecked(True)
         f.addRow("", self._clock_utc)
-
         _section(f, "Status Bar")
-        self._sb_show_grid = QCheckBox(
-            "Show grid square in status bar")
+        self._sb_show_grid = QCheckBox("Show grid square in status bar")
         self._sb_show_grid.setChecked(True)
         f.addRow("", self._sb_show_grid)
-
-        self._sb_show_band = QCheckBox(
-            "Show current band in status bar")
+        self._sb_show_band = QCheckBox("Show current band in status bar")
         self._sb_show_band.setChecked(True)
         f.addRow("", self._sb_show_band)
 
+    def _tab_appearance(self) -> "QWidget":
+        w = _scrolled()
+        f = QFormLayout(w)
+        f.setSpacing(10)
+        f.setContentsMargins(16, 16, 16, 16)
+        self._build_appearance_theme_section(f)
+        self._build_appearance_layout_section(f)
         return w
 

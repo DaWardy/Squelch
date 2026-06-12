@@ -57,6 +57,7 @@ from sdr.iq_recorder import (
     IQRecorder, IQPlayer, list_recordings, Recording)
 from core.band_plan import band_at_freq, BAND_EDGES
 from core.constants import BAND_EDGES_R2 as BAND_EDGES, FFT_SIZE
+from core.themes import get_theme as _sdr_get_theme
 
 log = logging.getLogger(__name__)
 
@@ -607,7 +608,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
         txl = QVBoxLayout(self._tx_grp)
         tx_warn = QLabel(self.tr(
             "⚠ Ensure you have appropriate\nlicense before transmitting."))
-        tx_warn.setStyleSheet("color:#eeaa22;")
+        tx_warn.setStyleSheet(
+            f"color:{_sdr_get_theme(self.cfg.get('ui.theme','Dark')).warn_color};")
         txl.addWidget(tx_warn)
         tx_btn = QPushButton(self.tr("TX IQ File…"))
         tx_btn.clicked.connect(self._tx_iq_file)
@@ -1729,19 +1731,19 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin, QWidget):
             self._set_freq(hz)
 
 
-def _sep() -> QFrame:
+def _sep(border: str = "#2a2a2a") -> QFrame:
     """Horizontal separator line."""
     from PyQt6.QtWidgets import QFrame
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet("color:#1a1a1a;")
+    f.setStyleSheet(f"color:{border};")
     return f
 
 
-def _vsep() -> QFrame:
+def _vsep(border: str = "#2a2a2a") -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
-    f.setStyleSheet("color:#1e1e1e;")
+    f.setStyleSheet(f"color:{border};")
     f.setFixedWidth(1)
     return f
 

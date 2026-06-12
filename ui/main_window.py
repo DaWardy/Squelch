@@ -44,7 +44,7 @@ import re
 from core.rig import RigController, RigStatus
 from core.config import Config
 from core.location import LocationManager
-from core.themes import THEMES, get_stylesheet
+from core.themes import THEMES, get_stylesheet, get_theme
 from core.plugins import get_plugin_manager
 from core.launcher import get_launcher
 from ui.dialogs.paths_dialog import PathsDialog
@@ -503,7 +503,8 @@ class MainWindow(
         err_l = QVBoxLayout(err_w)
         err_l.setContentsMargins(30, 30, 30, 30)
         t = QLabel(f"Tab failed to load: {key}")
-        t.setStyleSheet("color:#cc4444;font-weight:bold;")
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
+        t.setStyleSheet(f"color:{_t.error_color};font-weight:bold;")
         err_l.addWidget(t)
         d = QLabel(f"{type(exc).__name__}: {exc}\n\nCheck logs/squelch.log for details.")
         d.setWordWrap(True)
@@ -512,21 +513,22 @@ class MainWindow(
         return err_w
 
     def _build_topbar(self) -> QFrame:
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         bar = QFrame()
         bar.setFixedHeight(38)
         bar.setObjectName("topbar")
-        bar.setStyleSheet("QFrame#topbar{border-bottom:1px solid #1a1a1a;}")
+        bar.setStyleSheet(f"QFrame#topbar{{border-bottom:1px solid {_t.border};}}")
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(12, 0, 12, 0)
         lay.setSpacing(12)
         title = QLabel(APP_NAME)
         title.setStyleSheet(
-            "color:#3fbe6f;font-weight:bold;font-family:'Courier New';")
+            f"color:{_t.accent};font-weight:bold;font-family:'Courier New';")
         lay.addWidget(title)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_t.border))
         self._topbar_add_station_group(lay)
         self._loc_lbl = QLabel("—")
-        self._loc_lbl.setStyleSheet("color:#4a4a4a;")
+        self._loc_lbl.setStyleSheet(f"color:{_t.fg_secondary};")
         lay.addWidget(self._loc_lbl)
         lay.addStretch()
         self._topbar_add_status_group(lay)
@@ -534,6 +536,7 @@ class MainWindow(
 
     def _topbar_add_station_group(self, lay) -> None:
         """Add callsign label, profile combo, and grid label to the topbar layout."""
+        _tb = get_theme(self.cfg.get("ui.theme", "Dark"))
         self._cs_lbl = ClickableLabel(
             self.cfg.callsign or "No callsign set",
             "e.g. W4XYZ",
@@ -560,7 +563,7 @@ class MainWindow(
             "Useful for club stations with multiple ops")
         self._profile_combo.currentIndexChanged.connect(self._on_profile_change)
         lay.addWidget(self._profile_combo)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_tb.border))
         self._grid_lbl = ClickableLabel(
             self.cfg.grid or "No grid set",
             "Maidenhead grid (DM79rr), ZIP (22030), city (Denver CO), or MGRS. "
@@ -569,18 +572,19 @@ class MainWindow(
             max_length=30)
         self._grid_lbl.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._grid_lbl)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_tb.border))
 
     def _topbar_add_status_group(self, lay) -> None:
         """Add UTC clock and rig status pill to the topbar layout."""
+        _tb2 = get_theme(self.cfg.get("ui.theme", "Dark"))
         self._utc_lbl = QLabel("00:00:00 UTC")
         self._utc_lbl.setStyleSheet(
-            "color:#3fbe6f;font-family:'Courier New';")
+            f"color:{_tb2.accent};font-family:'Courier New';")
         self._utc_lbl.setToolTip("Click to toggle UTC / Local time")
         self._utc_lbl.mousePressEvent = self._toggle_clock
         self._show_utc = True
         lay.addWidget(self._utc_lbl)
-        lay.addWidget(_vsep())
+        lay.addWidget(_vsep(_tb2.border))
         self._rig_pill = QLabel("● RIG")
         self._rig_pill.setStyleSheet("font-family:'Courier New';")
         lay.addWidget(self._rig_pill)
@@ -1167,9 +1171,9 @@ class MainWindow(
 
 import re  # used in _first_run_dialog and ClickableLabel
 
-def _vsep() -> QFrame:
+def _vsep(border: str = "#2a2a2a") -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
     f.setFixedWidth(1)
-    f.setStyleSheet("color:#1e1e1e;")
+    f.setStyleSheet(f"color:{border};")
     return f

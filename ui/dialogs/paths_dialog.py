@@ -41,6 +41,7 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtCore import QUrl
 
 from core.launcher import APPS, AppDef, get_launcher
+from core.themes import get_theme as _pd_get_theme
 
 log = logging.getLogger(__name__)
 
@@ -266,6 +267,7 @@ class PathsDialog(QDialog):
         return tabs
 
     def _build_category_tab(self, apps) -> "QScrollArea":
+        _t = _pd_get_theme(self.cfg.get("ui.theme", "Dark"))
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -281,7 +283,7 @@ class PathsDialog(QDialog):
                 grid.addWidget(lbl, 0, col)
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#222;")
+        sep.setStyleSheet(f"color:{_t.border};")
         grid.addWidget(sep, 1, 0, 1, 6)
         for i, app in enumerate(apps):
             row_idx = i + 2
@@ -295,7 +297,7 @@ class PathsDialog(QDialog):
             desc.setStyleSheet("")
             if app.download_note:
                 note = QLabel(app.download_note)
-                note.setStyleSheet("color:#446644;")
+                note.setStyleSheet(f"color:{_t.accent};")
                 note.setWordWrap(True)
                 lbl_lay.addWidget(note)
             lbl_lay.addWidget(name)

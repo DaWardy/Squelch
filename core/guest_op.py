@@ -19,6 +19,7 @@ station callsign at least every 10 minutes and at the end of a contact. When a
 guest operates, the licensed control operator is responsible. Squelch keeps
 both calls so logs and IDs are correct; it does not give legal advice.
 """
+import re
 from dataclasses import dataclass
 
 # NATO phonetic alphabet for reading a callsign aloud
@@ -112,19 +113,27 @@ def voice_contact_script(guest_call: str, station_call: str,
     return "\n".join(parts)
 
 
+_CALL_RE = re.compile(r"[^A-Z0-9/]")
+
+
 def operating_callsign(cfg) -> str:
     """The callsign to identify with for ANY mode (FT8, FT4, JS8, PSK, RTTY,
     CW, SSB, Winlink...). If a guest operator is active, that is their call;
     otherwise the station call. Centralizes the rule so all modes agree —
-    "FT8" was never the only mode this applies to."""
+    "FT8" was never the only mode this applies to.
+
+    Strips any character outside [A-Z0-9/] before returning — FCC §97.119
+    requires a valid callsign; injected chars would corrupt OTA identification.
+    """
     try:
         if cfg.get("guest.active", False):
-            gc = (cfg.get("guest.callsign", "") or "").strip()
+            gc = (cfg.get("guest.callsign", "") or "").strip().upper()
             if gc:
-                return gc.upper()
+                return _CALL_RE.sub("", gc)
     except Exception:
         pass
     try:
-        return (cfg.callsign or "").upper()
+        raw = (cfg.callsign or "").upper()
+        return _CALL_RE.sub("", raw)
     except Exception:
         return ""

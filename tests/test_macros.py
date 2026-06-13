@@ -90,3 +90,33 @@ def test_context_override_in_expand():
     mgr = MacroManager(_mock_cfg())
     result = mgr.expand("{theircall} QSL", context={"theircall": "VE3XYZ"})
     assert "VE3XYZ" in result
+
+
+def test_serial_auto_increments_on_send():
+    from core.macros import MacroManager
+    store = {"session.serial": 5}
+    cfg = MagicMock()
+    cfg.get.side_effect = lambda k, d=None: store.get(k, d)
+    cfg.set.side_effect = lambda k, v: store.update({k: v})
+    cfg.save = MagicMock()
+    cfg.callsign = "W1AW"
+    mgr = MacroManager(cfg)
+    r1 = mgr.expand("{mycall} 599 {serial}", auto_increment_serial=True)
+    assert "5" in r1
+    assert store["session.serial"] == 6, "serial not incremented"
+    r2 = mgr.expand("{mycall} 599 {serial}", auto_increment_serial=True)
+    assert "6" in r2
+    assert store["session.serial"] == 7
+
+
+def test_serial_not_incremented_on_preview():
+    from core.macros import MacroManager
+    store = {"session.serial": 3}
+    cfg = MagicMock()
+    cfg.get.side_effect = lambda k, d=None: store.get(k, d)
+    cfg.set.side_effect = lambda k, v: store.update({k: v})
+    cfg.save = MagicMock()
+    cfg.callsign = "W1AW"
+    mgr = MacroManager(cfg)
+    mgr.expand("{serial}", auto_increment_serial=False)
+    assert store.get("session.serial") == 3, "serial changed on preview"

@@ -259,7 +259,7 @@ class DigitalTab(SquelchPanel, QWidget):
     def _on_macro_btn(self, key: str) -> None:
         """Expand and send a macro."""
         macro = self._macro_mgr.get(key)
-        text = self._macro_mgr.expand(macro["text"])
+        text = self._macro_mgr.expand(macro["text"], auto_increment_serial=True)
         if text and hasattr(self, "_tx_text"):
             self._tx_text.setPlainText(text)
             self._send_tx_text()

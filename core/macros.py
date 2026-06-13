@@ -11,7 +11,7 @@ Substitution variables:
   {theircall} — last-logged or manually set DX callsign
   {freq}      — VFO A frequency in MHz (e.g. 14.074)
   {mode}      — active mode (e.g. FT8, SSB)
-  {serial}    — QSO serial number (auto-incremented)
+  {serial}    — QSO serial number; incremented when expand(auto_increment_serial=True)
   {name}      — operator name from config, or blank
 
 Macros persist to config under the key "macros.fX" where X is 1-8.
@@ -64,15 +64,27 @@ class MacroManager:
         self._cfg.set(f"macros.{key}.text",  text)
         self._cfg.save()
 
-    def expand(self, text: str, context: dict | None = None) -> str:
-        """Substitute {vars} in text using context dict + config fallbacks."""
+    def expand(self, text: str, context: dict | None = None,
+               auto_increment_serial: bool = False) -> str:
+        """Substitute {vars} in text using context dict + config fallbacks.
+
+        If auto_increment_serial is True and the text contains {serial},
+        the serial counter is incremented in config after substitution.
+        Pass True from TX send paths; False for previews.
+        """
         ctx = self._build_context(context)
+        serial_used = "{serial}" in text.lower() or "serial" in (context or {})
 
         def _sub(m: re.Match) -> str:
             var = m.group(1).lower()
             return str(ctx.get(var, m.group(0)))  # leave unknown vars as-is
 
-        return _VAR_RE.sub(_sub, text)
+        result = _VAR_RE.sub(_sub, text)
+        if auto_increment_serial and serial_used:
+            next_serial = int(ctx.get("serial", 1)) + 1
+            self._cfg.set("session.serial", next_serial)
+            self._cfg.save()
+        return result
 
     # ------------------------------------------------------------------
     # Internal

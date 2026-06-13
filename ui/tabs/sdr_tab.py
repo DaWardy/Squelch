@@ -258,10 +258,11 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         toolbar = self._build_toolbar()
         layout.addWidget(toolbar)
 
-        # ── Main splitter: waterfall | controls ───────────────────────────
+        # ── Main splitter: waterfall | controls | [sigid panel] ──────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setStyleSheet(
             "QSplitter::handle{background:#1a1a1a;width:3px;}")
+        self._main_splitter = splitter  # used by _ensure_sigid_panel
 
         # Waterfall area
         wf_widget = self._build_waterfall()

@@ -840,6 +840,9 @@ class RigTab(SquelchPanel, QWidget):
                 self.rig.set_mode(mode)
         if self._spectrum_widget:
             self._spectrum_widget.set_center_freq(hz)
+        # Publish freq so macro {freq} stays current
+        if self.cfg:
+            self.cfg.set("session.vfo_a_mhz", f"{hz / 1_000_000:.6f}")
 
     @pyqtSlot(int)
     def _on_freq(self, hz: int):
@@ -917,6 +920,9 @@ class RigTab(SquelchPanel, QWidget):
         if self.rig.is_connected:
             self.rig.set_mode(hamlib_mode)
         self._update_bw_marker(hamlib_mode)
+        # Publish mode so macro {mode} stays current
+        if self.cfg:
+            self.cfg.set("session.mode", hamlib_mode)
 
     def _set_mode_ui(self, hamlib_mode: str):
         target = MODE_TO_BTN.get(hamlib_mode, "USB")

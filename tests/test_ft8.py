@@ -84,3 +84,30 @@ class TestFT8CQTimeout:
         engine._cq_timeout = 0
         engine._check_cq_timeout()
         assert engine.state == AutoSeqState.IDLE
+
+
+class TestFT8SessionVarWiring:
+    def test_dx_callsign_set_on_reply_decoded(self, cfg, engine):
+        """When FT8 engine starts a QSO, session.dx_callsign written to config."""
+        from modes.ft8 import DecodedSignal
+        engine._wsjtx_connected = True
+        decode = DecodedSignal(
+            callsign="K1DX", grid="FN31", snr=-5,
+            dt=0.0, freq_hz=1250, message="K1DX W1AW -05",
+            is_cq=False, is_reply_to="W1AW",
+        )
+        engine._handle_idle(decode, "W1AW")
+        assert cfg.get("session.dx_callsign") == "K1DX"
+
+    def test_dx_callsign_set_on_cq_answer(self, cfg, engine):
+        """Auto-CQ: answering a CQ also writes session.dx_callsign."""
+        from modes.ft8 import DecodedSignal
+        engine._wsjtx_connected = True
+        engine._auto_cq = True
+        decode = DecodedSignal(
+            callsign="VE3XYZ", grid="EN82", snr=3,
+            dt=0.0, freq_hz=1400, message="CQ VE3XYZ EN82",
+            is_cq=True, is_reply_to=None,
+        )
+        engine._handle_idle(decode, "W1AW")
+        assert cfg.get("session.dx_callsign") == "VE3XYZ"

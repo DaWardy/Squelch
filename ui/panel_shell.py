@@ -54,32 +54,45 @@ PRESETS: dict[str, dict] = {
 }
 
 
-_TITLE_BAR_QSS = """
-    background:#2a2a2a;
-    border-bottom:1px solid #1a1a1a;
-"""
-_TITLE_BAR_LOCKED_QSS = """
-    background:#1a2a1a;
-    border-bottom:1px solid #2a4a2a;
-"""
-_BTN_QSS = """
-    QToolButton {
-        background:#3a3a3a; color:#e0e0e0;
-        border:1px solid #555; border-radius:3px;
-        padding:1px 4px; font-size:11px;
-        min-width:20px; min-height:20px;
-    }
-    QToolButton:hover { background:#505050; }
-    QToolButton:pressed { background:#222; }
-"""
-_CLOSE_QSS = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
-                               "QToolButton:hover { background:#a04040; }")
-_FLOAT_QSS = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
-                               "QToolButton:hover { background:#404080; }")
-_LOCK_QSS   = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
-                                "QToolButton:hover { background:#406040; }")
-_ZONE_QSS   = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
-                                "QToolButton:hover { background:#504020; }")
+def _title_bar_qss(t) -> str:
+    return (f"background:{t.bg_secondary};"
+            f"border-bottom:1px solid {t.border};")
+
+def _title_bar_locked_qss(t) -> str:
+    return (f"background:{t.meter_bg};"
+            f"border-bottom:1px solid {t.accent};")
+
+def _btn_qss(t) -> str:
+    return (
+        f"QToolButton{{background:{t.bg_tertiary};color:{t.fg_primary};"
+        f"border:1px solid {t.border};border-radius:3px;"
+        f"padding:1px 4px;font-size:11px;min-width:20px;min-height:20px;}}"
+        f"QToolButton:hover{{background:{t.tab_selected_bg};}}"
+        f"QToolButton:pressed{{background:{t.bg_primary};}}"
+    )
+
+def _close_qss(t) -> str:
+    return (_btn_qss(t)
+            .replace(f"QToolButton:hover{{background:{t.tab_selected_bg};}}",
+                     "QToolButton:hover{background:#a04040;}"))
+
+def _float_qss(t) -> str:
+    return (_btn_qss(t)
+            .replace(f"QToolButton:hover{{background:{t.tab_selected_bg};}}",
+                     "QToolButton:hover{background:#404080;}"))
+
+def _lock_qss(t) -> str:
+    return (_btn_qss(t)
+            .replace(f"QToolButton:hover{{background:{t.tab_selected_bg};}}",
+                     "QToolButton:hover{background:#406040;}"))
+
+def _zone_qss(t) -> str:
+    return (_btn_qss(t)
+            .replace(f"QToolButton:hover{{background:{t.tab_selected_bg};}}",
+                     "QToolButton:hover{background:#504020;}"))
+
+def _label_qss(t) -> str:
+    return f"color:{t.fg_primary};font-weight:bold;font-size:12px;"
 
 _ZONE_AREAS = {
     "← Left":   Qt.DockWidgetArea.LeftDockWidgetArea,
@@ -106,10 +119,12 @@ class _PanelTitleBar(QWidget):
       • Float button (⧉) and close button (✕)
     """
 
-    def __init__(self, dock: "PanelDock", title: str, actions: list):
+    def __init__(self, dock: "PanelDock", title: str, actions: list, theme_name: str = "Dark"):
         super().__init__(dock)
+        from core.themes import get_theme
         self._dock = dock
-        self.setStyleSheet(_TITLE_BAR_QSS)
+        self._theme = get_theme(theme_name)
+        self.setStyleSheet(_title_bar_qss(self._theme))
         self.setFixedHeight(28)
 
         lay = QHBoxLayout(self)
@@ -117,14 +132,14 @@ class _PanelTitleBar(QWidget):
         lay.setSpacing(3)
 
         lbl = QLabel(title)
-        lbl.setStyleSheet("color:#f0f0f0;font-weight:bold;font-size:12px;")
+        lbl.setStyleSheet(_label_qss(self._theme))
         lay.addWidget(lbl, 1)
 
         # Per-panel action buttons
         for action in actions:
             btn = QToolButton()
             btn.setDefaultAction(action)
-            btn.setStyleSheet(_BTN_QSS)
+            btn.setStyleSheet(_btn_qss(self._theme))
             btn.setToolButtonStyle(
                 Qt.ToolButtonStyle.ToolButtonTextBesideIcon
                 if action.icon() and not action.icon().isNull()
@@ -134,14 +149,14 @@ class _PanelTitleBar(QWidget):
         if actions:
             sep = QWidget()
             sep.setFixedWidth(1)
-            sep.setStyleSheet("background:#555;")
+            sep.setStyleSheet(f"background:{self._theme.border};")
             lay.addWidget(sep)
 
         # Zone button — send to a specific dock area
         zone_btn = QToolButton()
         zone_btn.setText("⊞")
         zone_btn.setToolTip("Send to zone — dock this panel to a specific area")
-        zone_btn.setStyleSheet(_ZONE_QSS)
+        zone_btn.setStyleSheet(_zone_qss(self._theme))
         zone_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         zone_menu = QMenu(zone_btn)
         for label, area in _ZONE_AREAS.items():
@@ -160,7 +175,7 @@ class _PanelTitleBar(QWidget):
         self._lock_btn.setCheckable(True)
         self._lock_btn.setToolTip(
             "Lock panel — prevent it from moving when other panels are docked")
-        self._lock_btn.setStyleSheet(_LOCK_QSS)
+        self._lock_btn.setStyleSheet(_lock_qss(self._theme))
         self._lock_btn.toggled.connect(self._on_lock_toggled)
         lay.addWidget(self._lock_btn)
 
@@ -168,7 +183,7 @@ class _PanelTitleBar(QWidget):
         float_btn = QToolButton()
         float_btn.setText("⧉")
         float_btn.setToolTip("Float / re-dock this panel")
-        float_btn.setStyleSheet(_FLOAT_QSS)
+        float_btn.setStyleSheet(_float_qss(self._theme))
         float_btn.clicked.connect(
             lambda: dock.setFloating(not dock.isFloating()))
         lay.addWidget(float_btn)
@@ -177,7 +192,7 @@ class _PanelTitleBar(QWidget):
         close_btn = QToolButton()
         close_btn.setText("✕")
         close_btn.setToolTip("Hide panel")
-        close_btn.setStyleSheet(_CLOSE_QSS)
+        close_btn.setStyleSheet(_close_qss(self._theme))
         close_btn.clicked.connect(dock.hide)
         lay.addWidget(close_btn)
 
@@ -192,10 +207,10 @@ class _PanelTitleBar(QWidget):
         self._dock.set_locked(locked)
         if locked:
             self._lock_btn.setText("🔒")
-            self.setStyleSheet(_TITLE_BAR_LOCKED_QSS)
+            self.setStyleSheet(_title_bar_locked_qss(self._theme))
         else:
             self._lock_btn.setText("🔓")
-            self.setStyleSheet(_TITLE_BAR_QSS)
+            self.setStyleSheet(_title_bar_qss(self._theme))
 
     def set_locked(self, locked: bool):
         """Sync button state when restoring from saved workspace."""
@@ -209,7 +224,8 @@ class PanelDock(QDockWidget):
     installs a custom title bar with lock and zone controls.
     """
 
-    def __init__(self, panel: SquelchPanel, parent: QMainWindow):
+    def __init__(self, panel: SquelchPanel, parent: QMainWindow,
+                 theme_name: str = "Dark"):
         title = getattr(panel, "panel_title", "") or type(panel).__name__
         super().__init__(title, parent)
         self._panel = panel
@@ -220,7 +236,7 @@ class PanelDock(QDockWidget):
         self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
         self.setFeatures(_MOVABLE_FEATURES)
         actions = panel.panel_actions() if hasattr(panel, "panel_actions") else []
-        self._title_bar = _PanelTitleBar(self, title, actions)
+        self._title_bar = _PanelTitleBar(self, title, actions, theme_name)
         self.setTitleBarWidget(self._title_bar)
 
     def set_locked(self, locked: bool):
@@ -303,6 +319,7 @@ class PanelShell(QMainWindow):
 
     def _build_docks(self):
         """Wrap every panel in a PanelDock and add to window."""
+        theme_name = self.cfg.get("ui.theme", "Dark")
         areas = [
             Qt.DockWidgetArea.LeftDockWidgetArea,
             Qt.DockWidgetArea.RightDockWidgetArea,
@@ -310,7 +327,7 @@ class PanelShell(QMainWindow):
             Qt.DockWidgetArea.BottomDockWidgetArea,
         ]
         for i, (pid, panel) in enumerate(self._panels.items()):
-            dock = PanelDock(panel, self)
+            dock = PanelDock(panel, self, theme_name)
             self._docks[pid] = dock
             area = areas[i % 2]   # alternate left/right by default
             self.addDockWidget(area, dock)

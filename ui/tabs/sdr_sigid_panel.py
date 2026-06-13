@@ -71,61 +71,69 @@ class _MatchCard(QFrame):
             f"QFrame{{background:{_t.bg_alt};border:1px solid {_t.border};"
             f"border-radius:4px;margin:2px;padding:4px;}}"
         )
-
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 4, 6, 4)
         root.setSpacing(3)
+        root.addLayout(self._row_name_cat(match, _t))
+        root.addLayout(self._row_mod_bw(match, _t))
+        root.addLayout(self._row_confidence(match, _t))
+        root.addLayout(self._row_actions(match, on_annotate, on_bookmark, _t))
+        if match.description:
+            desc = QLabel(match.description[:180] +
+                          ("…" if len(match.description) > 180 else ""))
+            desc.setWordWrap(True)
+            desc.setStyleSheet(
+                f"color:{_t.fg_secondary};font-size:9px;"
+                f"border-top:1px solid {_t.border};padding-top:3px;")
+            root.addWidget(desc)
 
-        # ── Row 1: name + category badge ──────────────────────────────────
-        top = QHBoxLayout()
+    def _row_name_cat(self, match, _t) -> QHBoxLayout:
+        row = QHBoxLayout()
         name_lbl = QLabel(f"<b>{match.name}</b>")
         name_lbl.setStyleSheet(f"color:{_t.fg_primary};font-size:11px;")
         name_lbl.setWordWrap(True)
-        top.addWidget(name_lbl, 1)
-
+        row.addWidget(name_lbl, 1)
         if match.category:
             cat_lbl = QLabel(match.category[:18])
             cc = _cat_color(match.category)
             cat_lbl.setStyleSheet(
                 f"color:#000;background:{cc};border-radius:3px;"
                 f"padding:1px 4px;font-size:9px;font-weight:bold;")
-            top.addWidget(cat_lbl)
-        root.addLayout(top)
+            row.addWidget(cat_lbl)
+        return row
 
-        # ── Row 2: modulation + bandwidth ─────────────────────────────────
-        mid = QHBoxLayout()
+    def _row_mod_bw(self, match, _t) -> QHBoxLayout:
+        row = QHBoxLayout()
         mod_lbl = QLabel(match.modulation or "—")
         mod_lbl.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;")
-        mid.addWidget(mod_lbl)
-        mid.addStretch()
+        row.addWidget(mod_lbl)
+        row.addStretch()
         bw_lbl = QLabel(f"{match.bandwidth_hz/1e3:.1f} kHz")
-        bw_lbl.setStyleSheet(f"color:{_t.accent};font-size:10px;font-family:'Courier New';")
-        mid.addWidget(bw_lbl)
-        root.addLayout(mid)
+        bw_lbl.setStyleSheet(
+            f"color:{_t.accent};font-size:10px;font-family:'Courier New';")
+        row.addWidget(bw_lbl)
+        return row
 
-        # ── Row 3: confidence bar ─────────────────────────────────────────
-        bar_row = QHBoxLayout()
-        bar_row.addWidget(QLabel("Confidence:"))
+    def _row_confidence(self, match, _t) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Confidence:"))
         bar_bg = QFrame()
         bar_bg.setFixedHeight(8)
         bar_bg.setStyleSheet(f"background:{_t.border};border-radius:4px;")
         bar_fg = QFrame(bar_bg)
         bar_fg.setFixedHeight(8)
-        pct = max(4, int(match.confidence * 100))
         cc = _confidence_color(match.confidence)
-        bar_fg.setStyleSheet(
-            f"background:{cc};border-radius:4px;")
+        bar_fg.setStyleSheet(f"background:{cc};border-radius:4px;")
         bar_fg.setFixedWidth(max(4, int(180 * match.confidence)))
-        bar_row.addWidget(bar_bg, 1)
-        pct_lbl = QLabel(f"{pct}%")
+        row.addWidget(bar_bg, 1)
+        pct_lbl = QLabel(f"{max(4, int(match.confidence * 100))}%")
         pct_lbl.setStyleSheet(f"color:{cc};font-size:10px;min-width:32px;")
-        bar_row.addWidget(pct_lbl)
-        root.addLayout(bar_row)
+        row.addWidget(pct_lbl)
+        return row
 
-        # ── Row 4: action buttons ─────────────────────────────────────────
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(4)
-
+    def _row_actions(self, match, on_annotate, on_bookmark, _t) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(4)
         ann_btn = QPushButton("▶ Annotate")
         ann_btn.setFixedHeight(22)
         ann_btn.setToolTip("Highlight this signal on the waterfall")
@@ -134,8 +142,7 @@ class _MatchCard(QFrame):
             f"border:1px solid {_t.accent};border-radius:3px;font-size:10px;}}"
             f"QPushButton:hover{{background:{_t.accent};color:#000;}}")
         ann_btn.clicked.connect(lambda: on_annotate(match))
-        btn_row.addWidget(ann_btn)
-
+        row.addWidget(ann_btn)
         bm_btn = QPushButton("★ Bookmark")
         bm_btn.setFixedHeight(22)
         bm_btn.setToolTip("Save to signal bookmark log")
@@ -144,8 +151,7 @@ class _MatchCard(QFrame):
             f"border:1px solid {_t.border};border-radius:3px;font-size:10px;}}"
             f"QPushButton:hover{{background:{_t.header_bg};}}")
         bm_btn.clicked.connect(lambda: on_bookmark(match))
-        btn_row.addWidget(bm_btn)
-
+        row.addWidget(bm_btn)
         if match.url:
             wiki_btn = QPushButton("🔗 Wiki")
             wiki_btn.setFixedHeight(22)
@@ -156,20 +162,9 @@ class _MatchCard(QFrame):
                 f"QPushButton:hover{{color:#88ccff;}}")
             wiki_btn.clicked.connect(
                 lambda: QDesktopServices.openUrl(QUrl(match.url)))
-            btn_row.addWidget(wiki_btn)
-
-        btn_row.addStretch()
-        root.addLayout(btn_row)
-
-        # ── Description (collapsed, shown if not empty) ───────────────────
-        if match.description:
-            desc = QLabel(match.description[:180] +
-                          ("…" if len(match.description) > 180 else ""))
-            desc.setWordWrap(True)
-            desc.setStyleSheet(
-                f"color:{_t.fg_secondary};font-size:9px;"
-                f"border-top:1px solid {_t.border};padding-top:3px;")
-            root.addWidget(desc)
+            row.addWidget(wiki_btn)
+        row.addStretch()
+        return row
 
 
 class SignalIDPanel(QWidget):

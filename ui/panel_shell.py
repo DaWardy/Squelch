@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt, QByteArray
 from PyQt6.QtWidgets import (
     QMainWindow, QDockWidget, QWidget, QMenu, QMessageBox,
-    QInputDialog, QApplication, QHBoxLayout, QLabel, QToolButton,
+    QInputDialog, QHBoxLayout, QLabel, QToolButton,
 )
 
 from ui.panel import SquelchPanel
@@ -58,6 +58,10 @@ _TITLE_BAR_QSS = """
     background:#2a2a2a;
     border-bottom:1px solid #1a1a1a;
 """
+_TITLE_BAR_LOCKED_QSS = """
+    background:#1a2a1a;
+    border-bottom:1px solid #2a4a2a;
+"""
 _BTN_QSS = """
     QToolButton {
         background:#3a3a3a; color:#e0e0e0;
@@ -72,17 +76,39 @@ _CLOSE_QSS = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
                                "QToolButton:hover { background:#a04040; }")
 _FLOAT_QSS = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
                                "QToolButton:hover { background:#404080; }")
+_LOCK_QSS   = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
+                                "QToolButton:hover { background:#406040; }")
+_ZONE_QSS   = _BTN_QSS.replace("QToolButton:hover { background:#505050; }",
+                                "QToolButton:hover { background:#504020; }")
+
+_ZONE_AREAS = {
+    "← Left":   Qt.DockWidgetArea.LeftDockWidgetArea,
+    "→ Right":   Qt.DockWidgetArea.RightDockWidgetArea,
+    "↑ Top":    Qt.DockWidgetArea.TopDockWidgetArea,
+    "↓ Bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
+}
+
+_MOVABLE_FEATURES = (
+    QDockWidget.DockWidgetFeature.DockWidgetMovable
+    | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+    | QDockWidget.DockWidgetFeature.DockWidgetClosable
+)
+_LOCKED_FEATURES = QDockWidget.DockWidgetFeature.DockWidgetClosable
 
 
 class _PanelTitleBar(QWidget):
-    """Custom title bar for PanelDock that embeds panel_actions() as buttons.
+    """Custom title bar for PanelDock with per-panel lock and zone controls.
 
-    Replaces the default QDockWidget title bar so we can add per-panel
-    toolbar actions while keeping float/close controls.
+    Replaces the default QDockWidget title bar so we can add:
+      • Per-panel action buttons (panel_actions())
+      • Zone button (⊞) — send this panel to a specific dock area
+      • Lock button (🔓/🔒) — freeze position; other docks can't push it
+      • Float button (⧉) and close button (✕)
     """
 
     def __init__(self, dock: "PanelDock", title: str, actions: list):
         super().__init__(dock)
+        self._dock = dock
         self.setStyleSheet(_TITLE_BAR_QSS)
         self.setFixedHeight(28)
 
@@ -105,12 +131,38 @@ class _PanelTitleBar(QWidget):
                 else Qt.ToolButtonStyle.ToolButtonTextOnly)
             lay.addWidget(btn)
 
-        # Separator between panel actions and window controls
         if actions:
             sep = QWidget()
             sep.setFixedWidth(1)
             sep.setStyleSheet("background:#555;")
             lay.addWidget(sep)
+
+        # Zone button — send to a specific dock area
+        zone_btn = QToolButton()
+        zone_btn.setText("⊞")
+        zone_btn.setToolTip("Send to zone — dock this panel to a specific area")
+        zone_btn.setStyleSheet(_ZONE_QSS)
+        zone_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        zone_menu = QMenu(zone_btn)
+        for label, area in _ZONE_AREAS.items():
+            act = zone_menu.addAction(label)
+            act.triggered.connect(
+                lambda _=False, a=area: self._send_to_zone(a))
+        zone_menu.addSeparator()
+        float_act = zone_menu.addAction("⧉ Float")
+        float_act.triggered.connect(lambda: dock.setFloating(True))
+        zone_btn.setMenu(zone_menu)
+        lay.addWidget(zone_btn)
+
+        # Lock button — freeze position so dragging others doesn't move this
+        self._lock_btn = QToolButton()
+        self._lock_btn.setText("🔓")
+        self._lock_btn.setCheckable(True)
+        self._lock_btn.setToolTip(
+            "Lock panel — prevent it from moving when other panels are docked")
+        self._lock_btn.setStyleSheet(_LOCK_QSS)
+        self._lock_btn.toggled.connect(self._on_lock_toggled)
+        lay.addWidget(self._lock_btn)
 
         # Float button
         float_btn = QToolButton()
@@ -129,13 +181,32 @@ class _PanelTitleBar(QWidget):
         close_btn.clicked.connect(dock.hide)
         lay.addWidget(close_btn)
 
+    def _send_to_zone(self, area: Qt.DockWidgetArea):
+        """Move this dock to the given area without disturbing locked panels."""
+        shell = self._dock.parent()
+        if isinstance(shell, QMainWindow):
+            shell.addDockWidget(area, self._dock)
+            self._dock.show()
+
+    def _on_lock_toggled(self, locked: bool):
+        self._dock.set_locked(locked)
+        if locked:
+            self._lock_btn.setText("🔒")
+            self.setStyleSheet(_TITLE_BAR_LOCKED_QSS)
+        else:
+            self._lock_btn.setText("🔓")
+            self.setStyleSheet(_TITLE_BAR_QSS)
+
+    def set_locked(self, locked: bool):
+        """Sync button state when restoring from saved workspace."""
+        self._lock_btn.setChecked(locked)
+
 
 class PanelDock(QDockWidget):
     """QDockWidget wrapper for a SquelchPanel.
 
-    Adds close-to-hide behaviour (panel is hidden, not destroyed),
-    exposes the panel_id for workspace serialisation, and installs a
-    custom title bar that renders the panel's panel_actions() as buttons.
+    Adds close-to-hide behaviour, exposes panel_id for serialisation,
+    installs a custom title bar with lock and zone controls.
     """
 
     def __init__(self, panel: SquelchPanel, parent: QMainWindow):
@@ -143,15 +214,28 @@ class PanelDock(QDockWidget):
         super().__init__(title, parent)
         self._panel = panel
         self._panel_id = getattr(panel, "panel_id", "")
+        self._locked = False
         self.setWidget(panel)
         self.setObjectName(f"dock_{self._panel_id}")
         self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
-        self.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetMovable
-            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
-            | QDockWidget.DockWidgetFeature.DockWidgetClosable)
+        self.setFeatures(_MOVABLE_FEATURES)
         actions = panel.panel_actions() if hasattr(panel, "panel_actions") else []
-        self.setTitleBarWidget(_PanelTitleBar(self, title, actions))
+        self._title_bar = _PanelTitleBar(self, title, actions)
+        self.setTitleBarWidget(self._title_bar)
+
+    def set_locked(self, locked: bool):
+        """Lock or unlock this dock's position."""
+        self._locked = locked
+        self.setFeatures(_LOCKED_FEATURES if locked else _MOVABLE_FEATURES)
+
+    @property
+    def is_locked(self) -> bool:
+        return self._locked
+
+    def restore_lock(self, locked: bool):
+        """Restore lock state from saved workspace (syncs button too)."""
+        self._title_bar.set_locked(locked)
+        self.set_locked(locked)
 
     def closeEvent(self, event):
         """Hide rather than destroy — panel state is preserved."""
@@ -201,6 +285,10 @@ class PanelShell(QMainWindow):
                 self._apply_preset("HF Ops")
         else:
             self._apply_preset("HF Ops")
+        # Restore locked panels
+        for pid in cfg.get("workspace.locked_panels", []):
+            if pid in self._docks:
+                self._docks[pid].restore_lock(True)
 
     # ── Setup ──────────────────────────────────────────────────────────────
 
@@ -317,6 +405,8 @@ class PanelShell(QMainWindow):
         state = {
             "visible": [pid for pid, dock in self._docks.items()
                         if not dock.isHidden()],
+            "locked":  [pid for pid, dock in self._docks.items()
+                        if dock.is_locked],
             "geometry": self.saveState().toBase64().data().decode(),
             "window":   self.saveGeometry().toBase64().data().decode(),
         }
@@ -339,8 +429,10 @@ class PanelShell(QMainWindow):
         try:
             state = json.loads(path.read_text())
             visible = set(state.get("visible", []))
+            locked  = set(state.get("locked", []))
             for pid, dock in self._docks.items():
                 dock.setVisible(pid in visible)
+                dock.restore_lock(pid in locked)
             if "geometry" in state:
                 self.restoreState(
                     QByteArray.fromBase64(state["geometry"].encode()))
@@ -410,7 +502,6 @@ class PanelShell(QMainWindow):
         vs = visible[:4]
         extra = visible[4:]
         L = Qt.DockWidgetArea.LeftDockWidgetArea
-        R = Qt.DockWidgetArea.RightDockWidgetArea
         H = Qt.Orientation.Horizontal
         V = Qt.Orientation.Vertical
         self.addDockWidget(L, vs[0]); vs[0].show()
@@ -436,15 +527,18 @@ class PanelShell(QMainWindow):
     # ── Persistence ────────────────────────────────────────────────────────
 
     def _persist(self):
-        """Save dock arrangement and visible panels to config."""
+        """Save dock arrangement, visible panels, and lock states to config."""
         try:
             geo = self.saveGeometry().toBase64().data().decode()
             state = self.saveState().toBase64().data().decode()
             visible = [pid for pid, dock in self._docks.items()
                        if not dock.isHidden()]
+            locked = [pid for pid, dock in self._docks.items()
+                      if dock.is_locked]
             self.cfg.set("workspace.window_geometry", geo)
             self.cfg.set("workspace.geometry", state)
             self.cfg.set("workspace.visible_panels", visible)
+            self.cfg.set("workspace.locked_panels", locked)
             self.cfg.save()
         except Exception as e:
             log.debug(f"PanelShell persist: {e}")

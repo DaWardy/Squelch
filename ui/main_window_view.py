@@ -18,6 +18,15 @@ class _MainWindowViewMixin:
         self.setStyleSheet(get_stylesheet(name, fs))
         self.cfg.set("ui.theme", name)
         self.cfg.save()
+        # Re-patch inline dark QSS strings for Light/HC themes.
+        # main._apply_theme_fixes walks all child widgets and substitutes
+        # hardcoded dark hex values — must run after stylesheet is applied.
+        try:
+            import main as _m
+            if hasattr(_m, "_apply_theme_fixes"):
+                _m._apply_theme_fixes(self, name)
+        except Exception:
+            pass
 
     def _set_font_size(self, size: int):
         """Change application font size globally; persisted to config."""

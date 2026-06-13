@@ -27,11 +27,10 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QLabel, QGroupBox, QFrame, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QComboBox, QCheckBox, QTextEdit, QProgressBar,
-    QSizePolicy
+    QComboBox, QCheckBox, QTextEdit,
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor
 
 from ui.widgets.launch_bar import LaunchBar
 from digital.dsdplus import DSDPlusManager, DecodeEvent
@@ -171,8 +170,9 @@ class DigitalTab(SquelchPanel, QWidget):
         bar = QFrame()
         bar.setFrameShape(QFrame.Shape.StyledPanel)
         bar.setStyleSheet(
-            "QFrame{background:#0d1a0d;border-top:1px solid #1a3a1a;"
-            "border-bottom:1px solid #1a3a1a;}")
+            f"QFrame{{background:{_t.meter_bg};"
+            f"border-top:1px solid {_t.accent};"
+            f"border-bottom:1px solid {_t.accent};}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(6, 4, 6, 4)
         hl.setSpacing(6)
@@ -186,9 +186,10 @@ class DigitalTab(SquelchPanel, QWidget):
         self._tx_text.setPlaceholderText(
             "Type message to transmit  (Enter = Send,  Shift+Enter = newline)")
         self._tx_text.setStyleSheet(
-            "QPlainTextEdit{background:#071207;color:#e0ffe0;"
-            "border:1px solid #2a4a2a;border-radius:3px;"
-            "font-family:'Courier New';font-size:11px;padding:2px;}")
+            f"QPlainTextEdit{{background:{_t.bg_primary};"
+            f"color:{_t.fg_primary};"
+            f"border:1px solid {_t.border_focus};border-radius:3px;"
+            f"font-family:'Courier New';font-size:11px;padding:2px;}}")
         self._tx_text.installEventFilter(self)
         hl.addWidget(self._tx_text, 1)
 
@@ -359,6 +360,7 @@ class DigitalTab(SquelchPanel, QWidget):
         return hdr
 
     def _build_decode_table(self) -> "QTableWidget":
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         t = QTableWidget(0, 6)
         t.setHorizontalHeaderLabels(
             ["Time", "Protocol", "TG/Dest", "Source", "Info", "Enc"])
@@ -369,10 +371,10 @@ class DigitalTab(SquelchPanel, QWidget):
         t.setAlternatingRowColors(True)
         t.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         t.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;gridline-color:#1a1a1a;"
-            "alternate-background-color:#0d0d0d;"
-            "font-family:'Courier New';border:1px solid #1a1a1a;}"
-            "QHeaderView::section{background:#141414;border:none;padding:3px;}")
+            f"QTableWidget{{background:{_t.bg_primary};gridline-color:{_t.border};"
+            f"alternate-background-color:{_t.bg_alt};"
+            f"font-family:'Courier New';border:1px solid {_t.border};}}"
+            f"QHeaderView::section{{background:{_t.header_bg};border:none;padding:3px;}}")
         t.clicked.connect(self._on_row_click)
         return t
 
@@ -412,6 +414,7 @@ class DigitalTab(SquelchPanel, QWidget):
         return call_grp
 
     def _build_protocol_info_panel(self) -> "QGroupBox":
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
         info_grp = QGroupBox("Protocol Reference")
         il = QVBoxLayout(info_grp)
         self._proto_selector = QComboBox()
@@ -421,8 +424,8 @@ class DigitalTab(SquelchPanel, QWidget):
         self._proto_info = QTextEdit()
         self._proto_info.setReadOnly(True)
         self._proto_info.setStyleSheet(
-            "background:#0a0a0a;font-family:'Courier New';"
-            "border:1px solid #1a1a1a;")
+            f"background:{_t.bg_primary};font-family:'Courier New';"
+            f"border:1px solid {_t.border};")
         self._proto_info.setMaximumHeight(200)
         il.addWidget(self._proto_info)
         return info_grp

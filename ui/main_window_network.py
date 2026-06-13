@@ -18,6 +18,8 @@ class _MainWindowNetworkMixin:
         Initialize APRS-IS client as app-level singleton.
         Auto-connects if APRS was running last session.
         """
+        from network.aprs_anomaly import APRSAnomalyDetector
+        self._aprs_anomaly = APRSAnomalyDetector()
         try:
             from aprs.aprs_client import APRSClient
             from aprs.beacon     import APRSBeacon
@@ -96,7 +98,7 @@ class _MainWindowNetworkMixin:
 
 
     def _on_aprs_packet(self, packet):
-        """Update map tab with new APRS station."""
+        """Update map tab with new APRS station and run anomaly detection."""
         try:
             map_tab = self._tab_map.get("map")
             if map_tab and hasattr(map_tab, "set_aprs_stations"):
@@ -104,6 +106,30 @@ class _MainWindowNetworkMixin:
                 QTimer.singleShot(0,
                     lambda s=stations:
                         map_tab.set_aprs_stations(s))
+        except Exception:
+            pass
+        try:
+            alerts = self._aprs_anomaly.feed(packet)
+            for alert in alerts:
+                log.warning("APRS anomaly: %s", alert)
+                self._aprs_anomaly_alert(alert)
+        except Exception:
+            pass
+
+    def _aprs_anomaly_alert(self, alert) -> None:
+        """Surface an anomaly alert to the user (status bar + optional tab)."""
+        try:
+            sb = getattr(self, "statusBar", None)
+            if callable(sb):
+                sb().showMessage(f"⚠ APRS {alert.rule}: {alert.callsign} — "
+                                 f"{alert.description}", 8000)
+        except Exception:
+            pass
+        try:
+            # Push to the APRS/map tab if it has an anomaly log widget
+            map_tab = self._tab_map.get("map")
+            if map_tab and hasattr(map_tab, "add_aprs_alert"):
+                map_tab.add_aprs_alert(alert)
         except Exception:
             pass
 

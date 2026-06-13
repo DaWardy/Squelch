@@ -39,6 +39,7 @@ import argparse
 import json
 from pathlib import Path
 import installer_soapy as _isoapy
+import installer_packages as _ipkg
 
 # ── Version check before anything else ───────────────────────────────────
 if sys.version_info < (3, 9):
@@ -85,6 +86,12 @@ def err(msg):   print(f"  {RED}[FAIL]{RESET} {msg}")
 def info(msg):  print(f"  {CYAN}[INFO]{RESET} {msg}")
 def hdr(msg):   print(f"\n{BOLD}{msg}{RESET}\n  {'─'*50}")
 def sep():      print()
+
+# Wire console helpers + path globals into installer_packages
+_ipkg._ok   = ok
+_ipkg._warn = warn
+_ipkg._err  = err
+_ipkg._info = info
 
 BASE_DIR     = Path(__file__).parent.resolve()
 VENV_DIR     = BASE_DIR / "venv"
@@ -254,207 +261,19 @@ def setup_venv():
 
 # ── Step 3: Packages ──────────────────────────────────────────────────────
 
-def _pip_cmd() -> list:
-    """Return the pip invocation prefix for subprocess calls.
-
-    Always uses 'python -m pip' rather than pip.exe / pip3.exe, because
-    the exact executable name varies across Python versions and venv
-    configurations (e.g. ensurepip on 3.11 creates pip3.exe, not pip.exe).
-    """
-    return [str(VENV_PYTHON), "-m", "pip"]
-
-
-def _bootstrap_pip() -> None:
-    """Ensure pip is available in the venv, bootstrapping via ensurepip if needed."""
-    probe = subprocess.run(
-        [str(VENV_PYTHON), "-m", "pip", "--version"],
-        capture_output=True, text=True)
-    if probe.returncode == 0:
-        return  # already working
-    info("pip not found in venv — bootstrapping via ensurepip...")
-    r = subprocess.run(
-        [str(VENV_PYTHON), "-m", "ensurepip", "--upgrade"],
-        capture_output=True, text=True)
-    if r.returncode != 0:
-        warn(f"ensurepip failed: {r.stderr.strip()[:120]}")
-    # upgrade pip itself to avoid stale ensurepip bundle
-    subprocess.run(
-        [str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip", "--quiet"],
-        capture_output=True)
-
-
-def _bulk_req_without_webengine() -> "Path":
-    """Write a temp requirements file with PyQtWebEngine lines stripped."""
-    import tempfile, os
-    req_lines = [
-        l for l in REQ_FILE.read_text().splitlines()
-        if not l.strip().startswith("PyQtWebEngine")
-        and not (l.strip().startswith("#") and "PyQtWebEngine" in l)]
-    _fd, _tmp = tempfile.mkstemp(suffix=".txt")
-    os.close(_fd)
-    tmp = Path(_tmp)
-    tmp.write_text("\n".join(req_lines))
-    return tmp
-
-
-def _build_bulk_pip_cmd(pip: list, req_file: "Path", offline: bool) -> list:
-    """Build the pip install command, wiring in offline/cache flags as needed."""
-    cmd = pip + ["install", "-r", str(req_file), *_pip_quiet_flag()]
-    if offline and OFFLINE_DIR.exists():
-        cmd += ["--no-index", "--find-links", str(OFFLINE_DIR)]
-        info("Installing from offline cache...")
-    elif OFFLINE_DIR.exists():
-        cmd += ["--find-links", str(OFFLINE_DIR)]
-        info("Installing packages (using cache if available)...")
-    else:
-        info("Installing packages from internet...")
-        info("This may take a few minutes on first run.")
-    return cmd
-
-
-def _log_pip_stderr(stderr: str) -> None:
-    """Print the first few lines of pip stderr for user visibility."""
-    for line in stderr.splitlines()[:5]:
-        if line.strip():
-            info(f"  pip: {line.strip()[:80]}")
-
-
-def _install_packages_bulk(pip: list, offline: bool) -> bool:
-    """First attempt: install all packages at once. Returns True on success."""
-    tmp_req = _bulk_req_without_webengine()
-    try:
-        cmd = _build_bulk_pip_cmd(pip, tmp_req, offline)
-        result = subprocess.run(cmd, capture_output=_pip_capture(), text=True)
-    finally:
-        try:
-            tmp_req.unlink()
-        except Exception:
-            pass
-
-    if result.returncode != 0 and offline:
-        warn("Offline install incomplete. Trying internet...")
-        result = subprocess.run(
-            pip + ["install", "-r", str(REQ_FILE), *_pip_quiet_flag()],
-            capture_output=_pip_capture(), text=True)
-
-    if result.returncode == 0:
-        ok("Packages installed.")
-        return True
-
-    warn("Some packages failed — installing individually...")
-    if result.stderr:
-        _log_pip_stderr(result.stderr)
-    return False
-
-
-def _apply_platform_marker(pkg: str) -> str | None:
-    """Strip or skip a package line that has a '; sys_platform' marker.
-
-    Returns the bare package name if the platform matches, or None to skip.
-    """
-    if "; sys_platform" not in pkg:
-        return pkg
-    import platform as _plat
-    marker = pkg.split(";")[1].strip()
-    if "win32" in marker and _plat.system() != "Windows":
-        return None
-    return pkg.split(";")[0].strip()
-
-
-def _report_individual_results(
-        failed: list, skipped: list, non_critical: set) -> None:
-    """Print summary lines for skipped and failed packages."""
-    if skipped:
-        info(f"Skipped (Python 3.14+): {', '.join(skipped)}")
-    if not failed:
-        return
-    real     = [p for p in failed if p not in non_critical]
-    optional = [p for p in failed if p in non_critical]
-    if real:
-        warn(f"Failed (critical): {', '.join(real)}")
-    if optional:
-        info(f"Not installed (optional, app still works): {', '.join(optional)}")
-
-
-def _install_packages_individual(pip: list):
-    """Fallback: install each package individually, skipping non-critical."""
-    import sys as _sys
-    py_ver = (_sys.version_info.major, _sys.version_info.minor)
-    PY314_SKIP   = {"PyQtWebEngine"}
-    NON_CRITICAL = {
-        "PyQtWebEngine", "scipy", "pyqtgraph", "sounddevice",
-        "soundfile", "soapysdr", "PyQtWebEngine>=6.4.0"}
-
-    packages = [
-        p.strip() for p in REQ_FILE.read_text().splitlines()
-        if p.strip() and not p.strip().startswith(("#", "//"))
-        and not p.strip().startswith("PyQtWebEngine")]
-
-    failed, skipped = [], []
-    for raw_pkg in packages:
-        pkg = _apply_platform_marker(raw_pkg)
-        if pkg is None:
-            continue
-        name = pkg.split(">=")[0].split("==")[0].split("[")[0].strip()
-        if py_ver >= (3, 14) and name in PY314_SKIP:
-            warn(f"  {name} — skipped (no Python 3.14 wheel)")
-            skipped.append(name)
-            continue
-        r = subprocess.run(
-            pip + ["install", pkg, "--quiet", "--no-cache-dir"],
-            capture_output=True, text=True)
-        (ok if r.returncode == 0 else warn)(
-            f"  {name}" if r.returncode == 0 else f"  {name} — FAILED")
-        if r.returncode != 0:
-            failed.append(name)
-
-    _report_individual_results(failed, skipped, NON_CRITICAL)
-
-
-def _verify_pyqt6(pip: list):
-    """Verify PyQt6 works; attempt matched-version reinstall if not."""
-    check = subprocess.run(
-        [str(VENV_PYTHON), "-c", "from PyQt6.QtCore import QT_VERSION_STR"],
-        capture_output=True, text=True)
-    if check.returncode == 0:
-        ok("PyQt6 detected")
-        return
-    warn("PyQt6 not working — attempting matched-version reinstall...")
-    subprocess.run(
-        pip + ["uninstall", "-y", "PyQt6", "PyQt6-Qt6", "PyQt6-sip"],
-        capture_output=True)
-    subprocess.run(
-        pip + ["install", "--no-cache-dir",
-               "PyQt6==6.6.1", "PyQt6-Qt6==6.6.1", "PyQt6-sip==13.6.0"],
-        capture_output=_pip_capture())
-    check2 = subprocess.run(
-        [str(VENV_PYTHON), "-c",
-         "from PyQt6.QtCore import QT_VERSION_STR; print('Qt/' + QT_VERSION_STR)"],
-        capture_output=True, text=True)
-    if check2.returncode == 0:
-        ok(f"PyQt6 fixed — {check2.stdout.strip()}")
-        return
-    # Last resort: install pyqt6-qt6 separately
-    info("Trying separate pyqt6-qt6 install...")
-    subprocess.run(pip + ["install", "pyqt6-qt6", "--no-cache-dir", "--quiet"],
-                   capture_output=True)
-    check3 = subprocess.run(
-        [str(VENV_PYTHON), "-c", "from PyQt6.QtCore import QT_VERSION_STR"],
-        capture_output=True, text=True)
-    if check3.returncode == 0:
-        ok("PyQt6 fixed")
-    else:
-        err("PyQt6 install failed — Squelch cannot run without it")
-        info("Manual fix:")
-        info("  venv\\Scripts\\pip uninstall -y PyQt6 PyQt6-Qt6 PyQt6-sip")
-        info("  venv\\Scripts\\pip install --no-cache-dir PyQt6==6.6.1 PyQt6-Qt6==6.6.1 PyQt6-sip==13.6.0")
+def _sync_pkg_globals() -> None:
+    """Push current path globals into installer_packages before any call."""
+    _ipkg.VENV_PYTHON = VENV_PYTHON
+    _ipkg.REQ_FILE    = REQ_FILE
+    _ipkg.OFFLINE_DIR = OFFLINE_DIR
+    _ipkg.VERBOSE     = VERBOSE
 
 
 def install_packages(offline: bool = False, cache_only: bool = False):
     hdr("[3/6] Python Packages")
+    _sync_pkg_globals()
 
-    import sys as _sys
-    if _sys.version_info >= (3, 14):
+    if sys.version_info >= (3, 14):
         warn("Python 3.14 — PyQtWebEngine has no wheel yet; map tab will be limited.")
         sep()
 
@@ -462,8 +281,8 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         warn("requirements.txt not found — skipping.")
         return
 
-    _bootstrap_pip()
-    pip = _pip_cmd()
+    _ipkg._bootstrap_pip()
+    pip = _ipkg._pip_cmd()
 
     if cache_only:
         info(f"Downloading packages to {OFFLINE_DIR}...")
@@ -476,12 +295,12 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         (ok if r.returncode == 0 else warn)(f"Cached {count} packages")
         return
 
-    if not _install_packages_bulk(pip, offline):
-        _install_packages_individual(pip)
+    if not _ipkg._install_packages_bulk(pip, offline):
+        _ipkg._install_packages_individual(pip)
 
-    _verify_pyqt6(pip)
+    _ipkg._verify_pyqt6(pip, VENV_PYTHON)
     for pkg in ("numpy", "pyqtgraph", "sounddevice", "keyring"):
-        _verify_package(pkg)
+        _ipkg._verify_package(pkg, VENV_PYTHON)
 
     if not offline and not OFFLINE_DIR.exists():
         info("Caching packages for offline use...")
@@ -493,31 +312,6 @@ def install_packages(offline: bool = False, cache_only: bool = False):
         count = len(list(OFFLINE_DIR.glob("*.whl")))
         if count > 0:
             ok(f"Cached {count} packages in offline_packages/")
-
-
-def _verify_package(name: str):
-    # Special case for PyQt6 - check differently
-    if name == "PyQt6":
-        result = subprocess.run(
-            [str(VENV_PYTHON), "-c",
-             "from PyQt6.QtCore import QT_VERSION_STR; "
-             "print('PyQt6 Qt/' + QT_VERSION_STR)"],
-            capture_output=True, text=True)
-    else:
-        safe_name = name.lower().replace("-", "_")
-        result = subprocess.run(
-            [str(VENV_PYTHON), "-c",
-             f"import {safe_name}; "
-             f"v = getattr({safe_name}, '__version__', "
-             f"getattr({safe_name}, 'version', 'ok')); "
-             f"print(v)"],
-            capture_output=True, text=True)
-    if result.returncode == 0:
-        ver = result.stdout.strip()
-        ok(f"{name} {ver}")
-    else:
-        warn(f"{name} — not detected")
-        info(f"Try: pip install {name} --no-cache-dir")
 
 
 # ── Step 4: External tools ────────────────────────────────────────────────
@@ -747,60 +541,62 @@ def setup_config():
 
 # ── Step 6: Launch scripts ────────────────────────────────────────────────
 
+def _write_windows_launch_scripts() -> None:
+    _write("run_squelch.bat",
+           "@echo off\n"
+           "cd /d \"%~dp0\"\n"
+           "call venv\\Scripts\\activate.bat\n"
+           "pythonw main.py %*\n")
+    ok("run_squelch.bat")
+    _write("run_squelch_debug.bat",
+           "@echo off\n"
+           "title Squelch Debug\n"
+           "cd /d \"%~dp0\"\n"
+           "call venv\\Scripts\\activate.bat\n"
+           "python main.py --debug %*\n"
+           "if errorlevel 1 pause\n")
+    ok("run_squelch_debug.bat")
+    _write("run_squelch_guest.bat",
+           "@echo off\n"
+           "title Squelch — Guest Operator\n"
+           "cd /d \"%~dp0\"\n"
+           "call venv\\Scripts\\activate.bat\n"
+           "pythonw main.py --guest-op %*\n")
+    ok("run_squelch_guest.bat")
+
+
+def _write_unix_launch_scripts() -> None:
+    _write("run_squelch.sh",
+           "#!/bin/bash\n"
+           "cd \"$(dirname \"$0\")\"\n"
+           "source venv/bin/activate\n"
+           "python3 main.py \"$@\"\n",
+           executable=True)
+    try:
+        import stat as _stat
+        for _sh in ("run_squelch.sh", "run_squelch_guest.sh"):
+            _p = BASE_DIR / _sh
+            if _p.exists():
+                _p.chmod(_p.stat().st_mode | _stat.S_IXUSR
+                         | _stat.S_IXGRP | _stat.S_IXOTH)
+    except Exception:
+        pass
+    ok("run_squelch.sh")
+    _write("run_squelch_guest.sh",
+           "#!/bin/bash\n"
+           "cd \"$(dirname \"$0\")\"\n"
+           "source venv/bin/activate\n"
+           "python3 main.py --guest-op \"$@\"\n",
+           executable=True)
+    ok("run_squelch_guest.sh")
+
+
 def create_launch_scripts():
     hdr("[6/6] Launch Scripts")
-
     if IS_WINDOWS:
-        _write("run_squelch.bat",
-               "@echo off\n"
-               "cd /d \"%~dp0\"\n"
-               "call venv\\Scripts\\activate.bat\n"
-               "pythonw main.py %*\n")
-        ok("run_squelch.bat")
-
-        _write("run_squelch_debug.bat",
-               "@echo off\n"
-               "title Squelch Debug\n"
-               "cd /d \"%~dp0\"\n"
-               "call venv\\Scripts\\activate.bat\n"
-               "python main.py --debug %*\n"
-               "if errorlevel 1 pause\n")
-        ok("run_squelch_debug.bat")
-
-        _write("run_squelch_guest.bat",
-               "@echo off\n"
-               "title Squelch — Guest Operator\n"
-               "cd /d \"%~dp0\"\n"
-               "call venv\\Scripts\\activate.bat\n"
-               "pythonw main.py --guest-op %*\n")
-        ok("run_squelch_guest.bat")
-
+        _write_windows_launch_scripts()
     else:
-        # Linux / macOS
-        _write("run_squelch.sh",
-               "#!/bin/bash\n"
-               "cd \"$(dirname \"$0\")\"\n"
-               "source venv/bin/activate\n"
-               "python3 main.py \"$@\"\n",
-               executable=True)
-        try:
-            import stat as _stat
-            for _sh in ("run_squelch.sh", "run_squelch_guest.sh"):
-                _p = BASE_DIR / _sh
-                if _p.exists():
-                    _p.chmod(_p.stat().st_mode | _stat.S_IXUSR
-                             | _stat.S_IXGRP | _stat.S_IXOTH)
-        except Exception:
-            pass
-        ok("run_squelch.sh")
-
-        _write("run_squelch_guest.sh",
-               "#!/bin/bash\n"
-               "cd \"$(dirname \"$0\")\"\n"
-               "source venv/bin/activate\n"
-               "python3 main.py --guest-op \"$@\"\n",
-               executable=True)
-        ok("run_squelch_guest.sh")
+        _write_unix_launch_scripts()
 
 
 def _write(filename: str, content: str,

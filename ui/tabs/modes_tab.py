@@ -1173,8 +1173,10 @@ class ModesTab(SquelchPanel, QWidget):
         call_item = self._decode_table.item(row, COL_CALL)
         if not call_item:
             return
-        # Find the decode
         call = call_item.text()
+        # Publish so {theircall} macro var is available immediately
+        if self.cfg:
+            self.cfg.set("session.dx_callsign", call)
         for decode in self.ft8_engine.decodes:
             if decode.callsign == call:
                 self.ft8_engine.call_station(decode)

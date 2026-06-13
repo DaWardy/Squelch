@@ -463,12 +463,14 @@ class FT8Engine:
             self._qso = QSOInProgress(
                 their_call=decode.callsign, their_grid=decode.grid,
                 their_snr=decode.snr, their_freq=decode.freq_hz)
+            self.cfg.set("session.dx_callsign", decode.callsign)
             self._set_state(AutoSeqState.REPLY_DECODED)
             self._send_report()
         elif decode.is_cq and self._auto_cq and self._should_call(decode):
             self._qso = QSOInProgress(
                 their_call=decode.callsign, their_grid=decode.grid,
                 their_snr=decode.snr, their_freq=decode.freq_hz)
+            self.cfg.set("session.dx_callsign", decode.callsign)
             self._set_state(AutoSeqState.REPLY_DECODED)
             self._send_report()
 

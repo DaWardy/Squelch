@@ -353,13 +353,21 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         lay.addWidget(_vsep())
 
     def _toolbar_add_extras(self, lay) -> None:
-        """TX indicator (hidden until TX hardware detected) + optional rig-tune button."""
+        """TX indicator (hidden until TX hardware detected) + rig-tune + audio buttons."""
         self._tx_indicator = QLabel("● TX")
         self._tx_indicator.setStyleSheet(
             "color:#cc4444;font-family:'Courier New';")
         self._tx_indicator.hide()
         lay.addWidget(self._tx_indicator)
         lay.addStretch()
+        audio_btn = QPushButton(self.tr("🎙 Rig Audio"))
+        audio_btn.setFixedWidth(96)
+        audio_btn.setToolTip(self.tr(
+            "Use rig or soundcard audio as SDR input\n"
+            "Works without SoapySDR — IC-7100, FT-991A, any USB rig\n"
+            "IQ Stereo mode: IC-7300/7610/705, FUNcube Dongle"))
+        audio_btn.clicked.connect(self._open_audio_source_dialog)
+        lay.addWidget(audio_btn)
         if self.rig:
             rig_btn = QPushButton(self.tr("← Rig Freq"))
             rig_btn.setFixedWidth(90)
@@ -729,7 +737,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             log.info("SDR: SoapySDR found 0 devices, rtl_tcp running — using RTL-TCP")
             return
         if not devices:
-            self._dev_combo.addItem(self.tr("No SDR devices found — click ⟳ to rescan"))
+            self._dev_combo.addItem(
+                self.tr("No SDR devices found — use 🎙 Rig Audio or click ⟳"))
             if hasattr(self, "_dev_type_lbl"):
                 self._dev_type_lbl.setText("none")
             return

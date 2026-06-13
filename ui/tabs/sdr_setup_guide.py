@@ -46,6 +46,13 @@ class _SDRSetupGuideMixin:
         det = self._detect_connected_hardware()
         if det:
             vl.addWidget(QLabel("Detected: " + ", ".join(det)))
+        # Quick-start: rig audio path requires nothing extra
+        self._setup_path(vl, "Quick start — use rig audio (no install needed)", "#0a0a1a", "#ffcc44", [
+            ("Click  \U0001f3a4 Rig Audio  in the toolbar above to use your rig's USB audio output "
+             "as a spectrum source — no SoapySDR required.", None, None, None),
+            ("IC-7100, FT-991A, TS-2000, IC-7300/7610/705 all work via USB.", None, None, None),
+            ("IC-7300/7610/705: enable IQ mode in SET → Connectors → USB for up to 192 kHz bandwidth.", None, None, None),
+        ])
         self._setup_path(vl, "Windows — miniforge/conda (recommended)", "#0a1a0a", "#3fbe6f", [
             ("No CMake, no Visual Studio. Works with any RTL-SDR.", None, None, None),
             ("Step 1 — Install miniforge3", "conda-forge.org", "https://github.com/conda-forge/miniforge/releases/latest", "Download miniforge3"),

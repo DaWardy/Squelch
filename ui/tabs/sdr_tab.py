@@ -130,63 +130,53 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)
-        self.cfg        = config
-        self.rig        = rig
-        self._manager   = get_sdr_manager()
-        # Location manager for receiver.json
+        self._init_state(config, rig)
+        self._build()
+        self._manager.on_samples(self._on_samples)
+        self._ui_timer = QTimer(self)
+        self._ui_timer.setInterval(100)
+        self._ui_timer.timeout.connect(self._update_plots)
+        self._ui_timer.start()
+        QTimer.singleShot(500, self._enumerate_devices)
+
+    def _init_state(self, config, rig) -> None:
+        """Initialise all instance variables before UI is built."""
+        self.cfg      = config
+        self.rig      = rig
+        self._manager = get_sdr_manager()
         try:
             from core.location import LocationManager
             self.location_mgr = LocationManager(config)
         except Exception:
             self.location_mgr = None
-        self._recorder  = IQRecorder(
-            Path(config.get(
-                "paths.iq_recordings", "recordings")))
-        self._player    = IQPlayer()
-        self._devices:  list[SDRDevice] = []
-        self._current:  SDRDevice = None
-        # Lazily-initialized RTL-TCP client (used when SoapySDR returns no
-        # devices but rtl_tcp is running locally — common when the dongle
-        # is already claimed by an rtl_tcp server).
+        self._recorder   = IQRecorder(
+            Path(config.get("paths.iq_recordings", "recordings")))
+        self._player     = IQPlayer()
+        self._devices:   list[SDRDevice] = []
+        self._current:   SDRDevice = None
+        # Lazily-initialized RTL-TCP client — used when SoapySDR finds no
+        # devices but rtl_tcp is already running (dongle claimed by server).
         self._rtltcp_dev = None
-
         # Spectrum state
         self._center_hz  = 100_000_000
         self._span_hz    = 2_400_000
-        self._step_idx   = 4   # 12.5 kHz default
+        self._step_idx   = 4
         self._floor_db   = -100.0
         self._ceiling_db = -20.0
         self._auto_range = True
         self._palette    = "Jet"
         self._peak_hold  = False
-        self._wf_data    = np.full(
-            (WF_ROWS, FFT_SIZE // 2), -100.0)
+        self._wf_data    = np.full((WF_ROWS, FFT_SIZE // 2), -100.0)
         self._peak_data  = np.full(FFT_SIZE, -100.0)
         self._fft_lock   = threading.Lock()
         self._latest_fft: np.ndarray = None
-
         # Scanner
         self._scan_running = False
         self._scan_timer   = QTimer(self)
         self._scan_timer.timeout.connect(self._scan_step)
-
         # Signal routing
         self._route_to_digital = False
-        self._decoder_cb = None
-
-        self._build()
-
-        # Wire manager callbacks
-        self._manager.on_samples(self._on_samples)
-
-        # UI refresh timer
-        self._ui_timer = QTimer(self)
-        self._ui_timer.setInterval(100)
-        self._ui_timer.timeout.connect(self._update_plots)
-        self._ui_timer.start()
-
-        # Enumerate devices
-        QTimer.singleShot(500, self._enumerate_devices)
+        self._decoder_cb       = None
 
     # ── Build UI ──────────────────────────────────────────────────────────
 

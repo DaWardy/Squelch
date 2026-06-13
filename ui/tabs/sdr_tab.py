@@ -1206,13 +1206,16 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         try:
             pos = self._wf_plot.plotItem.vb\
                 .mapSceneToView(event.scenePos())
-            # Map pixel position to frequency
             half  = self._span_hz / 2
             lo    = self._center_hz - half
             hi    = self._center_hz + half
             frac  = pos.x() / FFT_SIZE
             hz    = int(lo + frac * (hi - lo))
-            if hz > 0:
+            if hz <= 0:
+                return
+            if event.button() == Qt.MouseButton.RightButton:
+                self._show_sigid_menu(hz, event.screenPos())
+            else:
                 self._set_freq(hz)
         except Exception:
             pass
@@ -1224,10 +1227,44 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             pos = self._spec_plot.plotItem.vb\
                 .mapSceneToView(event.scenePos())
             hz = int(pos.x())
-            if hz > 0:
+            if hz <= 0:
+                return
+            if event.button() == Qt.MouseButton.RightButton:
+                self._show_sigid_menu(hz, event.screenPos())
+            else:
                 self._set_freq(hz)
         except Exception:
             pass
+
+    def _show_sigid_menu(self, freq_hz: int, screen_pos) -> None:
+        """Context menu on right-click: identify signal, tune, clear."""
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtCore import QPointF
+        menu = QMenu(self)
+        mhz = freq_hz / 1e6
+        id_act = menu.addAction(f"Identify Signal at {mhz:.3f} MHz")
+        tune_act = menu.addAction(f"Tune to {mhz:.3f} MHz")
+        menu.addSeparator()
+        clr_act = menu.addAction("Clear annotations at this frequency")
+        clr_all = menu.addAction("Clear all annotations")
+        # Use demod bandwidth if the user has set it, else span/100
+        try:
+            bw_txt = self._demod_bw.currentText().split()[0]
+            bw_hz = int(float(bw_txt) * 1000)
+        except Exception:
+            bw_hz = max(2500, self._span_hz // 100)
+        chosen = menu.exec(
+            screen_pos.toPoint()
+            if hasattr(screen_pos, "toPoint")
+            else self.mapToGlobal(self.rect().center()))
+        if chosen == id_act:
+            self._identify_signal(bw_hz, freq_hz)
+        elif chosen == tune_act:
+            self._set_freq(freq_hz)
+        elif chosen == clr_act:
+            self._clear_sigid_annotations(freq_hz)
+        elif chosen == clr_all:
+            self._clear_sigid_annotations()
 
     # ── SDR samples → FFT ─────────────────────────────────────────────────
 

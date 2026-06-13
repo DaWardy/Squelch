@@ -46,20 +46,27 @@ def test_a1_normal_rate_no_alert():
 
 def test_a2_impossible_speed_triggers():
     det = APRSAnomalyDetector()
-    # First packet near NYC
-    det.feed(_pkt("W2SPD", lat=40.7, lon=-74.0))
-    # Instant teleport to London — force close timestamps by patching last_pos
-    det._last_pos["W2SPD"] = (40.7, -74.0, time.monotonic() - 0.001)
+    # Seed last_pos as if packet arrived 15s ago near NYC
+    det._last_pos["W2SPD"] = (40.7, -74.0, time.monotonic() - 15)
+    # Next packet places station in London — ~5572 km / 15s = impossibly fast
     alerts = det.feed(_pkt("W2SPD", lat=51.5, lon=-0.1))
     assert any(a.rule == "A2" for a in alerts)
 
 
 def test_a2_slow_speed_no_alert():
     det = APRSAnomalyDetector()
-    det.feed(_pkt("W2SLOW", lat=40.700, lon=-74.000))
     # Move 1 km over 1 hour — well under threshold
     det._last_pos["W2SLOW"] = (40.700, -74.000, time.monotonic() - 3600)
     alerts = det.feed(_pkt("W2SLOW", lat=40.709, lon=-74.000))
+    assert not any(a.rule == "A2" for a in alerts)
+
+
+def test_a2_no_false_positive_on_rapid_ingest():
+    """Packets fed in burst (< 10s apart) skip speed check — avoids false pos."""
+    det = APRSAnomalyDetector()
+    det._last_pos["K1BURST"] = (40.700, -74.000, time.monotonic() - 1)
+    # 0.01 degree lat shift looks fast at 1s gap but should be skipped
+    alerts = det.feed(_pkt("K1BURST", lat=40.710, lon=-74.000))
     assert not any(a.rule == "A2" for a in alerts)
 
 

@@ -161,6 +161,10 @@ class DigitalTab(SquelchPanel, QWidget):
         splitter.setSizes([700, 300])
         root.addWidget(splitter, 1)
 
+        # Macro toolbar + TX panel at bottom
+        root.addWidget(self._build_macro_toolbar())
+        root.addWidget(self._build_tx_panel())
+
 
     def _build_tx_panel(self) -> "QFrame":
         """HRD-style digital TX text box."""
@@ -221,6 +225,76 @@ class DigitalTab(SquelchPanel, QWidget):
         self._tx_status.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;min-width:80px;")
         hl.addWidget(self._tx_status)
         return bar
+
+    def _build_macro_toolbar(self) -> "QFrame":
+        """F1-F8 macro buttons. Right-click any button to edit label/text."""
+        from PyQt6.QtWidgets import QFrame, QHBoxLayout, QPushButton
+        from core.macros import MacroManager
+        _t = get_theme(self.cfg.get("ui.theme", "Dark"))
+        self._macro_mgr = MacroManager(self.cfg)
+        bar = QFrame()
+        bar.setFrameShape(QFrame.Shape.NoFrame)
+        hl = QHBoxLayout(bar)
+        hl.setContentsMargins(6, 2, 6, 2)
+        hl.setSpacing(4)
+        self._macro_btns: list[QPushButton] = []
+        for i, (key, macro) in enumerate(self._macro_mgr.all_macros(), start=1):
+            btn = QPushButton(f"F{i}: {macro['label']}")
+            btn.setToolTip(macro["text"] or "(empty)")
+            btn.setFixedHeight(24)
+            btn.setStyleSheet(
+                f"QPushButton{{background:{_t.bg_alt};color:{_t.fg_primary};"
+                f"border:1px solid {_t.border};border-radius:3px;font-size:10px;}}"
+                f"QPushButton:hover{{background:{_t.header_bg};}}"
+            )
+            btn.clicked.connect(lambda _=False, k=key: self._on_macro_btn(k))
+            btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda pos, k=key, b=btn: self._edit_macro(k, b))
+            self._macro_btns.append(btn)
+            hl.addWidget(btn)
+        hl.addStretch()
+        return bar
+
+    def _on_macro_btn(self, key: str) -> None:
+        """Expand and send a macro."""
+        macro = self._macro_mgr.get(key)
+        text = self._macro_mgr.expand(macro["text"])
+        if text and hasattr(self, "_tx_text"):
+            self._tx_text.setPlainText(text)
+            self._send_tx_text()
+
+    def _edit_macro(self, key: str, btn: "QPushButton") -> None:
+        """Right-click handler — open inline edit dialog for a macro."""
+        from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
+                                      QLineEdit, QPlainTextEdit, QVBoxLayout)
+        macro = self._macro_mgr.get(key)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Edit macro {key.upper()}")
+        dlg.setMinimumWidth(420)
+        vl = QVBoxLayout(dlg)
+        form = QFormLayout()
+        lbl_edit = QLineEdit(macro["label"])
+        txt_edit = QPlainTextEdit(macro["text"])
+        txt_edit.setMaximumHeight(80)
+        txt_edit.setPlaceholderText(
+            "Use {mycall} {theircall} {freq} {mode} {serial} {name}")
+        form.addRow("Label:", lbl_edit)
+        form.addRow("Text:", txt_edit)
+        vl.addLayout(form)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        vl.addWidget(bb)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            label = lbl_edit.text().strip() or key.upper()
+            text  = txt_edit.toPlainText()
+            self._macro_mgr.set(key, label, text)
+            idx = int(key[1]) - 1  # f1 → 0
+            btn.setText(f"F{idx+1}: {label}")
+            btn.setToolTip(text or "(empty)")
 
     def eventFilter(self, obj, event):
         """Enter in TX box sends; Shift+Enter inserts newline."""

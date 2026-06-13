@@ -59,6 +59,9 @@ class APRSAlert:
 _RAPID_BEACON_WINDOW_S   = 60     # look-back window for rate check
 _RAPID_BEACON_THRESHOLD  = 8      # packets per window before flagging
 _MAX_SPEED_KMH           = 900    # flag if implied speed > this
+_MIN_SPEED_CHECK_S       = 10     # ignore position pairs < 10s apart (avoids
+                                  # false positives from rapid network ingest
+                                  # or digipeater echoes arriving in burst)
 _DUPLICATE_WINDOW_S      = 60     # window for exact-duplicate check
 _EXTREME_PATHS           = {"WIDE7", "WIDE6"}  # path fragments to flag
 
@@ -164,9 +167,11 @@ class APRSAnomalyDetector:
         if prev is None:
             return []
         prev_lat, prev_lon, prev_time = prev
-        dt_h = (now - prev_time) / 3600.0
-        if dt_h <= 0:
+        dt_s = now - prev_time
+        # Skip pairs too close in time — burst ingest / digipeater echoes
+        if dt_s < _MIN_SPEED_CHECK_S:
             return []
+        dt_h = dt_s / 3600.0
         dist_km = _haversine_km(prev_lat, prev_lon, lat, lon)
         speed = dist_km / dt_h
         if speed > _MAX_SPEED_KMH:

@@ -21,7 +21,7 @@ import subprocess
 import threading
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
 from pathlib import Path
 
@@ -62,12 +62,14 @@ class DSDPlusManager:
     """
 
     def __init__(self, config):
-        self.cfg        = config
-        self._proc:     subprocess.Popen = None
-        self._running   = False
-        self._thread:   threading.Thread = None
-        self._events:   list[DecodeEvent] = []
-        self._lock      = threading.Lock()
+        self.cfg         = config
+        self._proc:      subprocess.Popen = None
+        self._running    = False
+        self._thread:    threading.Thread = None
+        self._log_thread: threading.Thread = None
+        self._log_path:  Path = None
+        self._events:    list[DecodeEvent] = []
+        self._lock       = threading.Lock()
 
         self._on_decode:  Callable = None
         self._on_status:  Callable = None
@@ -117,13 +119,19 @@ class DSDPlusManager:
                     else 0x00000010)
 
             self._proc = subprocess.Popen(cmd, **kw)
+            self._log_path = Path(path).parent / "DSDPlus.log"
 
             self._running = True
-            # Watcher thread — polls for exit, doesn't try to read stdout
+            # Watcher thread — polls for exit; separate log-tail thread
+            # reads DSDPlus.log so we never pipe stdout (which breaks DSD+)
             self._thread  = threading.Thread(
                 target=self._watch_loop,
-                daemon=True, name="DSDPlus")
+                daemon=True, name="DSDPlus-watch")
             self._thread.start()
+            self._log_thread = threading.Thread(
+                target=self._tail_log,
+                daemon=True, name="DSDPlus-log")
+            self._log_thread.start()
 
             log.info(f"DSD+ started: {path} (PID {self._proc.pid})")
             self._notify_status("running")
@@ -135,17 +143,53 @@ class DSDPlusManager:
             return False
 
     def _watch_loop(self):
-        """Poll DSD+ — set status when it exits. Don't read stdout (the
-        old code piped it which caused DSD+ to misbehave on Windows)."""
-        import time
+        """Poll DSD+ exit — stdout is NOT piped (breaks DSD+ on Windows)."""
         while self._running and self._proc:
             if self._proc.poll() is not None:
-                # Process exited
                 self._running = False
                 self._notify_status("stopped")
                 log.info(f"DSD+ exited with code {self._proc.returncode}")
                 return
             time.sleep(0.5)
+
+    def _tail_log(self):
+        """Tail DSDPlus.log to capture decode events without piping stdout."""
+        if not self._log_path:
+            return
+        # Wait up to 5s for DSD+ to create its log
+        for _ in range(10):
+            if self._log_path.exists():
+                break
+            time.sleep(0.5)
+        if not self._log_path.exists():
+            log.debug("DSDPlus.log not found — log-tail decode unavailable")
+            return
+        try:
+            with self._log_path.open("r", encoding="utf-8",
+                                     errors="replace") as fh:
+                fh.seek(0, 2)  # seek to end — ignore history
+                while self._running:
+                    line = fh.readline()
+                    if not line:
+                        time.sleep(0.2)
+                        continue
+                    line = line.rstrip()
+                    if not line:
+                        continue
+                    event = self._parse_line(line)
+                    if event:
+                        with self._lock:
+                            self._events.append(event)
+                            if len(self._events) > 500:
+                                self._events = self._events[-500:]
+                        if self._on_decode:
+                            try:
+                                self._on_decode(event)
+                            except Exception as e:
+                                log.debug(f"DSD+ decode callback: {e}")
+        except Exception as e:
+            if self._running:
+                log.warning(f"DSD+ log tail: {e}")
 
     def stop(self):
         self._running = False

@@ -41,7 +41,7 @@ except (ImportError, AttributeError):
         pass  # xmlrpc runs unpatched — acceptable for local Fldigi connection
 import xmlrpc.client  # nosec B411 - patched by defusedxml above
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Callable
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +72,9 @@ MODE_FREQS = {
 }
 
 
+_singleton: "FldigiBridge | None" = None
+
+
 class FldigiBridge:
     """
     Controls Fldigi via XML-RPC.
@@ -79,7 +82,18 @@ class FldigiBridge:
     and QSO logging back to Squelch.
     """
 
+    @classmethod
+    def instance(cls) -> "FldigiBridge | None":
+        """Return the active singleton, or None if not yet created."""
+        return _singleton
+
+    @classmethod
+    def _register(cls, inst: "FldigiBridge") -> None:
+        global _singleton
+        _singleton = inst
+
     def __init__(self, config, log_db=None):
+        FldigiBridge._register(self)
         self.cfg    = config
         self.log_db = log_db
         self._proc: subprocess.Popen | None = None

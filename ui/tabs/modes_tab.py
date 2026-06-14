@@ -776,9 +776,9 @@ class ModesTab(SquelchPanel, QWidget):
             if getattr(self._dx_cluster, "_running", False):
                 self._apply_dx_status("connected", "DX Cluster")
             else:
+                self._dx_cluster = None  # clear so Connect button works on retry
                 self._apply_dx_status("error", "")
-                self._dx_status.setText(
-                    "DX Cluster: configure HamAlert API key")
+                self._dx_status.setText("DX Cluster: connection failed — check settings")
 
     def _on_dx_status(self, status: str, node: str = ""):
         from PyQt6.QtCore import QTimer
@@ -912,6 +912,13 @@ class ModesTab(SquelchPanel, QWidget):
         self._fldigi_panel.setVisible(is_fldigi)
         self._auto_seq_cb.setEnabled(is_weak)
         self._auto_cq_cb.setEnabled(is_weak)
+        if is_weak:
+            self._auto_seq_cb.setToolTip(
+                "Let the software automatically step through the QSO exchange "
+                "(signal report, R+report, 73). Recommended for beginners.")
+        else:
+            self._auto_seq_cb.setToolTip(
+                "Auto-sequence is only available for FT8, FT4, WSPR, and JS8.")
 
         # Update band/freq for this mode
         self._on_band_change(self._band_combo.currentText())

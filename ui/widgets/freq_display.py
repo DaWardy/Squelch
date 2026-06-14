@@ -63,7 +63,9 @@ class FreqDisplay(QWidget):
         self._lbl.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._lbl.setCursor(Qt.CursorShape.IBeamCursor)
-        self._lbl.setToolTip("Click to enter frequency (Hz or MHz)")
+        self._lbl.setToolTip(
+            "Click to enter frequency (Hz or MHz)\n"
+            "Scroll to tune  ·  Ctrl+scroll: 100 Hz  ·  Shift+scroll: 10 kHz")
         self._lbl.mousePressEvent = self._start_edit
 
         self._edit = QLineEdit()
@@ -144,6 +146,27 @@ class FreqDisplay(QWidget):
     def _focus_out(self, event):
         self._end_edit()
         QLineEdit.focusOutEvent(self._edit, event)
+
+    def wheelEvent(self, event):
+        """Scroll to tune: 1 kHz/notch, 100 Hz with Ctrl, 10 kHz with Shift."""
+        mods = event.modifiers()
+        if mods & Qt.KeyboardModifier.ControlModifier:
+            step = 100
+        elif mods & Qt.KeyboardModifier.ShiftModifier:
+            step = 10_000
+        else:
+            step = 1_000
+        delta = event.angleDelta().y()
+        if delta == 0:
+            event.ignore()
+            return
+        new_hz = self._freq_hz + (1 if delta > 0 else -1) * step
+        new_hz = max(1_000, min(450_000_000, new_hz))
+        if new_hz != self._freq_hz:
+            self._freq_hz = new_hz
+            self._lbl.setText(self._fmt(new_hz))
+            self.freq_changed.emit(new_hz)
+        event.accept()
 
     @staticmethod
     def _fmt(hz: int) -> str:

@@ -25,6 +25,7 @@ callsign lookup integration.
 """
 from core.constants import APP_VERSION
 from core.sanitize import csv_safe
+from core.guest_op import operating_callsign
 
 import logging
 from pathlib import Path
@@ -638,7 +639,7 @@ class LogTab(SquelchPanel, QWidget):
                 grid      = grid_square_soft(f["grid_edit"].text()),
                 name      = f["name_edit"].text().strip()[:50],
                 comment   = f["comment_edit"].text().strip()[:200],
-                my_call   = self.cfg.callsign,
+                my_call   = operating_callsign(self.cfg),
                 my_grid   = self.cfg.grid,
                 my_lat    = self.cfg.get("location.lat", 0.0),
                 my_lon    = self.cfg.get("location.lon", 0.0),
@@ -796,7 +797,7 @@ class LogTab(SquelchPanel, QWidget):
                             record.get('GRIDSQUARE', '')),
                         name      = record.get('NAME', '')[:50],
                         comment   = record.get('COMMENT', '')[:200],
-                        my_call   = self.cfg.callsign,
+                        my_call   = operating_callsign(self.cfg),
                         my_grid   = self.cfg.grid,
                         source    = "adif_import",
                     )

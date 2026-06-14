@@ -118,6 +118,13 @@ class DigitalTab(SquelchPanel, QWidget):
         self._op25    = OP25Bridge(config)
         self._active_backend = None
 
+        # Session statistics counters
+        self._stats: dict[str, int] = {
+            "total": 0, "P25": 0, "DMR": 0,
+            "NXDN": 0, "YSF": 0, "DSTAR": 0, "encrypted": 0,
+        }
+        self._session_start = datetime.now(timezone.utc)
+
         # Wire callbacks
         self._dsdplus.on_decode(self._on_decode)
         self._dsdplus.on_status(self._on_dsd_status)
@@ -313,8 +320,8 @@ class DigitalTab(SquelchPanel, QWidget):
         try:
             from modes.fldigi_bridge import FldigiBridge
             bridge = FldigiBridge.instance()
-            if bridge and bridge.connected:
-                bridge.send_text(txt)
+            if bridge and bridge.is_connected:
+                bridge.transmit(txt)
                 return True
         except Exception:
             pass
@@ -379,6 +386,11 @@ class DigitalTab(SquelchPanel, QWidget):
 
     def _build_status_audio_control(self, lay: "QHBoxLayout") -> None:
         lay.addStretch()
+        self._route_lbl = QLabel("")
+        self._route_lbl.setStyleSheet(
+            "font-size:10px;font-family:'Courier New';color:#888;")
+        lay.addWidget(self._route_lbl)
+        lay.addWidget(_vsep())
         audio_in = (
             self.cfg.get("audio.digital_input", "") or "not set"
         ) if self.cfg else "—"
@@ -507,15 +519,21 @@ class DigitalTab(SquelchPanel, QWidget):
     def _build_session_stats_panel(self) -> "QGroupBox":
         stats_grp = QGroupBox("Session Statistics")
         sl = QVBoxLayout(stats_grp)
-        self._stats_lbl = QLabel(
-            "Calls decoded:    0\n"
-            "P25 calls:        0\n"
-            "DMR calls:        0\n"
-            "Encrypted:        0\n"
-            "Session started:  —")
+        self._stats_lbl = QLabel("")
         self._stats_lbl.setStyleSheet("font-family:'Courier New';")
         sl.addWidget(self._stats_lbl)
+        self._refresh_stats()
         return stats_grp
+
+    def _refresh_stats(self) -> None:
+        started = self._session_start.strftime("%H:%Mz")
+        self._stats_lbl.setText(
+            f"Calls decoded:    {self._stats['total']}\n"
+            f"P25 calls:        {self._stats['P25']}\n"
+            f"DMR calls:        {self._stats['DMR']}\n"
+            f"Encrypted:        {self._stats['encrypted']}\n"
+            f"Session started:  {started}"
+        )
 
     def _build_info_panels(self) -> "QWidget":
         w   = QWidget()
@@ -648,6 +666,14 @@ class DigitalTab(SquelchPanel, QWidget):
         self._update_statusbar_decode(event, color)
         self._update_call_panel_decode(event)
         self._no_decoder_msg.hide()
+
+        # Live stats
+        self._stats["total"] += 1
+        self._stats[event.protocol] = self._stats.get(event.protocol, 0) + 1
+        if event.encrypted:
+            self._stats["encrypted"] += 1
+        if hasattr(self, "_stats_lbl"):
+            self._refresh_stats()
 
     def _on_row_click(self, index):
         """Show detail for clicked row."""

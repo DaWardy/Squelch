@@ -113,9 +113,10 @@ class OP25Bridge:
             with urllib.request.urlopen(  # nosec B310
                     f"{self.OP25_API}/status",
                     timeout=2) as resp:
-                if len(resp.read(100_000)) > 100_000:
+                raw = resp.read(100_001)
+                if len(raw) > 100_000:
                     return
-                data = json.loads(resp.read())
+                data = json.loads(raw)
                 self._status.running      = True
                 self._status.talkgroup    = str(
                     data.get("talkgroup", ""))

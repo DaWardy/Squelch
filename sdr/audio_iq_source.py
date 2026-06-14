@@ -283,6 +283,8 @@ def find_rig_audio_device(rig_model: str) -> Optional[str]:
     if not HAS_SD:
         return None
     hints = RIG_AUDIO_HINTS.get(rig_model, [])
+    if not hints:
+        return None  # rig uses SoapySDR or has no audio path
     try:
         for d in sd.query_devices():
             if d["max_input_channels"] < 1:

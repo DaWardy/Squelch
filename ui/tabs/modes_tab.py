@@ -109,6 +109,7 @@ class ModesTab(SquelchPanel, QWidget):
         self.ft8_engine.on_state_change(self._on_seq_state)
         self.ft8_engine.on_tx(self._on_ft8_tx)
         self.ft8_engine.on_qso_complete(self._on_qso_done)
+        self.ft8_engine.on_wsjtx_status(self._on_wsjtx_status)
         self.wspr_engine.on_spot(self._on_wspr_spot)
         self.wspr_engine.on_status(self._on_wspr_status)
         self.fldigi.on_rx(self._on_fldigi_rx)
@@ -266,8 +267,17 @@ class ModesTab(SquelchPanel, QWidget):
         self._cycle_label.setStyleSheet(
             "color:#3fbe6f; font-family:'Courier New'; ")
         self._cycle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._wsjtx_lbl = QLabel("⚠ WSJT-X not connected — waiting for UDP…")
+        self._wsjtx_lbl.setStyleSheet(
+            "color:#ffaa44;font-size:10px;font-family:'Courier New';")
+        self._wsjtx_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._wsjtx_lbl.setToolTip(
+            "WSJT-X must be running and set to multicast UDP on port 2237.\n"
+            "Launch WSJT-X, then go to File → Settings → Reporting and\n"
+            "enable UDP server on 127.0.0.1:2237.")
         cycle_l.addWidget(self._cycle_bar)
         cycle_l.addWidget(self._cycle_label)
+        cycle_l.addWidget(self._wsjtx_lbl)
         cycle_grp.setMinimumHeight(80)
         self._left_layout.addWidget(cycle_grp)
         
@@ -992,16 +1002,24 @@ class ModesTab(SquelchPanel, QWidget):
 
     def _fldigi_tx(self):
         text = self._fldigi_tx_edit.text()
-        if text and self.fldigi.is_connected:
-            # C-08 (Hank) / C-06 (Elena): block TX in Guest mode / unsafe state.
-            if not get_safety().can_transmit():
-                self._log_activity(
-                    "TX blocked — Demo Mode is ON (transmit disabled). "
-                    "Turn it off in the View menu.")
-                return
-            self.fldigi.transmit(text)
-            self._log_activity(f"TX ({self._current_mode}): {text}")
-            self._fldigi_tx_edit.clear()
+        if not text:
+            return
+        if not self.fldigi.is_connected:
+            self._log_activity(
+                "TX blocked — Fldigi not connected. "
+                "Click 'Launch Fldigi' above.")
+            self._fldigi_status.setText("● Not connected — launch Fldigi first")
+            self._fldigi_status.setStyleSheet("color:#cc4444;")
+            return
+        # C-08 (Hank) / C-06 (Elena): block TX in Demo mode / unsafe state.
+        if not get_safety().can_transmit():
+            self._log_activity(
+                "TX blocked — Demo Mode is ON (transmit disabled). "
+                "Turn it off in the View menu.")
+            return
+        self.fldigi.transmit(text)
+        self._log_activity(f"TX ({self._current_mode}): {text}")
+        self._fldigi_tx_edit.clear()
 
     # ── FT8 engine callbacks ──────────────────────────────────────────────
 
@@ -1044,6 +1062,21 @@ class ModesTab(SquelchPanel, QWidget):
             setattr(self._stat_decodes, "text",
                     str(int(self._stat_decodes.text()) + 1))))
 
+    def _on_wsjtx_status(self, connected: bool):
+        QTimer.singleShot(0, lambda c=connected: self._apply_wsjtx_status(c))
+
+    def _apply_wsjtx_status(self, connected: bool):
+        if not hasattr(self, "_wsjtx_lbl"):
+            return
+        if connected:
+            self._wsjtx_lbl.setText("● WSJT-X connected")
+            self._wsjtx_lbl.setStyleSheet(
+                "color:#3fbe6f;font-size:10px;font-family:'Courier New';")
+        else:
+            self._wsjtx_lbl.setText("⚠ WSJT-X not connected — waiting for UDP…")
+            self._wsjtx_lbl.setStyleSheet(
+                "color:#ffaa44;font-size:10px;font-family:'Courier New';")
+
     def _on_wspr_status(self, msg: str):
         QTimer.singleShot(0, lambda m=msg:
             self._log_activity(f"WSPR: {m}"))
@@ -1063,7 +1096,7 @@ class ModesTab(SquelchPanel, QWidget):
             item.setForeground(QBrush(QColor("#ffaa00")))
         elif decode.new_grid:
             item.setForeground(QBrush(QColor("#44aaff")))
-        elif decode.is_reply_to == self.cfg.callsign.upper():
+        elif decode.is_reply_to == operating_callsign(self.cfg).upper():
             item.setForeground(QBrush(QColor("#3fbe6f")))
             item.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
 
@@ -1103,7 +1136,7 @@ class ModesTab(SquelchPanel, QWidget):
             return "NEW BAND"
         if decode.is_cq:
             return "CQ"
-        if decode.is_reply_to == self.cfg.callsign.upper():
+        if decode.is_reply_to == operating_callsign(self.cfg).upper():
             return "▶ YOU"
         return ""
 

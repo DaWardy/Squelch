@@ -150,6 +150,7 @@ class FT8Engine:
         self._on_state:    Callable | None = None
         self._on_tx:       Callable | None = None
         self._on_qso_done: Callable | None = None
+        self._on_wsjtx_status: Callable | None = None
 
         # Cycle tracking
         self._cycle_timer = threading.Event()
@@ -260,11 +261,21 @@ class FT8Engine:
 
     def reconnect(self):
         """Called by Rescan button — reset connection state."""
+        prev = self._wsjtx_connected
         self._wsjtx_connected = False
         self._cq_timeout = 0
         if self._state != AutoSeqState.IDLE:
             self._set_state(AutoSeqState.IDLE)
         log.info("FT8 engine reconnect requested")
+        if prev and self._on_wsjtx_status:
+            try:
+                self._on_wsjtx_status(False)
+            except Exception:
+                pass
+
+    def on_wsjtx_status(self, cb: Callable):
+        """Callback: cb(connected: bool) fired when WSJT-X connects/disconnects."""
+        self._on_wsjtx_status = cb
 
     def halt_tx(self):
         """Stop transmitting after current transmission."""
@@ -305,6 +316,11 @@ class FT8Engine:
         if not self._wsjtx_connected:
             self._wsjtx_connected = True
             log.info("WSJT-X UDP connected")
+            if self._on_wsjtx_status:
+                try:
+                    self._on_wsjtx_status(True)
+                except Exception:
+                    pass
 
         """
         Parse WSJT-X UDP protocol packets.

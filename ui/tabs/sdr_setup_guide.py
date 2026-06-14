@@ -1,6 +1,7 @@
 from __future__ import annotations
 """SDR setup-guide mixin."""
 import subprocess, sys, webbrowser
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QScrollArea, QPushButton, QFrame)
 from core.themes import get_theme as _sg_get_theme
@@ -33,13 +34,22 @@ class _SDRSetupGuideMixin:
         return found
 
     def _build_no_soapy(self, layout):
+        _t = _sg_get_theme(
+            self.cfg.get("ui.theme", "Dark") if getattr(self, "cfg", None) else "Dark")
+        # Persistent banner — always visible above the scrollable guide
+        banner = QLabel("● No SDR hardware detected   —   see setup guide below")
+        banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        banner.setFixedHeight(28)
+        banner.setStyleSheet(
+            "background:#3a1a00;color:#ffaa44;font-weight:bold;"
+            "border-bottom:1px solid #aa6600;padding:4px;")
+        layout.addWidget(banner)
+
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         inner = QWidget(); vl = QVBoxLayout(inner)
         vl.setContentsMargins(20,20,20,20); vl.setSpacing(16)
         scroll.setWidget(inner)
-        _t = _sg_get_theme(
-            self.cfg.get("ui.theme", "Dark") if getattr(self, "cfg", None) else "Dark")
         h = QLabel("SDR Setup — SoapySDR not installed")
         h.setStyleSheet(f"font-size:16px;font-weight:bold;color:{_t.accent};")
         vl.addWidget(h)

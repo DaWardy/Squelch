@@ -86,3 +86,37 @@ class TestVARAModemState:
         m._handle_response("VERSION VARA HF v4.7.3")
         assert "4.7.3" in m.version or \
                "VARA" in m.version
+
+
+class TestVARAStateCallbackType:
+    """VARAState enum must not crash when passed to on_state consumers.
+
+    Regression for: AttributeError: 'VARAState' object has no attribute 'lower'
+    Root cause: winlink_tab._on_vara_state called state.lower() but
+    VARAModem passes a VARAState enum (not a plain string) to the callback.
+    """
+
+    def test_vara_state_has_string_value(self):
+        for member in VARAState:
+            assert isinstance(member.value, str), \
+                f"{member} .value must be str, got {type(member.value)}"
+
+    def test_callback_receives_enum_not_string(self):
+        m    = VARAModem()
+        seen = []
+        m.on_state(lambda s: seen.append(s))
+        m._set_state(VARAState.CONNECTED)
+        assert seen and isinstance(seen[0], VARAState)
+
+    def test_consumer_handles_enum_without_crash(self):
+        """Simulate the fixed _on_vara_state pattern."""
+        state = VARAState.CONNECTED
+        state_str = state.value if hasattr(state, "value") else str(state)
+        connected = state_str.lower() in ("connected", "linked")
+        assert connected is True
+
+    def test_consumer_handles_all_states(self):
+        """All VARAState members must be processable as strings."""
+        for member in VARAState:
+            state_str = member.value if hasattr(member, "value") else str(member)
+            _ = state_str.lower()  # must not raise

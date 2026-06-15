@@ -277,15 +277,20 @@ class RigTab(SquelchPanel, QWidget):
     def _build_vfo_arrow_row(self, vfl) -> None:
         arrow_row = QHBoxLayout()
         arrow_row.setSpacing(4)
+        _ta = _get_rig_theme(self.cfg.get("ui.theme", "Dark"))
+        _abtn_ss = (
+            f"QPushButton{{border:1px solid {_ta.border};"
+            f"border-radius:4px;background:{_ta.bg_tertiary};"
+            f"color:{_ta.fg_primary};}}"
+            f"QPushButton:hover{{background:{_ta.bg_secondary};"
+            f"color:{_ta.accent};}}"
+            f"QPushButton:pressed{{background:{_ta.bg_primary};}}"
+        )
         def _abtn(label, tip, cb):
             b = QPushButton(label)
             b.setFixedSize(34, 28)
             b.setToolTip(tip)
-            b.setStyleSheet(
-                "QPushButton{border:1px solid #2a2a2a;"
-                "border-radius:4px;background:#141414;}"
-                "QPushButton:hover{background:#1e3a1e;color:#3fbe6f;}"
-                "QPushButton:pressed{background:#0a1a0a;}")
+            b.setStyleSheet(_abtn_ss)
             b.clicked.connect(cb)
             return b
         arrow_row.addWidget(_abtn("⏮", "Jump to band start", self._jump_band_start))
@@ -421,17 +426,21 @@ class RigTab(SquelchPanel, QWidget):
         self._mode_btns = {}
         self._mode_btn_grp = QButtonGroup(self)
         self._mode_btn_grp.setExclusive(True)
+        _t = _get_rig_theme(self.cfg.get("ui.theme", "Dark"))
+        _mode_btn_ss = (
+            f"QPushButton{{border:1px solid {_t.border};"
+            f"border-radius:4px;background:{_t.bg_tertiary};"
+            f"color:{_t.fg_primary};}}"
+            f"QPushButton:checked{{background:{_t.bg_secondary};"
+            f"color:{_t.accent};border-color:{_t.accent};font-weight:bold;}}"
+            f"QPushButton:hover{{background:{_t.bg_secondary};}}"
+        )
         for label, hamlib_mode, tip in MODE_BUTTONS:
             btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setFixedSize(46, 28)
             btn.setToolTip(tip)
-            btn.setStyleSheet(
-                "QPushButton{border:1px solid #2a2a2a;"
-                "border-radius:4px;background:#141414;}"
-                "QPushButton:checked{background:#1a3a1a;color:#3fbe6f;"
-                "border-color:#3fbe6f;font-weight:bold;}"
-                "QPushButton:hover{background:#1e2e1e;}")
+            btn.setStyleSheet(_mode_btn_ss)
             btn.clicked.connect(lambda _, m=hamlib_mode: self._on_mode_btn(m))
             self._mode_btns[label] = btn
             self._mode_btn_grp.addButton(btn)
@@ -557,8 +566,10 @@ class RigTab(SquelchPanel, QWidget):
             cw_layout.setContentsMargins(8, 4, 8, 4)
     
             self._cw_text = QLineEdit()
+            from core.guest_op import operating_callsign
+            _cs = operating_callsign(self.cfg) or "MYCALL"
             self._cw_text.setPlaceholderText(
-                "CQ CQ DE N0CALL  or any text to send in Morse")
+                f"CQ CQ DE {_cs}  or any text to send in Morse")
             self._cw_text.setFont(
                 __import__("PyQt6.QtGui",
                 fromlist=["QFont"]).QFont("Courier New", 12))

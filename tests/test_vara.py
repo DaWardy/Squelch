@@ -120,3 +120,44 @@ class TestVARAStateCallbackType:
         for member in VARAState:
             state_str = member.value if hasattr(member, "value") else str(member)
             _ = state_str.lower()  # must not raise
+
+
+class TestVARAOnStateSeamContract:
+    """End-to-end seam test: VARAModem emits → on_state callback receives → consumer works.
+
+    Reproduces the class of bug where a module emits an enum to a callback but
+    the consumer downstream calls string methods on it. Adding new callbacks
+    that use .lower()/.upper()/string formatting on the argument MUST be tested
+    in a class like this to catch type mismatches before runtime.
+    """
+
+    def test_full_chain_connected_state(self):
+        """Simulate the exact path: _set_state(CONNECTED) → on_state callback → str ops."""
+        m = VARAModem()
+        results = []
+
+        def on_state_consumer(state):
+            # Replicate what any well-written consumer should do
+            state_str = state.value if hasattr(state, "value") else str(state)
+            results.append({
+                "connected": state_str.lower() in ("connected", "linked"),
+                "label":     state_str,
+            })
+
+        m.on_state(on_state_consumer)
+        for s in [VARAState.IDLE, VARAState.CONNECTED, VARAState.BUSY,
+                  VARAState.DISCONNECTED]:
+            m._set_state(s)
+
+        assert len(results) == 4
+        assert results[1]["connected"] is True    # CONNECTED
+        assert results[2]["connected"] is False   # BUSY → TX disabled (transfer active)
+        assert results[0]["connected"] is False   # IDLE
+
+    def test_state_label_is_human_readable(self):
+        """VARAState.value strings must be title-cased words, not enum names."""
+        for member in VARAState:
+            assert member.value[0].isupper(), \
+                f"{member.name}.value='{member.value}' must start uppercase"
+            assert "_" not in member.value, \
+                f"{member.name}.value='{member.value}' must not contain underscores"

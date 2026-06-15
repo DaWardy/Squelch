@@ -101,7 +101,8 @@ class SpotFeed:
     def start(self, band: str, mode: str):
         self._band    = band
         self._mode    = mode
-        self._my_call = self.cfg.callsign.upper()
+        from core.guest_op import operating_callsign
+        self._my_call = operating_callsign(self.cfg).upper()
         self._running = True
         self._thread  = threading.Thread(
             target=self._run, daemon=True, name="SpotFeed")

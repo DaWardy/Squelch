@@ -29,6 +29,7 @@ import time
 import requests
 from dataclasses import dataclass, field
 from typing import Optional, Callable
+from core.guest_op import operating_callsign
 
 log = logging.getLogger(__name__)
 
@@ -211,7 +212,7 @@ class WSPREngine:
             self.rig.set_freq(freq)
             self.rig.set_mode("PKTUSB")
 
-        cs   = self.cfg.callsign
+        cs   = operating_callsign(self.cfg)
         grid = self.cfg.grid[:4] if self.cfg.grid else "AA00"
         msg  = f"{cs} {grid} {self._power_dbm}"
 
@@ -244,7 +245,7 @@ class WSPREngine:
 
             params = {
                 "function":   "wspr",
-                "rcall":      self.cfg.callsign,
+                "rcall":      operating_callsign(self.cfg),
                 "rgrid":      self.cfg.grid[:4],
                 "rqrg":       f"{spot.freq_hz/1e6:.6f}",
                 "date":       dt_str[:10],

@@ -19,6 +19,7 @@ from __future__ import annotations
 # <https://www.gnu.org/licenses/>.
 import logging
 from core.themes import get_theme
+from core.guest_op import operating_callsign
 from datetime import datetime, timezone
 
 from ui.panel import SquelchPanel
@@ -659,7 +660,7 @@ class WinlinkTab(SquelchPanel, QWidget):
             return
         try:
             from winlink.templates import TEMPLATE_LIST
-            cs = self.cfg.callsign if self.cfg else ""
+            cs = operating_callsign(self.cfg) if self.cfg else ""
             for tname, fn, _ in TEMPLATE_LIST:
                 if tname == name:
                     msg = fn(my_callsign=cs)
@@ -687,7 +688,7 @@ class WinlinkTab(SquelchPanel, QWidget):
             mid      = f"p2p_{int(time.time())}",
             folder   = "outbox",
             to       = call,
-            from_    = self.cfg.callsign if self.cfg else "",
+            from_    = operating_callsign(self.cfg) if self.cfg else "",
             subject  = subj or f"P2P - {call}",
             body     = body,
             date_utc = "",
@@ -775,7 +776,7 @@ class WinlinkTab(SquelchPanel, QWidget):
         self._current_tmpl_fn = fn
         self._tmpl_desc.setText(desc)
         try:
-            cs  = self.cfg.callsign if self.cfg else ""
+            cs  = operating_callsign(self.cfg) if self.cfg else ""
             msg = fn(my_callsign=cs)
             preview = (
                 f"To:      {msg.to}\n"
@@ -945,7 +946,7 @@ class WinlinkTab(SquelchPanel, QWidget):
         if not self._current_tmpl_fn:
             return
         try:
-            cs  = self.cfg.callsign if self.cfg else ""
+            cs  = operating_callsign(self.cfg) if self.cfg else ""
             msg = self._current_tmpl_fn(my_callsign=cs)
             self._to_edit.setText(msg.to)
             self._subj_edit.setText(msg.subject)

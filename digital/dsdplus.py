@@ -214,34 +214,6 @@ class DSDPlusManager:
 
     # ── Output parsing ────────────────────────────────────────────────────
 
-    def _read_loop(self):
-        """Read DSD+ stdout and parse decode events."""
-        if not self._proc:
-            return
-        try:
-            for line in self._proc.stdout:
-                if not self._running:
-                    break
-                line = line.rstrip()
-                if not line:
-                    continue
-                event = self._parse_line(line)
-                if event:
-                    with self._lock:
-                        self._events.append(event)
-                        if len(self._events) > 500:
-                            self._events = self._events[-500:]
-                    if self._on_decode:
-                        try:
-                            self._on_decode(event)
-                        except Exception as e:
-                            log.debug(f"Decode callback: {e}")
-        except Exception as e:
-            if self._running:
-                log.warning(f"DSD+ read loop: {e}")
-        self._running = False
-        self._notify_status("stopped")
-
     def _parse_line(self, line: str) -> DecodeEvent | None:
         """Parse a DSD+ output line into a DecodeEvent."""
         # Detect protocol

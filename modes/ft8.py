@@ -459,7 +459,7 @@ class FT8Engine:
                     rst_sent  = self._qso.my_report or "+00",
                     rst_rcvd  = self._qso.their_report or "+00",
                     grid      = self._qso.their_grid,
-                    my_call   = self.cfg.callsign,
+                    my_call   = self._operating_call(),
                     my_grid   = self.cfg.grid,
                     tx_pwr_w  = _dbm_to_w(
                         self.cfg.get("ft8.tx_power_dbm", 37)),
@@ -524,7 +524,7 @@ class FT8Engine:
 
     def _send_report(self):
         """Send signal report to the station we're working."""
-        cs  = self.cfg.callsign
+        cs  = self._operating_call()
         snr = self._qso.their_snr
         report = f"{snr:+03d}"
         msg = f"{self._qso.their_call} {cs} {report}"
@@ -533,7 +533,7 @@ class FT8Engine:
         self._set_state(AutoSeqState.REPORT_SENT)
 
     def _send_rrr(self):
-        cs  = self.cfg.callsign
+        cs  = self._operating_call()
         msg = f"{self._qso.their_call} {cs} RR73"
         self._queue_tx(msg)
         self._set_state(AutoSeqState.RRR_SENT)

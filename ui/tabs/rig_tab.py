@@ -456,6 +456,10 @@ class RigTab(SquelchPanel, QWidget):
         self.ptt_btn = QPushButton("● TX")
         self.ptt_btn.setCheckable(True)
         self.ptt_btn.setFixedSize(64, 36)
+        self.ptt_btn.setToolTip(
+            "Push-to-talk — toggles transmit\n"
+            "Hold Space while Rig tab is focused for PTT\n"
+            "Demo Mode and AppState FSM block unintended TX")
         self.ptt_btn.setStyleSheet(
             "QPushButton{border:2px solid #883333;border-radius:5px;"
             "color:#cc4444;font-weight:bold;background:#1a0808;}"

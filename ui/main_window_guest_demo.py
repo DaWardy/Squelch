@@ -173,3 +173,18 @@ class _MainWindowGuestDemoMixin:
         bar.setText(f"  GUEST OPERATOR: {gc} operating {station}  ")
         bar.setVisible(bool(active and gc))
 
+        # Keep topbar callsign label in sync with operating callsign
+        cs_lbl = getattr(self, "_cs_lbl", None)
+        if cs_lbl is not None:
+            from core.guest_op import operating_callsign
+            op_call = operating_callsign(self.cfg) or self.cfg.callsign or "No callsign set"
+            cs_lbl.setText(op_call)
+            if active and gc:
+                cs_lbl.setToolTip(
+                    f"Guest operator: {gc}\nStation: {station}\n"
+                    "All transmissions use the guest callsign")
+            else:
+                cs_lbl.setToolTip(
+                    "Your FCC callsign\nClick to edit\n"
+                    "Used in all transmissions, logs, and beacons")
+

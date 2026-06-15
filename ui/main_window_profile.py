@@ -52,14 +52,16 @@ class _MainWindowProfileMixin:
             pm = get_profile_manager()
             if pm.switch_to(name):
                 # Refresh UI from new profile
-                cs = self.cfg.callsign
-                if cs:
-                    self._cs_lbl.setText(cs)
                 grid = self.cfg.grid
                 if grid:
                     self._grid_lbl.setText(grid)
+                # _update_guest_banner sets _cs_lbl to operating_callsign()
+                # (guest or station), so call it even if guest mode is active
+                self._update_guest_banner()
+                from core.guest_op import operating_callsign
+                tx_cs = operating_callsign(self.cfg) or self.cfg.callsign
                 log.info(f"Switched to profile: {name} "
-                         f"(TX callsign now {cs})")
+                         f"(TX callsign now {tx_cs})")
         except Exception as e:
             log.warning(f"Profile switch: {e}")
 

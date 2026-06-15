@@ -49,13 +49,17 @@ def test_ft8_engine_tx_without_rig_does_not_crash(app):
 
 
 def test_vara_state_callback_arity(app):
-    """The VARA state callback is invoked as _on_vara_state(state, label)."""
+    """The VARA state callback is invoked with a VARAState enum, not a string.
+    Previously this test used plain strings (which have .lower()), giving a
+    false green while the real modem passed an enum — causing the crash."""
     from core.config import Config
     from ui.tabs.winlink_tab import WinlinkTab
+    from winlink.vara import VARAState
     cfg = Config()
     tab = WinlinkTab(cfg, None)
-    tab._on_vara_state("CONNECTED")            # 1-arg
-    tab._on_vara_state("CONNECTED", "HF")      # 2-arg
+    tab._on_vara_state(VARAState.CONNECTED)            # 1-arg, enum type
+    tab._on_vara_state(VARAState.CONNECTED, "HF")      # 2-arg, enum type
+    tab._on_vara_state(VARAState.DISCONNECTED)         # test non-connected state
 
 
 def test_winlink_send_without_setup_does_not_crash(app):

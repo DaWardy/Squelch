@@ -144,3 +144,56 @@ class TestAPRSPasscode:
         # SSID should not affect passcode
         assert (APRSClient.compute_passcode("W1AW") ==
                 APRSClient.compute_passcode("W1AW-9"))
+
+
+class TestAPRSBeaconGuestMode:
+    """APRSBeacon._send() must use operating_callsign(), not cfg.callsign."""
+
+    def test_beacon_uses_guest_callsign(self, tmp_path):
+        from unittest.mock import MagicMock
+        from core.config import Config
+        from aprs.beacon import APRSBeacon
+
+        cfg = Config(tmp_path / "config.json")
+        cfg.callsign = "W1AW"
+        cfg.set("location.lat", 39.7)
+        cfg.set("location.lon", -104.9)
+        cfg.set("guest.active",   True)
+        cfg.set("guest.callsign", "KE2XYZ")
+
+        sent: list[str] = []
+        mock_sock = MagicMock()
+        mock_sock.sendall.side_effect = lambda p: sent.append(p.decode())
+        mock_client = MagicMock()
+        mock_client.is_connected = True
+        mock_client._sock = mock_sock
+
+        beacon = APRSBeacon(cfg, mock_client)
+        beacon._send()
+
+        assert sent, "beacon sent nothing"
+        assert any("KE2XYZ" in p for p in sent)
+        assert all("W1AW" not in p for p in sent)
+
+    def test_beacon_uses_station_callsign_without_guest(self, tmp_path):
+        from unittest.mock import MagicMock
+        from core.config import Config
+        from aprs.beacon import APRSBeacon
+
+        cfg = Config(tmp_path / "config.json")
+        cfg.callsign = "W1AW"
+        cfg.set("location.lat", 39.7)
+        cfg.set("location.lon", -104.9)
+
+        sent: list[str] = []
+        mock_sock = MagicMock()
+        mock_sock.sendall.side_effect = lambda p: sent.append(p.decode())
+        mock_client = MagicMock()
+        mock_client.is_connected = True
+        mock_client._sock = mock_sock
+
+        beacon = APRSBeacon(cfg, mock_client)
+        beacon._send()
+
+        assert sent, "beacon sent nothing"
+        assert any("W1AW" in p for p in sent)

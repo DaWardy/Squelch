@@ -120,3 +120,16 @@ def test_serial_not_incremented_on_preview():
     mgr = MacroManager(cfg)
     mgr.expand("{serial}", auto_increment_serial=False)
     assert store.get("session.serial") == 3, "serial changed on preview"
+
+
+def test_expand_uses_guest_callsign_in_guest_mode():
+    """When guest mode is active, {mycall} must expand to the guest callsign."""
+    from core.macros import MacroManager
+    cfg = _mock_cfg(**{
+        "guest.active":   True,
+        "guest.callsign": "KE2XYZ",
+    })
+    mgr = MacroManager(cfg)
+    result = mgr.expand("CQ DE {mycall} K")
+    assert "KE2XYZ" in result
+    assert "W1AW" not in result

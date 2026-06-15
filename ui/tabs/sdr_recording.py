@@ -32,7 +32,8 @@ class _SDRRecordingMixin:
             self._refresh_recordings()
         else:
             hw = (self._current.display_name if self._current else "")
-            cs   = self.cfg.callsign or ""
+            from core.guest_op import operating_callsign
+            cs   = operating_callsign(self.cfg) or ""
             grid = self.cfg.grid or ""
             notes = (f"operator:{cs} grid:{grid}".strip()
                      if cs or grid else "")

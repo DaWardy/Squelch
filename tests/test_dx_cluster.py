@@ -44,3 +44,32 @@ class TestDXSpot:
                       spotter="W1AW",
                       source="PSKReporter")
         assert spot.source == "PSKReporter"
+
+
+class TestDXSpotFeedGuestMode:
+    """DXSpotFeed._my_call must use operating_callsign(), not cfg.callsign."""
+
+    def _make_cfg(self, tmp_path, guest=False):
+        from core.config import Config
+        cfg = Config(tmp_path / "config.json")
+        cfg.callsign = "W1AW"
+        if guest:
+            cfg.set("guest.active",   True)
+            cfg.set("guest.callsign", "KE2XYZ")
+        return cfg
+
+    def test_my_call_uses_station_call_without_guest(self, tmp_path):
+        from network.dx_spots import SpotFeed
+        cfg = self._make_cfg(tmp_path)
+        feed = SpotFeed(cfg)
+        feed.start("20m", "FT8")
+        feed.stop()
+        assert feed._my_call == "W1AW"
+
+    def test_my_call_uses_guest_call_in_guest_mode(self, tmp_path):
+        from network.dx_spots import SpotFeed
+        cfg = self._make_cfg(tmp_path, guest=True)
+        feed = SpotFeed(cfg)
+        feed.start("20m", "FT8")
+        feed.stop()
+        assert feed._my_call == "KE2XYZ"

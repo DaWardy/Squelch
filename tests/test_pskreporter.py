@@ -87,6 +87,37 @@ class TestPSKReporterXML:
         assert self.psk.pending_count == 2
 
 
+class TestPSKReporterGuestMode:
+    """Guest operator callsign must appear in XML, not station callsign."""
+
+    def setup_method(self):
+        from core.config import Config
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        self.cfg = Config(Path(tmp) / "config.json")
+        self.cfg.callsign = "W1AW"
+        self.cfg.grid     = "DM79rr"
+        # Activate guest operator
+        self.cfg.set("guest.active",   True)
+        self.cfg.set("guest.callsign", "KE2XYZ")
+        self.psk = PSKReporter(self.cfg)
+
+    def test_guest_callsign_in_receiver_info(self):
+        xml = self.psk._build_xml_payload([])
+        assert "KE2XYZ" in xml
+
+    def test_station_callsign_not_as_receiver(self):
+        xml = self.psk._build_xml_payload([])
+        # Station callsign must not appear as the receiverInfo callsign
+        assert 'callsign="W1AW"' not in xml
+
+    def test_guest_callsign_in_nonempty_payload(self):
+        spots = [ReceptionReport("VE3ABC", 14074000, "FT8", snr_db=-10)]
+        xml = self.psk._build_xml_payload(spots)
+        assert "KE2XYZ" in xml
+        assert "VE3ABC" in xml
+
+
 class TestXMLEscape:
     def test_ampersand(self):
         assert _xml_escape("A&B") == "A&amp;B"

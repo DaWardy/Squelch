@@ -403,20 +403,27 @@ class PropagationSideView(QWidget):
     def _draw_banner_labels(self, p: "QPainter", x0: int, top: int,
                             H: int, mode: str, msg: str):
         """Draw top info banner and bottom mode message."""
-        p.setPen(QColor("#cccccc"))
-        p.setFont(QFont("", 9))
-        line1 = f"{self._target or 'Path'}  •  {self._path_km:,.0f} km"
-        if self._freq_mhz > 0:
-            line1 += f"  •  TX {self._freq_mhz:.3f} MHz"
-        p.drawText(x0, top + 13, line1)
+        from PyQt6.QtGui import QFont as _QFont
+        _shadow = QColor(0, 0, 0, 180)
+
+        def _shadowed_text(px, py, text, fg, font):
+            p.setFont(font)
+            p.setPen(_shadow)
+            p.drawText(px + 1, py + 1, text)
+            p.setPen(QColor(fg))
+            p.drawText(px, py, text)
+        _shadowed_text(x0, top + 13,
+                       (f"{self._target or 'Path'}  •  "
+                        f"{self._path_km:,.0f} km"
+                        + (f"  •  TX {self._freq_mhz:.3f} MHz"
+                           if self._freq_mhz > 0 else "")),
+                       "#e0e0e0", _QFont("", 9))
         if self._muf_mhz > 0:
             fot   = round(0.85 * self._muf_mhz, 1)
             line2 = (f"LUF {self._luf_mhz:.1f} MHz  |  "
                      f"FOT {fot:.1f} MHz  |  "
                      f"MUF {self._muf_mhz:.1f} MHz")
-            p.setPen(QColor("#9fb8d4"))
-            p.setFont(QFont("", 8))
-            p.drawText(x0, top + 27, line2)
+            _shadowed_text(x0, top + 27, line2, "#c8d8eb", _QFont("", 8))
         if msg:
             color = {"groundwave": "#ffcc00", "nvis": "#66ddff",
                      "skywave": "#66ddff", "beyond": "#ff7777",

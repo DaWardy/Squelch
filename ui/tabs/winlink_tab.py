@@ -898,10 +898,12 @@ class WinlinkTab(SquelchPanel, QWidget):
         except Exception as e:
             self._set_status(f"Gateway list error: {e}", "#ee4444")
 
-    def _on_vara_state(self, state: str, label: str = ""):
+    def _on_vara_state(self, state, label: str = ""):
         """Called when VARA modem reports a state change."""
-        self._set_status(state)
-        connected = state.lower() in ('connected', 'linked')
+        # state is a VARAState enum; extract the string value
+        state_str = state.value if hasattr(state, "value") else str(state)
+        self._set_status(state_str)
+        connected = state_str.lower() in ("connected", "linked")
         for btn in getattr(self, '_tx_buttons', []):
             try:
                 btn.setEnabled(connected)

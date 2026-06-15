@@ -1151,7 +1151,12 @@ class ModesTab(SquelchPanel, QWidget):
     def _update_onair(self, state):
         """Reflect real TX state in the ON-AIR indicator (C-11, Tyler)."""
         name = getattr(state, "name", str(state)).upper()
-        transmitting = "TX" in name or "SEND" in name or "CALLING" in name
+        # Only show TRANSMITTING when the software state machine says TX AND
+        # WSJT-X is actually connected (engine can enter TX states internally
+        # without hardware if auto_cq fires while disconnected)
+        wsjtx_up = getattr(self.ft8_engine, "_wsjtx_connected", False)
+        transmitting = wsjtx_up and (
+            "TX" in name or "SEND" in name or "CALLING" in name)
         if transmitting:
             self._onair_label.setText("ON THE AIR — TRANSMITTING")
             self._onair_label.setStyleSheet(

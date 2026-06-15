@@ -100,7 +100,8 @@ class APRSBeacon:
                 elapsed += 10
 
     def _send(self) -> bool:
-        cs  = self.cfg.callsign
+        from core.guest_op import operating_callsign
+        cs  = operating_callsign(self.cfg)
         lat = self.cfg.get("location.lat", 0.0) or 0.0
         lon = self.cfg.get("location.lon", 0.0) or 0.0
         if not cs or not (lat or lon):

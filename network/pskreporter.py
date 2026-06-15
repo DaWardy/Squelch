@@ -187,7 +187,8 @@ class PSKReporter:
                            spots: list[ReceptionReport]
                            ) -> str:
         """Build PSKReporter XML submission payload."""
-        cs   = self.cfg.callsign or "NOCALL"
+        from core.guest_op import operating_callsign
+        cs   = operating_callsign(self.cfg) or "NOCALL"
         grid = self.cfg.grid or ""
         now  = int(time.time())
 

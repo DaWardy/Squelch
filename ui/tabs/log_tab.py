@@ -684,7 +684,8 @@ class LogTab(SquelchPanel, QWidget):
             return
         try:
             qsos    = self.log_db.recent_qsos(limit=9999)
-            cs      = self.cfg.callsign or "NOCALL"
+            from core.guest_op import operating_callsign
+            cs      = operating_callsign(self.cfg) or "NOCALL"
             grid    = self.cfg.grid or ""
             lines   = [
                 "START-OF-LOG: 3.0",

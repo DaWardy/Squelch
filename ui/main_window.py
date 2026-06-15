@@ -1031,8 +1031,9 @@ class MainWindow(
             return
         if dlg.exec():
             self._apply_station_settings()
-            if self.cfg.callsign:
-                self._cs_lbl.setText(self.cfg.callsign)
+            # _update_guest_banner sets _cs_lbl to operating_callsign(),
+            # accounting for any active guest session
+            self._update_guest_banner()
             if self.cfg.grid:
                 self._grid_lbl.setText(self.cfg.grid)
             from core.themes import get_stylesheet

@@ -1372,6 +1372,159 @@ that. CHIRP is a blessed partner with their own approval — when you
 export from CHIRP, that's CHIRP's authorized data delivered through you,
 your file, your own software. Perfectly clean.
 """),
+
+    ("TX Macros (F1–F8)", "Digital Modes",
+     """# TX Macros — F1 through F8
+
+## Overview
+The Digital tab has a row of eight macro buttons (F1–F8) that let
+you send pre-written messages with a single click or keypress.
+Macros are useful for contest exchanges, standard calling sequences,
+and any repetitive text.
+
+## Sending a Macro
+Click any F-button, or press the matching function key while the
+Digital tab is active. The macro text is expanded and sent
+immediately via the active TX bridge (Fldigi or JS8Call).
+
+## Editing Macros
+Right-click any macro button to open the edit dialog.
+  Label — short name shown on the button
+  Text  — message to send
+
+## Variable Substitution
+The following variables are expanded at send time:
+  {mycall}    — your callsign (respects Guest Operator mode)
+  {theircall} — last worked/decoded station
+  {freq}      — current VFO frequency in MHz
+  {mode}      — current operating mode
+  {serial}    — QSO serial number (auto-incremented)
+  {name}      — operator name from callsign lookup
+
+## Default Macros
+  F1: CQ — CQ CQ CQ DE {mycall} {mycall} K
+  F2: Exch — {mycall} 599 001
+  F3: TU — TU {mycall} K
+  F4: QSL — QSL TU 73 DE {mycall} SK
+  F5: AGN? — AGN? {theircall} DE {mycall}
+  F6: QRZ? — QRZ? DE {mycall}
+  F7: 73 — 73 DE {mycall} SK
+  F8: (empty — fill with your own text)
+
+Macros are saved in config and persist across sessions.
+"""),
+
+    ("Guest Operator Mode", "Station Setup",
+     """# Guest Operator Mode
+
+## What It Does
+Guest Operator mode lets a visitor or student transmit under
+their own callsign from your station. TX remains enabled.
+All transmissions automatically use the guest's callsign,
+satisfying FCC §97.119 station identification requirements.
+
+## How to Activate
+1. Go to Operate → Guest Operator… (or press Ctrl+G)
+2. Enter the guest's callsign
+3. Check "Operating under a control operator" if the station
+   licensee is present and supervising
+4. Click Start / Update
+
+A blue banner appears at the top of the window:
+  GUEST OPERATOR: [CALLSIGN] operating [station]
+
+## What Changes in Guest Mode
+  • All TX modes (FT8/FT4/WSPR, Fldigi, Winlink, APRS beacon,
+    PSKReporter submissions) use the guest callsign
+  • QSO log entries record the guest's callsign as the operator
+  • Macro {mycall} expands to the guest callsign
+  • DX cluster spot matching uses the guest callsign
+
+## Ending a Guest Session
+Operate → Guest Operator → End Guest Session, or close the dialog.
+The blue banner disappears and TX returns to the station callsign.
+
+## Demo Mode vs Guest Mode
+Demo Mode (Operate → Demo Mode) disables all TX at the AppState
+level — no RF is emitted regardless of buttons pressed. Use it
+for classroom demonstrations where the rig must not transmit.
+Guest Mode keeps TX enabled but changes whose callsign is used.
+These modes are independent and can be combined.
+"""),
+
+    ("Signal Identification", "SDR",
+     """# Signal Identification
+
+## Overview
+Squelch can identify unknown signals on the spectrum by comparing
+their frequency and bandwidth against the Artemis signal database
+(a crowd-sourced reference of ~500 known signal types).
+
+## How to Use
+1. Open the SDR tab
+2. Right-click on a signal in the spectrum or waterfall
+3. Select "Identify Signal at X.XXX MHz"
+4. The Signal ID panel opens on the right side of the waterfall
+   showing the best matches with:
+     • Signal name and category (Amateur / Aviation / Military /
+       Marine / Utility / Broadcast / Satellite)
+     • Confidence bar (green ≥ 70%, yellow 40–70%, red < 40%)
+     • Modulation type and bandwidth
+     • Link to SigID Wiki for more details
+
+## Annotating the Waterfall
+From the Signal ID panel, click "Annotate" to paint a coloured
+region on the spectrum at the matched frequency and bandwidth.
+Colour coding matches category (green = amateur, red = military,
+blue = aviation, etc.). Clear annotations via right-click →
+Clear annotation / Clear all annotations.
+
+## Bookmarks
+Click "Bookmark" in the Signal ID panel to save the identification
+to a local log (assets/signal_bookmarks.json). The bookmark log
+shows at the bottom of the Signal ID panel with timestamp,
+frequency, name, and modulation.
+
+## Tips
+  • Select a larger frequency region for wider signals (data links,
+    FM broadcasts) before right-clicking
+  • A 10–15 kHz BW selection works well for most narrowband modes
+  • Confidence below 40% means several signals share that bandwidth;
+    check the SigID Wiki link for the top match
+  • The Artemis DB lookup is local and offline — no network call
+"""),
+
+    ("APRS Anomaly Detection", "Digital Modes",
+     """# APRS Anomaly Detection
+
+## Overview
+Squelch analyses the live APRS stream and flags packets that
+exhibit unusual or potentially significant behaviour. Alerts
+appear in the status bar and are logged for later review.
+
+## Detection Rules
+  A1 — Rapid position jump: a station moves > 100 km in < 5 min.
+       Could be a mis-keyed position, balloon, or spoofed packet.
+  A2 — Unknown symbol code: packet uses an APRS symbol not in the
+       standard table. May indicate a custom or non-standard client.
+  A3 — Repeated identical packet: the same packet received 3+
+       times within 10 minutes. Could be a loop, stuck digi, or TX
+       equipment fault.
+  A4 — High message rate: a station sends > 10 messages in
+       2 minutes. May indicate automation, a looping script, or a
+       malfunctioning device.
+  A5 — Unrecognised packet type: packet header does not match any
+       known APRS packet type (position, weather, message, object,
+       status, telemetry, etc.).
+
+## Status Bar Alerts
+When a rule fires, the status bar briefly shows:
+  ⚠ APRS [A1] W4ABC — rapid position jump (450 km in 2 min)
+
+## Reviewing Anomalies
+All anomaly events are written to the Squelch activity log.
+Open Help → Network Activity to see recent events with timestamps.
+"""),
 ]
 
 # Build search index

@@ -212,6 +212,7 @@ class DigitalTab(SquelchPanel, QWidget):
 
         send_btn = QPushButton("Send")
         send_btn.setMinimumWidth(70)
+        send_btn.setToolTip("Send text to active decoder bridge  (Enter)")
         send_btn.setStyleSheet(
             "QPushButton{background:#1a4a1a;color:#3fbe6f;"
             "border:1px solid #3fbe6f;border-radius:3px;padding:4px 10px;}"
@@ -247,7 +248,8 @@ class DigitalTab(SquelchPanel, QWidget):
         self._macro_btns: list[QPushButton] = []
         for i, (key, macro) in enumerate(self._macro_mgr.all_macros(), start=1):
             btn = QPushButton(f"F{i}: {macro['label']}")
-            btn.setToolTip(macro["text"] or "(empty)")
+            tip_text = macro["text"] or "(empty — right-click to set)"
+            btn.setToolTip(f"{tip_text}\n\nRight-click to edit label / text")
             btn.setFixedHeight(24)
             btn.setStyleSheet(
                 f"QPushButton{{background:{_t.bg_alt};color:{_t.fg_primary};"

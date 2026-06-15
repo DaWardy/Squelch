@@ -111,3 +111,35 @@ class TestFT8SessionVarWiring:
         )
         engine._handle_idle(decode, "W1AW")
         assert cfg.get("session.dx_callsign") == "VE3XYZ"
+
+
+class TestFT8GuestCallsign:
+    """_send_report / _send_rrr must use operating_callsign(), not cfg.callsign."""
+
+    @pytest.fixture
+    def guest_engine(self, tmp_path):
+        from core.config import Config
+        from unittest.mock import MagicMock
+        cfg = Config(tmp_path / "config.json")
+        cfg.callsign = "W1AW"
+        cfg.grid     = "DM79rr"
+        cfg.set("guest.active",   True)
+        cfg.set("guest.callsign", "KE2XYZ")
+        rig = MagicMock()
+        rig.is_connected = False
+        return FT8Engine(cfg, rig)
+
+    def test_send_report_uses_guest_call(self, guest_engine):
+        from modes.ft8 import QSOInProgress
+        guest_engine._qso = QSOInProgress(
+            their_call="VE3ABC", their_snr=-10)
+        guest_engine._send_report()
+        assert "KE2XYZ" in guest_engine._tx_message
+        assert "W1AW" not in guest_engine._tx_message
+
+    def test_send_rrr_uses_guest_call(self, guest_engine):
+        from modes.ft8 import QSOInProgress
+        guest_engine._qso = QSOInProgress(their_call="VE3ABC")
+        guest_engine._send_rrr()
+        assert "KE2XYZ" in guest_engine._tx_message
+        assert "W1AW" not in guest_engine._tx_message

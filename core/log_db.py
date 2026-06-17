@@ -256,7 +256,8 @@ class LogDB:
             return [_row_to_qso(r) for r in rows]
 
     def search_qsos(self, call: str = "", band: str = "",
-                    mode: str = "", limit: int = 500) -> list[QSO]:
+                    mode: str = "", date_from: str = "",
+                    date_to: str = "", limit: int = 500) -> list[QSO]:
         parts = ["SELECT * FROM qso WHERE 1=1"]
         params = []
         if call:
@@ -268,11 +269,26 @@ class LogDB:
         if mode:
             parts.append("AND mode=?")
             params.append(mode)
+        if date_from:
+            parts.append("AND datetime_on >= ?")
+            params.append(date_from)
+        if date_to:
+            parts.append("AND datetime_on <= ?")
+            params.append(date_to + "T23:59:59Z" if "T" not in date_to else date_to)
         parts.append("ORDER BY datetime_on DESC LIMIT ?")
         params.append(limit)
         with self._lock:
             rows = self._conn.execute(" ".join(parts), params).fetchall()
             return [_row_to_qso(r) for r in rows]
+
+    def has_qso_at(self, call: str, datetime_prefix: str) -> bool:
+        """True if a QSO with this call exists at the given UTC minute."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM qso WHERE call=? AND datetime_on LIKE ? LIMIT 1",
+                (call.upper(), f"{datetime_prefix[:16]}%")
+            ).fetchone()
+            return row is not None
 
     def total_qsos(self) -> int:
         with self._lock:

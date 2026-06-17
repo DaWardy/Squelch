@@ -349,6 +349,45 @@ class LogDB:
             "grids_worked": self.grids_worked(),
         }
 
+    def qsos_by_band(self) -> list[tuple[str, int]]:
+        """QSO count per band, descending. Empty band excluded."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT band, COUNT(*) n FROM qso WHERE band != '' "
+                "GROUP BY band ORDER BY n DESC LIMIT 20"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    def qsos_by_mode(self) -> list[tuple[str, int]]:
+        """QSO count per mode, descending. Empty mode excluded."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT mode, COUNT(*) n FROM qso WHERE mode != '' "
+                "GROUP BY mode ORDER BY n DESC LIMIT 15"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    def qsos_by_year(self) -> list[tuple[str, int]]:
+        """QSO count per calendar year, ascending."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT SUBSTR(datetime_on, 1, 4) y, COUNT(*) n "
+                "FROM qso WHERE datetime_on != '' "
+                "GROUP BY y ORDER BY y"
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows
+                if r[0] and len(r[0]) == 4 and r[0].isdigit()]
+
+    def top_entities(self, n: int = 10) -> list[tuple[str, int]]:
+        """Top N worked countries by QSO count."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT country, COUNT(*) n FROM qso WHERE country != '' "
+                "GROUP BY country ORDER BY n DESC LIMIT ?",
+                (n,)
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     # ── ADIF export ───────────────────────────────────────────────────────
 
     def delete_qso(self, qso) -> bool:

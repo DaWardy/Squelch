@@ -297,6 +297,12 @@ class MainWindow(
             self._tab_visibility[key] = visible
             self.tabs.setTabVisible(
                 self.tabs.indexOf(w), visible)
+            saved = self.cfg.get(f"panels.state.{key}", {})
+            if saved and hasattr(w, "restore_state"):
+                try:
+                    w.restore_state(saved)
+                except Exception:
+                    pass
 
         # Restore the last-used tab (C-09, Marcus)
         try:
@@ -1158,6 +1164,13 @@ class MainWindow(
             pass
 
         self.rig.disconnect()
+        for key, w in self._tab_map.items():
+            try:
+                state = w.save_state()
+                if state:
+                    self.cfg.set(f"panels.state.{key}", state)
+            except Exception:
+                pass
         self.cfg.save_if_dirty()
         event.accept()
 

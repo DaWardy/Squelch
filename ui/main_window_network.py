@@ -113,6 +113,51 @@ class _MainWindowNetworkMixin:
         threading.Thread(
             target=_worker, daemon=True, name="CTYLoader").start()
 
+    def _update_cty_dat(self) -> None:
+        """Help → Update DXCC Data: download latest CTY.DAT from country-files.com."""
+        from PyQt6.QtWidgets import QProgressDialog, QMessageBox
+        from PyQt6.QtCore import Qt, QTimer
+        prog = QProgressDialog(
+            "Downloading CTY.dat from country-files.com…", None,
+            0, 0, self)
+        prog.setWindowTitle("Updating DXCC Data")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.show()
+
+        import threading
+        def _worker():
+            try:
+                from network.cty_data import CTYData
+                cty = CTYData()
+                ok = cty.update()
+                if ok:
+                    from network import cty_data as _mod
+                    _mod._cty = cty
+                QTimer.singleShot(0,
+                    lambda: self._cty_update_done(ok, cty, prog))
+            except Exception as exc:
+                QTimer.singleShot(0,
+                    lambda e=exc: self._cty_update_done(False, None, prog, str(e)))
+        threading.Thread(target=_worker, daemon=True,
+                         name="CTYUpdate").start()
+
+    def _cty_update_done(self, ok: bool, cty, prog,
+                         error: str = "") -> None:
+        from PyQt6.QtWidgets import QMessageBox
+        prog.close()
+        if ok and cty:
+            QMessageBox.information(
+                self, "DXCC Data Updated",
+                f"CTY.dat updated successfully.\n"
+                f"{cty.entity_count} DXCC entities loaded.\n\n"
+                "DXCC tracking will use the new data immediately.")
+        else:
+            QMessageBox.warning(
+                self, "DXCC Update Failed",
+                f"Could not download CTY.dat.\n{error}\n\n"
+                "Check your internet connection and try again.\n"
+                "The existing data file (if any) is unchanged.")
+
     def _on_aprs_packet(self, packet):
         """Update map tab with new APRS station and run anomaly detection."""
         try:

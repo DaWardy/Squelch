@@ -279,9 +279,16 @@ class LogTab(SquelchPanel, QWidget):
         qrz_btn = QPushButton(self.tr("Upload QRZ queue"))
         qrz_btn.setToolTip(
             "Sync log with QRZ logbook\n"
-            "Requires QRZ subscription and credentials")
+            "Requires QRZ Logbook API key in Settings → APIs")
         qrz_btn.clicked.connect(self._show_qrz_queue)
         btn_row.addWidget(qrz_btn)
+
+        clublog_btn = QPushButton(self.tr("Upload ClubLog"))
+        clublog_btn.setToolTip(
+            "Upload pending QSOs to ClubLog\n"
+            "Requires ClubLog email and password in Settings → APIs")
+        clublog_btn.clicked.connect(self._show_clublog_upload)
+        btn_row.addWidget(clublog_btn)
 
         btn_row.addStretch()
         self._queue_label = QLabel("")
@@ -1108,6 +1115,71 @@ class LogTab(SquelchPanel, QWidget):
                 f"Upload failed:\n{result.error}\n\n"
                 "Check Settings → APIs for your QRZ Logbook API key.\n"
                 "Get the key free at qrz.com → Logbook → Settings.")
+
+    def _show_clublog_upload(self):
+        from network.dx_cluster import ClubLogClient
+        client = ClubLogClient(self.cfg)
+        if not client.has_credentials:
+            QMessageBox.warning(
+                self, "ClubLog Credentials Missing",
+                "No ClubLog credentials found.\n\n"
+                "Add your email and password in Settings → APIs → ClubLog.\n"
+                "Register free at clublog.org.")
+            return
+
+        total = self.log_db.total_qsos()
+        if not total:
+            QMessageBox.information(
+                self, "ClubLog",
+                "No QSOs in log to upload.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Upload to ClubLog",
+            f"Upload all {total} QSOs to ClubLog now?\n\n"
+            "ClubLog will merge duplicates automatically.",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        prog = QProgressDialog(
+            "Building ADIF for ClubLog…", "Cancel",
+            0, 0, self)
+        prog.setWindowTitle("ClubLog Upload")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.show()
+
+        import threading, tempfile
+        from pathlib import Path as _P
+        def _worker():
+            try:
+                fd, tmp = tempfile.mkstemp(suffix=".adif")
+                import os; os.close(fd)
+                tmp_path = _P(tmp)
+                self.log_db.export_adif(tmp_path)
+                adif = tmp_path.read_text(encoding="utf-8")
+                tmp_path.unlink(missing_ok=True)
+                ok = client.upload_adif(adif)
+                QTimer.singleShot(0, lambda: self._clublog_done(ok, prog))
+            except Exception as exc:
+                QTimer.singleShot(0, lambda e=exc:
+                    self._clublog_done(False, prog, str(e)))
+        threading.Thread(target=_worker, daemon=True,
+                         name="ClubLogUpload").start()
+
+    def _clublog_done(self, ok: bool, prog, error: str = "") -> None:
+        prog.close()
+        if ok:
+            QMessageBox.information(
+                self, "ClubLog Upload Complete",
+                "Log uploaded to ClubLog successfully.\n\n"
+                "ClubLog processes uploads within a few minutes.")
+        else:
+            QMessageBox.warning(
+                self, "ClubLog Upload Failed",
+                f"Upload failed.\n{error}\n\n"
+                "Check Settings → APIs for your ClubLog credentials.")
 
     # ── Public ────────────────────────────────────────────────────────────
 

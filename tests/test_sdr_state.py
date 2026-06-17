@@ -188,3 +188,40 @@ class TestSDRSaveRestoreState:
         tab._span_combo.setCurrentText("2.4 MHz")
         tab.restore_state(state)
         assert tab._span_combo.currentText() == "500 kHz"
+
+
+@pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+class TestSDRScreenshot:
+    """Verify _save_screenshot saves a valid PNG and reports via status bar."""
+
+    def test_screenshot_creates_file(self, tmp_path, qt_app, monkeypatch):
+        """Screenshot is written to a temp path and returns a non-empty file."""
+        tab, _ = _make_sdr_tab(qt_app)
+        monkeypatch.setattr(
+            "pathlib.Path.home", lambda: tmp_path)
+        # Create Desktop dir so the first candidate is picked
+        (tmp_path / "Desktop").mkdir()
+        tab._save_screenshot()
+        shots = list((tmp_path / "Desktop").glob("squelch_sdr_*.png"))
+        assert shots, "Expected a screenshot PNG in Desktop"
+        assert shots[0].stat().st_size > 0
+
+    def test_screenshot_filename_format(self, tmp_path, qt_app, monkeypatch):
+        """Filename matches squelch_sdr_YYYYMMDD_HHmmss.png pattern."""
+        import re
+        tab, _ = _make_sdr_tab(qt_app)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        (tmp_path / "Desktop").mkdir()
+        tab._save_screenshot()
+        shots = list((tmp_path / "Desktop").glob("squelch_sdr_*.png"))
+        assert re.match(r"squelch_sdr_\d{8}_\d{6}\.png$", shots[0].name)
+
+    def test_screenshot_falls_back_to_downloads(self, tmp_path, qt_app, monkeypatch):
+        """Falls back to Downloads when Desktop does not exist."""
+        tab, _ = _make_sdr_tab(qt_app)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        (tmp_path / "Downloads").mkdir()
+        # No Desktop dir
+        tab._save_screenshot()
+        shots = list((tmp_path / "Downloads").glob("squelch_sdr_*.png"))
+        assert shots, "Expected fallback to Downloads"

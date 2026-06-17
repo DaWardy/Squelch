@@ -28,6 +28,8 @@ import logging
 import time
 import threading
 import requests
+from core.credentials import get_store
+from core.netlog import record_connection
 try:
     import defusedxml.ElementTree as ET  # type: ignore
 except ImportError:
@@ -138,12 +140,16 @@ class CallsignLookup:
 
     # ── QRZ XML ───────────────────────────────────────────────────────────
 
+    def _get_store(self):
+        return get_store(self.cfg.get("profile.name", "default"))
+
     def _qrz_login(self) -> str | None:
         user = self.cfg.get("apis.qrz_user", "")
-        pw   = self.cfg.get("apis.qrz_pass", "")
+        pw   = self._get_store().retrieve("qrz_password") or ""
         if not user or not pw:
             return None
         try:
+            record_connection(QRZ_XML_URL)
             resp = requests.get(
                 QRZ_XML_URL,
                 params={"username": user, "password": pw,
@@ -170,6 +176,7 @@ class CallsignLookup:
         if not self._session_key:
             return None
         try:
+            record_connection(QRZ_XML_URL)
             resp = requests.get(
                 QRZ_XML_URL,
                 params={"s": self._session_key,
@@ -224,10 +231,11 @@ class CallsignLookup:
 
     def _hamqth_login(self) -> str | None:
         user = self.cfg.get("apis.hamqth_user", "")
-        pw   = self.cfg.get("apis.hamqth_pass", "")
+        pw   = self._get_store().retrieve("hamqth_password") or ""
         if not user or not pw:
             return None
         try:
+            record_connection(HAMQTH_URL)
             resp = requests.get(
                 HAMQTH_URL,
                 params={"u": user, "p": pw},
@@ -250,6 +258,7 @@ class CallsignLookup:
         if not self._hamqth_session:
             return None
         try:
+            record_connection(HAMQTH_URL)
             resp = requests.get(
                 HAMQTH_URL,
                 params={"id": self._hamqth_session,

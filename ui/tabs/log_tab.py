@@ -348,7 +348,26 @@ class LogTab(SquelchPanel, QWidget):
         grids_l.addWidget(self._grids_bar)
         awards_l.addLayout(grids_l)
 
+        dxcc_btn = QPushButton(self.tr("DX Needed…"))
+        dxcc_btn.setFixedWidth(90)
+        dxcc_btn.setToolTip(
+            self.tr("Show full list of worked / needed DXCC entities"))
+        dxcc_btn.clicked.connect(self._show_dxcc_needed)
+        awards_l.addWidget(dxcc_btn, 0, Qt.AlignmentFlag.AlignBottom)
+
         root.addWidget(awards_grp)
+
+    def _show_dxcc_needed(self):
+        """Open the DXCC entity status dialog."""
+        from core.awards import AwardTracker
+        from ui.dialogs.dxcc_needed_dialog import DXCCNeededDialog
+        tracker = AwardTracker(self.log_db)
+        progress = tracker.compute_dxcc()
+        dlg = DXCCNeededDialog(
+            worked=progress.entities,
+            confirmed=progress.confirmed_entities,
+            parent=self)
+        dlg.exec()
 
     # ── Data loading ──────────────────────────────────────────────────────
 
@@ -480,7 +499,7 @@ class LogTab(SquelchPanel, QWidget):
                 q.dxcc or q.country or "—",
                 STATUS_LABELS.get(q.lotw_status, "—"),
                 STATUS_LABELS.get(q.qrz_status, "—"),
-                f"{q.dist_km:.0f}" if hasattr(q, 'dist_km') and q.dist_km else "—",
+                f"{q.dist_km:.0f}" if q.dist_km else "—",
             ]
 
             for col, val in enumerate(values):
@@ -601,6 +620,14 @@ class LogTab(SquelchPanel, QWidget):
         name_edit.setMaxLength(50)
         lay.addRow("Name:", name_edit)
 
+        lkp_status = QLabel("")
+        lkp_status.setStyleSheet("color:#888;font-style:italic;font-size:10px;")
+        lay.addRow("", lkp_status)
+
+        bearing_label = QLabel("")
+        bearing_label.setStyleSheet("color:#aaa;font-size:10px;")
+        lay.addRow("Path:", bearing_label)
+
         comment_edit = QLineEdit()
         comment_edit.setMaxLength(200)
         lay.addRow("Comment:", comment_edit)
@@ -609,7 +636,9 @@ class LogTab(SquelchPanel, QWidget):
             "cs_edit": cs_edit, "band_combo": band_combo,
             "mode_combo": mode_combo, "rst_sent": rst_sent,
             "rst_rcvd": rst_rcvd, "grid_edit": grid_edit,
-            "name_edit": name_edit, "comment_edit": comment_edit,
+            "name_edit": name_edit, "lkp_status": lkp_status,
+            "bearing_label": bearing_label,
+            "comment_edit": comment_edit,
         }
 
     def _build_manual_entry_dialog(self):
@@ -628,9 +657,58 @@ class LogTab(SquelchPanel, QWidget):
         lay.addRow(btns)
         return dlg, fields
 
+    def _wire_callsign_lookup(self, dlg, f: dict) -> None:
+        """Async callsign lookup: on cs_edit editingFinished, auto-fill name+grid."""
+        from PyQt6.QtCore import QObject, pyqtSignal
+
+        class _Bridge(QObject):
+            found = pyqtSignal(object)
+
+        bridge = _Bridge(dlg)
+
+        def _update_bearing():
+            grid = f["grid_edit"].text().strip().upper()
+            my_lat = self.cfg.get("location.lat", 0.0)
+            my_lon = self.cfg.get("location.lon", 0.0)
+            if not grid or not (my_lat or my_lon):
+                f["bearing_label"].setText("")
+                return
+            try:
+                from core.location import _grid_to_latlon
+                from core.log_db import QSO as _QSO
+                q = _QSO(call="X", grid=grid, my_lat=my_lat, my_lon=my_lon)
+                if q.dist_km:
+                    f["bearing_label"].setText(
+                        f"{q.dist_km:.0f} km  ·  {q.bearing_deg:.0f}°")
+            except Exception:
+                f["bearing_label"].setText("")
+
+        def _on_cs_finished():
+            call = f["cs_edit"].text().strip().upper()
+            if len(call) < 3:
+                return
+            f["lkp_status"].setText(self.tr("Looking up…"))
+            from network.qrz_lookup import get_lookup
+            get_lookup(self.cfg).lookup_async(call, bridge.found.emit)
+
+        def _on_result(info):
+            f["lkp_status"].setText("")
+            if not info:
+                return
+            if info.name and not f["name_edit"].text().strip():
+                f["name_edit"].setText(info.name)
+            if info.grid and not f["grid_edit"].text().strip():
+                f["grid_edit"].setText(info.grid[:6])
+            _update_bearing()
+
+        bridge.found.connect(_on_result)
+        f["cs_edit"].editingFinished.connect(_on_cs_finished)
+        f["grid_edit"].editingFinished.connect(_update_bearing)
+
     def _manual_entry(self):
         """Open the manual QSO entry dialog and log on accept."""
         dlg, f = self._build_manual_entry_dialog()
+        self._wire_callsign_lookup(dlg, f)
         if not dlg.exec():
             return
         call = callsign_soft(f["cs_edit"].text())

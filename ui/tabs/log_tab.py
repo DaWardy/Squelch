@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QLineEdit,
     QComboBox, QSplitter, QFrame, QMessageBox,
     QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
-    QProgressBar, QSpinBox
+    QProgressBar, QSpinBox, QProgressDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QColor, QBrush, QFont
@@ -1051,18 +1051,63 @@ class LogTab(SquelchPanel, QWidget):
                 "and Settings → Paths for TQSL location.")
 
     def _show_qrz_queue(self):
+        from network.qrz_sync import QRZSync
         pending = self.log_db.qrz_pending()
         if not pending:
             QMessageBox.information(
                 self, "QRZ Queue",
-                "No QSOs pending QRZ sync.")
+                "No QSOs pending QRZ sync.\n\n"
+                "All logged QSOs have been uploaded.")
             return
-        QMessageBox.information(
-            self, "QRZ Logbook Sync",
-            f"{len(pending)} QSOs pending QRZ upload.\n\n"
-            "QRZ logbook sync requires a QRZ subscription.\n"
-            "Set credentials in Settings → APIs.\n\n"
-            "Full sync coming in v0.9.1.")
+
+        reply = QMessageBox.question(
+            self, "Upload to QRZ Logbook",
+            f"{len(pending)} QSOs pending upload.\n\n"
+            "Upload to QRZ.com logbook now?\n\n"
+            "Requires:\n"
+            "• QRZ Logbook API key in Settings → APIs\n"
+            "  (get it free at qrz.com → Logbook → Settings)",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        prog = QProgressDialog(
+            "Uploading to QRZ Logbook…", "Cancel",
+            0, 100, self)
+        prog.setWindowTitle("QRZ Logbook Upload")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.show()
+
+        sync = QRZSync(self.cfg)
+
+        def _on_progress(msg: str, pct: int):
+            QTimer.singleShot(0, lambda: (
+                prog.setLabelText(msg),
+                prog.setValue(pct)))
+
+        def _on_complete(result):
+            QTimer.singleShot(0,
+                lambda r=result: self._qrz_done(r, prog))
+
+        sync.on_progress(_on_progress)
+        sync.on_complete(_on_complete)
+        sync.upload_async(self.log_db, pending)
+
+    def _qrz_done(self, result, prog):
+        prog.close()
+        if result.success:
+            QMessageBox.information(
+                self, "QRZ Upload Complete",
+                f"{result.message}\n\n"
+                "QSOs are now visible in your QRZ logbook.")
+            self._load_log()
+        else:
+            QMessageBox.warning(
+                self, "QRZ Upload Failed",
+                f"Upload failed:\n{result.error}\n\n"
+                "Check Settings → APIs for your QRZ Logbook API key.\n"
+                "Get the key free at qrz.com → Logbook → Settings.")
 
     # ── Public ────────────────────────────────────────────────────────────
 

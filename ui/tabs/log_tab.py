@@ -1041,7 +1041,7 @@ class LogTab(SquelchPanel, QWidget):
                 "within 24-48 hours.")
             # Mark as uploaded
             for q in self.log_db.lotw_pending():
-                self.log_db.mark_lotw_uploaded(q)
+                self.log_db.mark_lotw_uploaded(q.id)
             self._load_log()
         else:
             QMessageBox.warning(

@@ -42,11 +42,6 @@ class _SettingsAppearanceTab:
     """Mixed into SettingsDialog."""
 
     def _build_appearance_theme_section(self, f: "QFormLayout") -> None:
-        _section(f, "Theme")
-        self._theme = QComboBox()
-        self._theme.addItems(["System", "Dark", "Light", "High Contrast", "Night"])
-        self._theme.setToolTip("Night mode uses deep red to preserve dark adaptation.")
-        f.addRow("Theme:", self._theme)
         _section(f, "Font")
         self._font_size = QComboBox()
         for size, label in [
@@ -58,6 +53,10 @@ class _SettingsAppearanceTab:
             "Affects all labels, tooltips, and help text. "
             "Larger sizes for accessibility.")
         f.addRow("Font Size:", self._font_size)
+        _section(f, "Theme")
+        theme_note = QLabel("Use View → Theme to change the colour theme.")
+        theme_note.setStyleSheet("color:#3fbe6f;font-size:11px;")
+        f.addRow("", theme_note)
         self._units = QComboBox()
         self._units.addItem("Metric (km, meters)", "metric")
         self._units.addItem("Imperial (miles, feet)", "imperial")

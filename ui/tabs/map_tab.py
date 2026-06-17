@@ -26,7 +26,7 @@ from ui.panel import SquelchPanel
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame,
-    QCheckBox, QComboBox, QSizePolicy,
+    QCheckBox, QComboBox, QLineEdit, QSizePolicy,
     QMessageBox
 )
 from PyQt6.QtCore import Qt, QTimer, QUrl
@@ -45,6 +45,18 @@ except ImportError:
 
 # Map refresh interval — gray line moves visibly over ~60s
 MAP_REFRESH_S = 60
+
+# Amateur band frequency ranges in MHz (ITU Region 2)
+BAND_RANGES = {
+    "160m": (1.8,   2.0),
+    "80m":  (3.5,   4.0),
+    "40m":  (7.0,   7.3),
+    "20m":  (14.0,  14.35),
+    "15m":  (21.0,  21.45),
+    "10m":  (28.0,  29.7),
+    "6m":   (50.0,  54.0),
+    "2m":   (144.0, 148.0),
+}
 
 
 @dataclass
@@ -96,6 +108,10 @@ class MapTab(SquelchPanel, QWidget):
         self._satellites       = []
         self._winlink_gateways = []
         self._build()
+        # Debounce timer for callsign search field
+        self._cs_timer = QTimer(self)
+        self._cs_timer.setSingleShot(True)
+        self._cs_timer.timeout.connect(self._refresh_map)
         # PSK timer started lazily when callsign is configured
         from PyQt6.QtCore import QTimer as _QT
         _QT.singleShot(15000, self._start_psk_timer)
@@ -165,7 +181,30 @@ class MapTab(SquelchPanel, QWidget):
         self._qso_filter.setFixedWidth(100)
         self._qso_filter.currentTextChanged.connect(lambda _: self._refresh_map())
         lay.addWidget(self._qso_filter)
+        lay.addWidget(_vsep(_t.border))
+        lay.addWidget(QLabel("Band:"))
+        self._band_combo = QComboBox()
+        self._band_combo.addItems(
+            ["All", "160m", "80m", "40m", "20m", "15m", "10m", "6m", "2m"])
+        self._band_combo.setFixedWidth(72)
+        self._band_combo.setToolTip("Filter heard stations by frequency band")
+        self._band_combo.currentTextChanged.connect(lambda _: self._refresh_map())
+        lay.addWidget(self._band_combo)
+        self._cs_edit = QLineEdit()
+        self._cs_edit.setPlaceholderText("Search…")
+        self._cs_edit.setFixedWidth(90)
+        self._cs_edit.setFixedHeight(24)
+        self._cs_edit.setToolTip(
+            "Filter heard and APRS stations by callsign prefix")
+        self._cs_edit.textChanged.connect(
+            lambda _: self._cs_timer.start(400))
+        lay.addWidget(self._cs_edit)
         lay.addStretch()
+        self._stats_lbl = QLabel("")
+        self._stats_lbl.setStyleSheet(
+            f"color:{_t.fg_muted};font-size:10px;")
+        lay.addWidget(self._stats_lbl)
+        lay.addWidget(_vsep(_t.border))
         refresh_btn = QPushButton("↺ Refresh")
         refresh_btn.setFixedHeight(26)
         refresh_btn.setFixedWidth(80)
@@ -287,35 +326,80 @@ class MapTab(SquelchPanel, QWidget):
 
             reps = self._repeaters \
                    if self._show_rep.isChecked() else []
-
             wl_gws = (self._winlink_gateways
                       if getattr(self, "_show_wl_gw", None)
                          and self._show_wl_gw.isChecked()
                       else [])
+            heard = self._filtered_heard()
+            aprs  = self._filtered_aprs() if self._show_aprs.isChecked() else []
             html = build_map_html(
                 config              = self.cfg,
                 log_db              = self.log_db,
                 repeaters           = reps,
-                aprs_stations       = (self._aprs_stations
-                    if self._show_aprs.isChecked() else []),
+                aprs_stations       = aprs,
                 show_grayline       = self._show_gl.isChecked(),
                 show_qso_paths      = self._show_qso.isChecked(),
                 show_adsb           = self._show_adsb.isChecked(),
                 show_aprs           = self._show_aprs.isChecked(),
                 center_on_station   = True,
-                heard_stations      = getattr(self, "_heard_stations", {}),
+                heard_stations      = heard,
                 hearing_me          = getattr(self, "_hearing_me", {}),
                 winlink_gateways    = wl_gws,
             )
             self._view.setHtml(html)
-
-            # Update gray line status bar
+            self._update_layer_stats(heard, aprs)
             self._update_gl_status()
 
         except Exception as e:
             log.error(f"Map refresh: {e}")
             import traceback
             traceback.print_exc()
+
+    def _filtered_heard(self) -> dict:
+        """Return _heard_stations filtered by active band and callsign search."""
+        heard = dict(getattr(self, "_heard_stations", {}))
+        band = getattr(self, "_band_combo", None)
+        band = band.currentText() if band else "All"
+        if band != "All" and band in BAND_RANGES:
+            lo, hi = BAND_RANGES[band]
+            heard = {k: v for k, v in heard.items()
+                     if lo <= v.get("freq_mhz", 0.0) <= hi}
+        search = self._active_search()
+        if search:
+            heard = {k: v for k, v in heard.items()
+                     if k.upper().startswith(search)}
+        return heard
+
+    def _filtered_aprs(self) -> list:
+        """Return _aprs_stations filtered by active callsign search."""
+        aprs = list(self._aprs_stations)
+        search = self._active_search()
+        if search:
+            aprs = [a for a in aprs
+                    if a.get("call", "").upper().startswith(search)]
+        return aprs
+
+    def _active_search(self) -> str:
+        """Return uppercase callsign search prefix, or empty string."""
+        edit = getattr(self, "_cs_edit", None)
+        return edit.text().strip().upper() if edit else ""
+
+    def _update_layer_stats(self, heard: dict, aprs: list) -> None:
+        """Update the toolbar layer-count label."""
+        lbl = getattr(self, "_stats_lbl", None)
+        if lbl is None:
+            return
+        parts = []
+        if heard:
+            parts.append(f"Heard: {len(heard)}")
+        if aprs:
+            parts.append(f"APRS: {len(aprs)}")
+        psk = len(getattr(self, "_hearing_me", {}))
+        if psk:
+            parts.append(f"PSK: {psk}")
+        if self._show_rep.isChecked() and self._repeaters:
+            parts.append(f"Reps: {len(self._repeaters)}")
+        lbl.setText("  ".join(parts))
 
     def _update_gl_status(self):
         """Update the gray line status bar text."""

@@ -135,9 +135,6 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._log_dupes.setChecked(cfg.get("log.warn_dupes", True))
 
     def _load_appearance(self, cfg):
-        themes = ["Dark", "Light", "High Contrast", "Night"]
-        theme  = cfg.get("ui.theme", "Dark")
-        self._theme.setCurrentIndex(themes.index(theme) if theme in themes else 0)
         font_sizes = [10, 11, 13, 15, 18]
         saved_fs   = cfg.get("ui.font_size", 11)
         self._font_size.setCurrentIndex(
@@ -386,7 +383,6 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         cfg.set("log.warn_dupes",           self._log_dupes.isChecked())
 
     def _save_appearance(self, cfg):
-        cfg.set("ui.theme",          self._theme.currentText())
         cfg.set("ui.font_size",      self._font_size.currentData())
         cfg.set("ui.units",          self._units.currentData() or "metric")
         cfg.set("ui.layout_locked",  self._layout_locked.isChecked())
@@ -449,9 +445,9 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             app = QApplication.instance()
             if not app or sip.isdeleted(self):
                 return None
-            if sip.isdeleted(self._theme) or sip.isdeleted(self._font_size):
+            if sip.isdeleted(self._font_size):
                 return None
-            theme = self._theme.currentText()
+            theme = self.cfg.get("ui.theme", "Dark")
             fs    = self._font_size.currentData() or 11
             return app, sip, theme, fs
         except (RuntimeError, AttributeError):

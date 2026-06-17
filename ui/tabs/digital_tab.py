@@ -135,6 +135,26 @@ class DigitalTab(SquelchPanel, QWidget):
         # Check for running decoders after UI is ready
         QTimer.singleShot(1000, self._auto_connect)
 
+    # ── Panel state persistence ───────────────────────────────────────────
+
+    def save_state(self) -> dict:
+        try:
+            return {
+                "splitter_sizes": (self._splitter.sizes()
+                                   if hasattr(self, "_splitter") else []),
+            }
+        except Exception:
+            return {}
+
+    def restore_state(self, state: dict) -> None:
+        try:
+            if "splitter_sizes" in state and hasattr(self, "_splitter"):
+                sizes = state["splitter_sizes"]
+                if isinstance(sizes, list) and len(sizes) == 2:
+                    self._splitter.setSizes(sizes)
+        except Exception:
+            pass
+
     # ── Build UI ──────────────────────────────────────────────────────────
 
     def _build(self):
@@ -152,21 +172,21 @@ class DigitalTab(SquelchPanel, QWidget):
         root.addWidget(self._build_status_bar())
 
         # Main content splitter
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setStyleSheet(
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setStyleSheet(
             "QSplitter::handle{background:#1a1a1a;width:3px;}")
 
         # Left: decode log
         left = self._build_decode_log()
-        splitter.addWidget(left)
+        self._splitter.addWidget(left)
 
         # Right: info panels
         right = self._build_info_panels()
         right.setMaximumWidth(320)
-        splitter.addWidget(right)
+        self._splitter.addWidget(right)
 
-        splitter.setSizes([700, 300])
-        root.addWidget(splitter, 1)
+        self._splitter.setSizes([700, 300])
+        root.addWidget(self._splitter, 1)
 
         # Macro toolbar + TX panel at bottom
         root.addWidget(self._build_macro_toolbar())

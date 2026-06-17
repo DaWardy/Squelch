@@ -26,7 +26,7 @@ class _SettingsSdrTab:
             "Install SoapySDR plugins for your SDR hardware. "
             "Requires conda / miniforge3.")
         sub.setWordWrap(True)
-        sub.setStyleSheet("")
+        sub.setStyleSheet(f"color:{_t.fg_primary};")
         lay.addWidget(sub)
         lay.addWidget(self._build_sdr_hardware_group())
         self._build_sdr_action_area(lay)
@@ -36,8 +36,8 @@ class _SettingsSdrTab:
             "RSP2Pro: the SDRplay API Windows service must be running.")
         warn.setWordWrap(True)
         warn.setStyleSheet(
-            "color:#aa8800;background:#1a1600;padding:8px;"
-            "border:1px solid #2a2000;border-radius:3px;")
+            f"color:{_t.warn_color};background:{_t.bg_secondary};padding:8px;"
+            f"border:1px solid {_t.border};border-radius:3px;")
         lay.addWidget(warn)
         lay.addStretch()
         QTimer.singleShot(400, self._check_sdr_status)
@@ -62,12 +62,14 @@ class _SettingsSdrTab:
         from PyQt6.QtWidgets import QFrame
         _t2 = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         cb_style = (
-            "QCheckBox{font-weight:bold;font-size:13px;spacing:8px;padding:2px 0;}"
-            "QCheckBox::indicator{width:18px;height:18px;border:2px solid #888;"
-            "border-radius:3px;background:#1a1a1a;}"
-            "QCheckBox::indicator:hover{border-color:#3fbe6f;}"
-            "QCheckBox::indicator:checked{background:#3fbe6f;border-color:#3fbe6f;}"
-            "QCheckBox::indicator:disabled{background:#2a2a2a;border-color:#444;}")
+            f"QCheckBox{{font-weight:bold;font-size:13px;spacing:8px;padding:2px 0;"
+            f"color:{_t2.fg_primary};}}"
+            f"QCheckBox::indicator{{width:18px;height:18px;border:2px solid {_t2.border};"
+            f"border-radius:3px;background:{_t2.bg_tertiary};}}"
+            f"QCheckBox::indicator:hover{{border-color:{_t2.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{_t2.accent};border-color:{_t2.accent};}}"
+            f"QCheckBox::indicator:disabled{{background:{_t2.bg_secondary};"
+            f"border-color:{_t2.fg_muted};}}")
         self._sdr_checks = {}
         for pkg, label, note in self._SDR_DRIVERS:
             row = QVBoxLayout()
@@ -88,11 +90,13 @@ class _SettingsSdrTab:
             gl.addWidget(sep)
 
     def _build_sdr_select_row(self) -> "QHBoxLayout":
+        _t3 = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         sel_btn_style = (
-            "QPushButton{padding:6px 14px;font-weight:bold;"
-            "border:1px solid #555;border-radius:3px;"
-            "background:#2a2a2a;color:#ddd;}"
-            "QPushButton:hover{background:#3a3a3a;border-color:#3fbe6f;}")
+            f"QPushButton{{padding:6px 14px;font-weight:bold;"
+            f"border:1px solid {_t3.border};border-radius:3px;"
+            f"background:{_t3.bg_secondary};color:{_t3.fg_primary};}}"
+            f"QPushButton:hover{{background:{_t3.bg_tertiary};"
+            f"border-color:{_t3.accent};}}")
         b_all  = QPushButton("✓ Select All")
         b_none = QPushButton("✗ Clear")
         b_all.setStyleSheet(sel_btn_style)
@@ -112,10 +116,11 @@ class _SettingsSdrTab:
 
     def _build_sdr_hardware_group(self) -> "QGroupBox":
         """Checkbox list of installable SDR drivers + select-all/clear row."""
+        _t4 = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         grp = QGroupBox("Select your hardware:")
         grp.setStyleSheet(
-            "QGroupBox{border:1px solid #2a2a2a;border-radius:4px;"
-            "padding-top:12px;margin-top:6px;}")
+            f"QGroupBox{{border:1px solid {_t4.border};border-radius:4px;"
+            f"padding-top:12px;margin-top:6px;}}")
         gl = QVBoxLayout(grp)
         gl.setSpacing(10)
         self._build_sdr_driver_checkboxes(gl)
@@ -128,9 +133,10 @@ class _SettingsSdrTab:
         btn_row = QHBoxLayout()
         self._sdr_install_btn = QPushButton("Install Selected Drivers")
         self._sdr_install_btn.setFixedHeight(32)
+        _t5 = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         self._sdr_install_btn.setStyleSheet(
-            "background:#1a3a1a;color:#3fbe6f;"
-            "border:1px solid #3fbe6f;border-radius:4px;font-weight:bold;")
+            f"background:{_t5.tooltip_bg};color:{_t5.accent};"
+            f"border:1px solid {_t5.accent};border-radius:4px;font-weight:bold;")
         self._sdr_install_btn.clicked.connect(self._install_sdr_drivers)
         btn_row.addWidget(self._sdr_install_btn)
         self._sdr_check_btn = QPushButton("Check Status")
@@ -142,8 +148,8 @@ class _SettingsSdrTab:
         self._sdr_log.setReadOnly(True)
         self._sdr_log.setMaximumHeight(160)
         self._sdr_log.setStyleSheet(
-            "background:#080808;font-family:'Courier New';"
-            "border:1px solid #1a1a1a;")
+            f"background:{_t5.bg_primary};font-family:'Courier New';"
+            f"color:{_t5.fg_primary};border:1px solid {_t5.border};")
         self._sdr_log.setPlainText(
             "Select hardware above and click Install, "
             "or click Check Status to see what is already installed.")

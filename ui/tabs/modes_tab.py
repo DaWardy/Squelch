@@ -131,9 +131,12 @@ class ModesTab(SquelchPanel, QWidget):
 
     def save_state(self) -> dict:
         try:
+            sizes = (self._main_splitter.sizes()
+                     if hasattr(self, "_main_splitter") else [])
             return {
-                "mode_tab": self._mode_tabs.currentIndex(),
-                "filter":   getattr(self, "_callsign_filter", ""),
+                "mode_tab":      self._mode_tabs.currentIndex(),
+                "filter":        getattr(self, "_callsign_filter", ""),
+                "splitter_sizes": sizes,
             }
         except Exception:
             return {}
@@ -142,6 +145,10 @@ class ModesTab(SquelchPanel, QWidget):
         try:
             if "mode_tab" in state:
                 self._mode_tabs.setCurrentIndex(state["mode_tab"])
+            if "splitter_sizes" in state and hasattr(self, "_main_splitter"):
+                sizes = state["splitter_sizes"]
+                if isinstance(sizes, list) and len(sizes) == 2:
+                    self._main_splitter.setSizes(sizes)
         except Exception:
             pass
 

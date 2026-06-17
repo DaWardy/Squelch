@@ -245,6 +245,24 @@ CSV export: Log tab → Export CSV (spreadsheet)
 3. Add the key in Settings → APIs → QRZ.com → Logbook API Key
 4. Log tab → Upload QRZ queue — syncs pending QSOs to your QRZ logbook
 
+## Uploading to ClubLog
+1. Create a free account at clublog.org
+2. Add your ClubLog email and password in Settings → APIs → ClubLog
+3. Log tab → Upload ClubLog — uploads your full log as ADIF
+   ClubLog processes uploads within a few minutes.
+
+## Uploading to eQSL.cc
+1. Create a free account at eqsl.cc
+2. Add your eQSL username and password in Settings → APIs → eQSL.cc
+3. Log tab → Upload eQSL — uploads your full log as ADIF
+   Duplicates are silently accepted (re-upload safe).
+
+## Uploading to HRDLog.net
+1. Create a free account at hrdlog.net
+2. Go to hrdlog.net → Settings → API Key to generate your key
+3. Add your callsign and API key in Settings → APIs → HRDLog.net
+4. Log tab → Upload HRDLog — uploads your full log as ADIF
+
 ## Awards Progress (Log tab)
 Squelch tracks DXCC, WAS (50 states), and Maidenhead grid squares
 worked and confirmed. Progress bars at the top of the Log tab update
@@ -1194,6 +1212,15 @@ Enter the number in Squelch → Rig tab → Model (manual)
   F6         Halt TX
   F7         Toggle Auto Seq
 
+## View / Layout
+  Ctrl+Shift+W  Enter Workspace Mode (floating panel layout)
+  Ctrl+Shift+R  Toggle RF Lab / Education Mode
+  Ctrl+W        Toggle Spectrum / Waterfall (SDR/Rig tab)
+  Ctrl+Shift+1  Workspace preset 1
+  Ctrl+Shift+2  Workspace preset 2
+  Ctrl+Shift+3  Workspace preset 3
+  Ctrl+Shift+4  Workspace preset 4
+
 ## General
   Ctrl+Z     Undo (in text fields)
   Ctrl+A     Select all
@@ -1543,6 +1570,149 @@ When a rule fires, the status bar briefly shows:
 ## Reviewing Anomalies
 All anomaly events are written to the Squelch activity log.
 Open Help → Network Activity to see recent events with timestamps.
+"""),
+
+    ("RF Lab / Education Mode", "SDR",
+     """# RF Lab / Education Mode
+
+## What It Is
+RF Lab mode reconfigures the interface for SDR-only use —
+ideal for students, instructors, and RF professionals who do
+not need ham radio rig control or CAT. A ham radio licence
+is not required in this mode.
+
+TX capability for USRP and HackRF remains available via the
+SDR tab's transmit controls.
+
+## Enabling RF Lab Mode
+  Option 1 — First-run wizard:
+    On first launch, select "RF Lab / Education" from the
+    Usage mode dropdown. Callsign and radio fields are
+    disabled; only location is needed.
+
+  Option 2 — After initial setup:
+    View → RF Lab / Education Mode (checkable menu item)
+
+The mode choice is saved across restarts. Toggle at any time.
+
+## What Changes
+In RF Lab mode, ham-specific tabs are hidden:
+  Hidden: Rig Control, Modes, Log, Digital, Winlink, Local RF
+  Visible: SDR, RF Lab, Band Conditions, Map, Help
+
+To restore all tabs: View → RF Lab / Education Mode
+(uncheck) to return to full Ham Radio layout.
+
+## Emergency Monitor (RF Lab tab)
+The RF Lab tab provides a frequency watchlist with 21
+pre-loaded emergency and education frequencies:
+
+  NOAA Weather Radio (7 channels: 162.400–162.550 MHz)
+  Aviation:
+    121.500 MHz — International distress / guard
+    243.000 MHz — Military UHF guard
+    122.750 MHz — Air-to-air (CTAF)
+  Marine:
+    156.800 MHz — Channel 16 (distress and calling)
+    156.300 MHz — Channel 6 (intership safety)
+    161.975 MHz — AIS channel A
+    162.025 MHz — AIS channel B
+  EMS / Public Safety:
+    155.340 MHz — EMS simplex interoperability
+    155.475 MHz — Fire dispatch (common, varies by region)
+    460.525 MHz — UHF EMS simplex
+  Space:
+    145.800 MHz — ISS voice downlink
+    145.825 MHz — ISS APRS / packet downlink
+  FM Broadcast reference:
+    88.0 MHz and 108.0 MHz (band edges)
+
+## Click-to-Tune
+Click the "Tune →" button on any frequency row to:
+  1. Send that frequency to the SDR tab
+  2. Automatically switch to the SDR tab
+The SDR tab then shows the spectrum and waterfall at that
+frequency (requires a connected SDR device).
+
+## Adding Custom Frequencies
+  RF Lab tab toolbar → + Add Custom
+  Enter frequency (MHz), name, category, and description.
+  Custom frequencies appear at the bottom of the list and
+  survive restarts (saved in profile state).
+
+  To remove a custom entry: select it → click Remove.
+  Built-in frequencies cannot be removed.
+
+## Filtering
+  Category filter: show only Weather / Aviation / Marine /
+    EMS / Space / Broadcast / Custom entries.
+  Search box: filter by name prefix or frequency string.
+
+## TX in RF Lab Mode
+Transmitting is NOT available in RF Lab mode for traditional
+rigs (no CAT connection). However, SDR devices with TX
+capability (USRP B200/B210, HackRF One) can transmit via:
+  SDR tab → TX controls (when hardware is detected)
+This allows experiment and educational TX under appropriate
+regulatory authorisation.
+"""),
+
+    ("Log Upload Services", "Reference",
+     """# Log Upload Services
+
+Squelch supports uploading your QSO log to five services.
+All credentials are stored in the OS keyring (never in
+config files). Set up credentials in Settings → APIs.
+
+## LoTW — Logbook of the World (ARRL)
+The gold standard for electronic QSL confirmation.
+Confirmations count toward ARRL awards (DXCC, WAS, etc.).
+
+Setup:
+  1. Install TQSL from tqsl.arrl.org
+  2. Apply for a LoTW certificate (may take a few days)
+  3. Settings → APIs → LoTW: enter callsign and password
+  4. Log tab → Upload LoTW queue
+
+## QRZ Logbook
+Uploads pending QSOs to your QRZ.com online logbook.
+Requires a QRZ Logbook API key (free — no subscription).
+
+Setup:
+  1. qrz.com → Logbook → Settings → Enable API → copy key
+  2. Settings → APIs → QRZ.com → Logbook API Key
+  3. Log tab → Upload QRZ queue
+
+## ClubLog
+Popular DX logging site; used by many DXpeditions.
+Provides callsign lookup for rare entities.
+
+Setup:
+  1. Create account at clublog.org
+  2. Settings → APIs → ClubLog: email and password
+  3. Log tab → Upload ClubLog
+
+## eQSL.cc
+Electronic QSL cards; popular in Europe and for awards.
+
+Setup:
+  1. Create account at eqsl.cc
+  2. Settings → APIs → eQSL.cc: username and password
+  3. Log tab → Upload eQSL
+
+## HRDLog.net
+Online logbook with real-time cluster and statistics.
+
+Setup:
+  1. Create account at hrdlog.net
+  2. hrdlog.net → Settings → API Key
+  3. Settings → APIs → HRDLog.net: callsign and API key
+  4. Log tab → Upload HRDLog
+
+## Automatic Upload
+  Settings → APIs → LoTW → Auto-upload QSOs to LoTW:
+  When enabled, each logged QSO is queued automatically.
+  Other services: manual upload only (Log tab buttons).
 """),
 ]
 

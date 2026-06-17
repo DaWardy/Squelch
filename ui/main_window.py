@@ -668,8 +668,9 @@ class MainWindow(
         rflab_a = QAction(self.tr("🔬  RF Lab / Education Mode"), self)
         rflab_a.setCheckable(True)
         rflab_a.setChecked(self.cfg.get("ui.mode", "ham") == "rf_lab")
+        rflab_a.setShortcut("Ctrl+Shift+R")
         rflab_a.setToolTip(
-            "Switches to SDR-only education layout.\n"
+            "Switches to SDR-only education layout  (Ctrl+Shift+R)\n"
             "Hides Rig, Modes, Log, Digital, Winlink, Local RF tabs.\n"
             "Shows SDR, RF Lab, Band Conditions, Map, Help.\n"
             "TX capability for USRP/HackRF remains available via the SDR tab.")

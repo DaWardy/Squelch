@@ -161,6 +161,7 @@ class LogTab(SquelchPanel, QWidget):
             ("total",  "Total QSOs"),
             ("dxcc",   "DXCC"),
             ("was",    "WAS"),
+            ("waz",    "WAZ"),
             ("grids",  "Grids"),
             ("lotw",   "LoTW ✅"),
             ("rate",   "QSOs / hr"),
@@ -582,6 +583,8 @@ class LogTab(SquelchPanel, QWidget):
                 str(stats["dxcc_worked"]))
             self._stat_widgets["was"].setText(
                 str(stats["was_worked"]))
+            self._stat_widgets["waz"].setText(
+                str(stats["waz_worked"]))
             self._stat_widgets["grids"].setText(
                 str(stats["grids_worked"]))
 

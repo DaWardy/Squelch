@@ -82,6 +82,7 @@ class AwardTracker:
             "DXCC":     self._dxcc(qsos),
             "WAS":      self._was(qsos),
             "WAZ":      self._waz(qsos),
+            "WAI":      self._itu(qsos),
             "VUCC":     self._vucc(qsos),
             "DXCC-CW":  self._dxcc_mode(qsos, "CW"),
             "DXCC-FT8": self._dxcc_mode(qsos, "FT8"),
@@ -169,6 +170,21 @@ class AwardTracker:
             name        = "WAZ",
             description = "Worked All Zones (40 CQ zones)",
             needed      = 40,
+            worked      = len(zones),
+            confirmed   = 0,
+            entities    = zones)
+
+    def _itu(self, qsos) -> AwardProgress:
+        """WAI — Worked All ITU Zones (90 zones)."""
+        zones = set()
+        for q in qsos:
+            ituz = getattr(q, "ituz", 0)
+            if ituz and ituz in ITU_ZONES:
+                zones.add(ituz)
+        return AwardProgress(
+            name        = "WAI",
+            description = "Worked All ITU Zones (90 zones)",
+            needed      = 90,
             worked      = len(zones),
             confirmed   = 0,
             entities    = zones)

@@ -72,7 +72,7 @@ class TestAwardTracker:
 
     def _make_qso(self, call="W4XYZ", band="20m",
                   mode="FT8", dxcc="K", state="",
-                  cqz=0, grid="DM79",
+                  cqz=0, ituz=0, grid="DM79",
                   lotw_status=""):
         q = MagicMock()
         q.call      = call
@@ -81,6 +81,7 @@ class TestAwardTracker:
         q.dxcc      = dxcc
         q.state     = state
         q.cqz       = cqz
+        q.ituz      = ituz
         q.grid      = grid
         q.lotw_status = lotw_status
         return q
@@ -167,11 +168,29 @@ class TestAwardTracker:
         dxcc_ft8 = tracker._dxcc_mode(qsos, "FT8")
         assert dxcc_ft8.worked == 2
 
+    def test_itu_zones(self):
+        qsos = [
+            self._make_qso(ituz=8),
+            self._make_qso(ituz=28),
+            self._make_qso(ituz=8),   # duplicate
+        ]
+        tracker = self._make_tracker(qsos)
+        wai = tracker._itu(qsos)
+        assert wai.worked == 2
+        assert wai.needed == 90
+
+    def test_itu_zones_invalid_ignored(self):
+        qsos = [self._make_qso(ituz=0), self._make_qso(ituz=91)]
+        tracker = self._make_tracker(qsos)
+        wai = tracker._itu(qsos)
+        assert wai.worked == 0
+
     def test_compute_all_returns_dict(self):
         tracker = self._make_tracker([])
         awards  = tracker.compute_all()
         assert "DXCC" in awards
         assert "WAS" in awards
         assert "WAZ" in awards
+        assert "WAI" in awards
         assert "VUCC" in awards
         assert "DXCC-FT8" in awards

@@ -170,3 +170,32 @@ class TestLogDB:
         for t in threads: t.join()
         assert len(errors) == 0
         assert db.total_qsos() == 10
+
+
+class TestWAZCount:
+    def test_empty_log(self, db):
+        assert db.waz_count() == 0
+
+    def test_single_zone(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", cqz=5))
+        assert db.waz_count() == 1
+
+    def test_deduplicates_zones(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", cqz=5))
+        db.log_qso(QSO(call="W4XYZ", band="40m", mode="CW", cqz=5))
+        assert db.waz_count() == 1
+
+    def test_multiple_zones(self, db):
+        for zone in [3, 5, 14, 25]:
+            db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", cqz=zone))
+        assert db.waz_count() == 4
+
+    def test_zero_cqz_excluded(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", cqz=0))
+        assert db.waz_count() == 0
+
+    def test_stats_includes_waz(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", cqz=5))
+        stats = db.stats()
+        assert "waz_worked" in stats
+        assert stats["waz_worked"] == 1

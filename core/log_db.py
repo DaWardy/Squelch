@@ -341,11 +341,19 @@ class LogDB:
                 "WHERE length(grid) >= 4").fetchall()
             return len([r[0] for r in rows if r[0]])
 
+    def waz_count(self) -> int:
+        """Distinct CQ zones worked (1–40)."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT COUNT(DISTINCT cqz) FROM qso "
+                "WHERE cqz > 0").fetchone()[0]
+
     def stats(self) -> dict:
         return {
             "total_qsos":   self.total_qsos(),
             "dxcc_worked":  self.dxcc_count(),
             "was_worked":   self.was_count(),
+            "waz_worked":   self.waz_count(),
             "grids_worked": self.grids_worked(),
         }
 

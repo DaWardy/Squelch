@@ -275,3 +275,86 @@ class TestQRZXMLParse:
             params = call_kwargs.kwargs.get("params", {})
         assert params.get("password") == "keyring_secret"
         assert key == "abc123"
+
+
+# ---------------------------------------------------------------------------
+# QRZ enrichment logic (mirrors _manual_entry QRZ→QSO population)
+# ---------------------------------------------------------------------------
+
+def _lkp_status_text(info) -> str:
+    """Mirror of lkp_status update in _wire_callsign_lookup._on_result."""
+    if not info:
+        return "Not found"
+    parts = [p for p in (info.name, info.country or info.dxcc) if p]
+    return " — ".join(parts) if parts else "Found"
+
+
+def _enrich_from_qrz(qrz_info) -> dict:
+    """Mirror of QRZ→QSO field population in _manual_entry."""
+    if qrz_info is None:
+        return {"country": "", "dxcc": "", "state": "", "cqz": 0, "ituz": 0}
+    return {
+        "country": qrz_info.country,
+        "dxcc":    qrz_info.dxcc,
+        "state":   qrz_info.state,
+        "cqz":     qrz_info.cq_zone,
+        "ituz":    qrz_info.itu_zone,
+    }
+
+
+class TestLkpStatusText:
+    def test_none_info(self):
+        assert _lkp_status_text(None) == "Not found"
+
+    def test_name_only(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(callsign="W1AW", name="Hiram")
+        assert _lkp_status_text(info) == "Hiram"
+
+    def test_name_and_country(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(callsign="W1AW", name="Hiram", country="United States")
+        assert _lkp_status_text(info) == "Hiram — United States"
+
+    def test_no_name_uses_country(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(callsign="W1AW", country="United States")
+        assert _lkp_status_text(info) == "United States"
+
+    def test_no_name_or_country_uses_dxcc(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(callsign="W1AW", dxcc="291")
+        assert _lkp_status_text(info) == "291"
+
+    def test_all_empty_returns_found(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(callsign="W1AW")
+        assert _lkp_status_text(info) == "Found"
+
+
+class TestEnrichFromQRZ:
+    def test_none_info_returns_empty(self):
+        result = _enrich_from_qrz(None)
+        assert result["country"] == ""
+        assert result["cqz"] == 0
+        assert result["ituz"] == 0
+
+    def test_full_info_populates_all_fields(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(
+            callsign="W1AW", name="Hiram", country="United States",
+            dxcc="291", state="CT", cq_zone=5, itu_zone=8)
+        result = _enrich_from_qrz(info)
+        assert result["country"] == "United States"
+        assert result["dxcc"] == "291"
+        assert result["state"] == "CT"
+        assert result["cqz"] == 5
+        assert result["ituz"] == 8
+
+    def test_partial_info_no_state(self):
+        from network.qrz_lookup import CallsignInfo
+        info = CallsignInfo(callsign="DL1ABC", country="Germany", dxcc="DL")
+        result = _enrich_from_qrz(info)
+        assert result["country"] == "Germany"
+        assert result["state"] == ""
+        assert result["cqz"] == 0

@@ -66,8 +66,14 @@ TABS = [
     ("localrf",   "📋  Local RF",       True),
     ("map",       "🗺  Map",            True),
     ("winlink",   "✉️  Winlink",        True),
+    ("rf_lab",    "🔬  RF Lab",         False),
     ("help",      "❓  Help",           True),
 ]
+
+# Tabs hidden in RF Lab / Education mode (no rig required)
+_RF_LAB_HIDDEN = {"rig", "modes", "log", "digital", "winlink", "localrf"}
+# Tabs shown in RF Lab mode (rest inherit their saved visibility)
+_RF_LAB_SHOWN  = {"sdr", "rf_lab", "bandcond", "map", "help"}
 
 class ClickableLabel(QLabel):
     """
@@ -229,6 +235,7 @@ class MainWindow(
         self._init_pskreporter()
         self._init_satellites()
         QTimer.singleShot(100, self._wire_sdr_to_digital)
+        QTimer.singleShot(200, self._apply_saved_rf_lab_mode)
         self._auto_detect_software()
         self._populate_profiles()
         QTimer.singleShot(800, self._restore_location)
@@ -455,6 +462,7 @@ class MainWindow(
         "digital":  ("ui.tabs.digital_tab",         "DigitalTab",        lambda s, _: (s.cfg, s.rig)),
         "localrf":  ("ui.tabs.localrf_tab",         "LocalRFTab",        lambda s, _: (s.cfg, s.rig)),
         "winlink":  ("ui.tabs.winlink_tab",         "WinlinkTab",        lambda s, _: (s.cfg, s.rig)),
+        "rf_lab":   ("ui.tabs.rf_lab_tab",          "RFLabTab",          lambda s, _: (s.cfg,)),
         "help":     ("ui.tabs.help_tab",            "HelpTab",           lambda s, _: (s.cfg,)),
     }
 
@@ -655,6 +663,19 @@ class MainWindow(
         clock_a = QAction(self.tr("Toggle UTC / Local Time"), self)
         clock_a.triggered.connect(lambda: self._toggle_clock(None))
         vm.addAction(clock_a)
+        vm.addSeparator()
+        # RF Lab Mode — SDR-only education mode; hides ham-specific tabs (C-16/C-21)
+        rflab_a = QAction(self.tr("🔬  RF Lab / Education Mode"), self)
+        rflab_a.setCheckable(True)
+        rflab_a.setChecked(self.cfg.get("ui.mode", "ham") == "rf_lab")
+        rflab_a.setToolTip(
+            "Switches to SDR-only education layout.\n"
+            "Hides Rig, Modes, Log, Digital, Winlink, Local RF tabs.\n"
+            "Shows SDR, RF Lab, Band Conditions, Map, Help.\n"
+            "TX capability for USRP/HackRF remains available via the SDR tab.")
+        rflab_a.triggered.connect(lambda checked: self._toggle_rf_lab_mode(checked))
+        self._rflab_action = rflab_a
+        vm.addAction(rflab_a)
         vm.addSeparator()
         # Demo Mode — disables ALL transmit (C-06 Elena classroom use)
         demo_a = QAction(self.tr("Demo Mode (disable transmit)"), self)

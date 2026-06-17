@@ -306,6 +306,14 @@ class PanelShell(QMainWindow):
             if pid in self._docks:
                 self._docks[pid].restore_lock(True)
 
+        # Ctrl+Shift+1-4: quick-switch built-in presets
+        from PyQt6.QtGui import QKeySequence, QShortcut
+        for idx, name in enumerate(list(PRESETS)[:4], start=1):
+            sc = QShortcut(
+                QKeySequence(f"Ctrl+Shift+{idx}"), self)
+            sc.activated.connect(
+                lambda _=False, n=name: self._apply_preset_with_notice(n))
+
     # ── Setup ──────────────────────────────────────────────────────────────
 
     def _get_workspace_dir(self) -> Path:
@@ -404,6 +412,11 @@ class PanelShell(QMainWindow):
             else:
                 dock.hide()
         log.info(f"Workspace preset applied: {name}")
+
+    def _apply_preset_with_notice(self, name: str):
+        """Apply preset and show a 2-second status bar confirmation."""
+        self._apply_preset(name)
+        self.statusBar().showMessage(f"Preset: {name} applied", 2000)
 
     def _show_all_panels(self):
         for dock in self._docks.values():

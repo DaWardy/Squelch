@@ -185,10 +185,17 @@ class RigTab(SquelchPanel, QWidget):
 
     def save_state(self) -> dict:
         try:
+            def _vis(attr):
+                w = getattr(self, attr, None)
+                return bool(w and w.isVisible())
             return {
-                "freq_hz":    self.freq_display._freq_hz,
-                "step_label": getattr(self, "_step_label", "1 kHz"),
-                "band":       getattr(self, "_current_band", ""),
+                "freq_hz":       self.freq_display._freq_hz,
+                "step_label":    getattr(self, "_step_label", "1 kHz"),
+                "band":          getattr(self, "_current_band", ""),
+                "cw_open":       _vis("_cw_body"),
+                "scanner_open":  _vis("_scan_body"),
+                "memory_open":   _vis("_mem_body"),
+                "spectrum_open": _vis("_spectrum_widget"),
             }
         except Exception:
             return {}
@@ -197,6 +204,20 @@ class RigTab(SquelchPanel, QWidget):
         try:
             if "freq_hz" in state and state["freq_hz"]:
                 self._set_freq(state["freq_hz"])
+            for key, body_attr, toggle_attr in [
+                ("cw_open",       "_cw_body",       "_cw_toggle"),
+                ("scanner_open",  "_scan_body",      "_scan_toggle"),
+                ("memory_open",   "_mem_body",       "_mem_toggle"),
+                ("spectrum_open", "_spectrum_widget", "_spec_toggle"),
+            ]:
+                if key not in state:
+                    continue
+                body = getattr(self, body_attr, None)
+                toggle = getattr(self, toggle_attr, None)
+                if body:
+                    body.setVisible(bool(state[key]))
+                if toggle and hasattr(toggle, "setChecked"):
+                    toggle.setChecked(bool(state[key]))
         except Exception:
             pass
 

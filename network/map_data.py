@@ -282,6 +282,30 @@ def _render_html(**ctx) -> str:
     font-family:'Courier New',monospace;
     text-shadow: 1px 1px 2px #000;
   }}
+  .map-legend {{
+    background:rgba(10,10,10,0.85);
+    border:1px solid #333; border-radius:5px;
+    padding:8px 10px; font-size:11px;
+    color:#ccc; font-family:'Courier New',monospace;
+    line-height:1.7;
+  }}
+  .map-legend b {{ color:#aaa; font-size:10px; letter-spacing:1px; }}
+  .leg-dot {{
+    display:inline-block; width:9px; height:9px;
+    border-radius:50%; border:1px solid #fff;
+    vertical-align:middle; margin-right:5px;
+  }}
+  .leg-tri-up {{
+    display:inline-block; width:0; height:0;
+    border-left:5px solid transparent;
+    border-right:5px solid transparent;
+    vertical-align:middle; margin-right:5px;
+  }}
+  .leg-sq {{
+    display:inline-block; width:8px; height:8px;
+    transform:rotate(45deg);
+    vertical-align:middle; margin-right:5px;
+  }}
 </style>
 </head>
 <body>
@@ -444,16 +468,26 @@ AIRCRAFT.forEach(function(a) {{
     .addTo(map);
 }});
 
-// ── Heard stations (FT8/FT4/decode) — green dots ─────────────
+// ── Heard station mode colours ────────────────────────────────
+var MCOLORS = {{
+  'FT8':'#00aaff', 'FT4':'#0066cc', 'WSPR':'#ffcc00',
+  'CW':'#ff8800', 'SSB':'#44cc44', 'AM':'#44cc44',
+  'PSK31':'#cc66ff', 'PSK63':'#cc66ff', 'RTTY':'#ff66aa',
+  'JS8':'#22dddd', 'SSTV':'#ff9933'
+}};
+var MC_DEFAULT = '#aaaaaa';
+
+// ── Heard stations (FT8/FT4/decode) — mode-coloured dots ─────
 HEARD.forEach(function(s) {{
+  var col = MCOLORS[s.source] || MC_DEFAULT;
   var icon = L.divIcon({{
-    html: '<div style="background:#3fbe6f;width:8px;height:8px;'
+    html: '<div style="background:'+col+';width:8px;height:8px;'
          +'border-radius:50%;border:1px solid #fff;opacity:0.85;"></div>',
     className:'', iconSize:[8,8], iconAnchor:[4,4]
   }});
   L.marker([s.lat, s.lon], {{icon:icon}})
     .bindPopup('<div class="qso-popup">'
-      +'<b style="color:#3fbe6f">'+s.callsign+'</b><br>'
+      +'<b style="color:'+col+'">'+s.callsign+'</b><br>'
       +(s.grid||'')+'<br>'
       +(s.freq_mhz?(s.freq_mhz.toFixed(4)+' MHz  '):'')
       +(s.source||'decode')
@@ -501,6 +535,28 @@ HEARING_ME.forEach(function(s) {{
       +'</div>')
     .addTo(map);
 }});
+
+// ── Legend control (bottom-right) ────────────────────────────
+var legend = L.control({{position:'bottomright'}});
+legend.onAdd = function() {{
+  var d = L.DomUtil.create('div','map-legend');
+  d.innerHTML =
+    '<b>LEGEND</b><br>'
+    +'<span class="leg-dot" style="background:#3fbe6f;"></span>My Station<br>'
+    +'<span class="leg-dot" style="background:#00aaff;"></span>FT8 heard<br>'
+    +'<span class="leg-dot" style="background:#ffcc00;"></span>WSPR heard<br>'
+    +'<span class="leg-dot" style="background:#ff8800;"></span>CW heard<br>'
+    +'<span class="leg-dot" style="background:#44cc44;"></span>SSB heard<br>'
+    +'<span class="leg-dot" style="background:#cc66ff;"></span>PSK31 heard<br>'
+    +'<span class="leg-dot" style="background:#aaaaaa;"></span>Other heard<br>'
+    +'<span class="leg-tri-up" style="border-bottom:11px solid #ff8800;"></span>PSKReporter<br>'
+    +'<span class="leg-dot" style="background:#ff8844;border-radius:50%;"></span>APRS<br>'
+    +'<span class="leg-sq" style="background:#3fbe6f;"></span>Repeater<br>'
+    +'<span class="leg-tri-up" style="border-bottom:13px solid #cc66ff;"></span>Winlink RMS<br>'
+    +'<span style="color:#aaaaff;font-size:13px;vertical-align:middle;margin-right:4px;">✈</span>ADS-B';
+  return d;
+}};
+legend.addTo(map);
 </script>
 </body>
 </html>"""

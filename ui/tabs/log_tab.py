@@ -304,6 +304,11 @@ class LogTab(SquelchPanel, QWidget):
         adif_imp.clicked.connect(self._import_adif)
         btn_row.addWidget(adif_imp)
 
+        stats_btn = QPushButton(self.tr("📊 Analytics…"))
+        stats_btn.setToolTip("Band, mode, year and entity breakdown")
+        stats_btn.clicked.connect(self._show_analytics)
+        btn_row.addWidget(stats_btn)
+
         lotw_btn = QPushButton(self.tr("Upload LoTW queue"))
         lotw_btn.setToolTip(
             "Upload pending QSOs to ARRL LoTW\n"
@@ -794,6 +799,13 @@ class LogTab(SquelchPanel, QWidget):
                 f"QSO with {call} on {band} {mode} logged.")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Could not log QSO: {e}")
+
+    # ── Analytics ─────────────────────────────────────────────────────────
+
+    def _show_analytics(self):
+        from ui.dialogs.log_stats_dialog import LogStatsDialog
+        dlg = LogStatsDialog(self.log_db, self)
+        dlg.exec()
 
     # ── ADIF export ───────────────────────────────────────────────────────
 

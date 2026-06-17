@@ -37,9 +37,10 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QLineEdit,
     QComboBox, QSplitter, QFrame, QMessageBox,
     QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
-    QProgressBar, QSpinBox, QProgressDialog, QDateEdit
+    QProgressBar, QSpinBox, QProgressDialog, QDateEdit,
+    QDateTimeEdit
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate, QDateTime
 from PyQt6.QtGui import QColor, QBrush, QFont
 
 from core.log_db import LogDB, QSO, get_log_db
@@ -599,8 +600,6 @@ class LogTab(SquelchPanel, QWidget):
                 min(stats["grids_worked"], 500))
 
             # QSO rate — count QSOs in the last 60 minutes
-            now_str = datetime.now(timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ")
             cutoff = datetime.now(timezone.utc).replace(
                 minute=0, second=0, microsecond=0)
             hour_ago = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -646,12 +645,38 @@ class LogTab(SquelchPanel, QWidget):
         cs_edit.setMaxLength(15)
         lay.addRow("Callsign:", cs_edit)
 
+        freq_edit = QLineEdit()
+        freq_edit.setPlaceholderText("MHz, e.g. 14.074")
+        freq_edit.setMaxLength(12)
+        freq_edit.setToolTip(
+            "Frequency in MHz — auto-fills Band when recognised")
+        lay.addRow("Freq (MHz):", freq_edit)
+
         band_combo = QComboBox()
         band_combo.addItems(self._BANDS)
         band_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         band_combo.setCurrentText("20m")
         lay.addRow("Band:", band_combo)
+
+        def _freq_to_band():
+            from core.band_plan import band_at_freq
+            text = freq_edit.text().strip().replace(",", ".")
+            try:
+                hz = int(float(text) * 1_000_000)
+                b = band_at_freq(hz)
+                if b:
+                    band_combo.setCurrentText(b.name)
+            except (ValueError, TypeError):
+                pass
+        freq_edit.editingFinished.connect(_freq_to_band)
+
+        now_utc = QDateTime.currentDateTimeUtc()
+        dt_edit = QDateTimeEdit(now_utc)
+        dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm")
+        dt_edit.setTimeSpec(Qt.TimeSpec.UTC)
+        dt_edit.setToolTip("QSO date/time in UTC")
+        lay.addRow("DateTime (UTC):", dt_edit)
 
         mode_combo = QComboBox()
         mode_combo.addItems(self._MODES)
@@ -693,7 +718,8 @@ class LogTab(SquelchPanel, QWidget):
         lay.addRow("Comment:", comment_edit)
 
         return {
-            "cs_edit": cs_edit, "band_combo": band_combo,
+            "cs_edit": cs_edit, "freq_edit": freq_edit,
+            "band_combo": band_combo, "dt_edit": dt_edit,
             "mode_combo": mode_combo, "rst_sent": rst_sent,
             "rst_rcvd": rst_rcvd, "grid_edit": grid_edit,
             "name_edit": name_edit, "lkp_status": lkp_status,
@@ -789,20 +815,30 @@ class LogTab(SquelchPanel, QWidget):
                         QMessageBox.StandardButton.No)
                     if reply == QMessageBox.StandardButton.No:
                         return
+            try:
+                freq_hz = int(
+                    float(f["freq_edit"].text().strip()
+                          .replace(",", ".")) * 1_000_000)
+            except (ValueError, TypeError):
+                freq_hz = 0
+            dt_str = (f["dt_edit"].dateTime()
+                      .toUTC().toString("yyyy-MM-ddTHH:mm:ssZ"))
             qso = QSO(
-                call      = call,
-                band      = band,
-                mode      = mode,
-                rst_sent  = f["rst_sent"].text().strip() or "59",
-                rst_rcvd  = f["rst_rcvd"].text().strip() or "59",
-                grid      = grid_square_soft(f["grid_edit"].text()),
-                name      = f["name_edit"].text().strip()[:50],
-                comment   = f["comment_edit"].text().strip()[:200],
-                my_call   = operating_callsign(self.cfg),
-                my_grid   = self.cfg.grid,
-                my_lat    = self.cfg.get("location.lat", 0.0),
-                my_lon    = self.cfg.get("location.lon", 0.0),
-                source    = "manual",
+                call         = call,
+                datetime_on  = dt_str,
+                band         = band,
+                freq_hz      = freq_hz,
+                mode         = mode,
+                rst_sent     = f["rst_sent"].text().strip() or "59",
+                rst_rcvd     = f["rst_rcvd"].text().strip() or "59",
+                grid         = grid_square_soft(f["grid_edit"].text()),
+                name         = f["name_edit"].text().strip()[:50],
+                comment      = f["comment_edit"].text().strip()[:200],
+                my_call      = operating_callsign(self.cfg),
+                my_grid      = self.cfg.grid,
+                my_lat       = self.cfg.get("location.lat", 0.0),
+                my_lon       = self.cfg.get("location.lon", 0.0),
+                source       = "manual",
             )
             self.log_db.log_qso(qso)
             self._load_log()
@@ -1088,6 +1124,13 @@ class LogTab(SquelchPanel, QWidget):
         call.setMaxLength(12)
         f.addRow("Callsign:", call)
 
+        freq_mhz = (qso.freq_hz / 1_000_000
+                    if getattr(qso, "freq_hz", 0) else 0.0)
+        freq = QLineEdit(f"{freq_mhz:.6g}" if freq_mhz else "")
+        freq.setMaxLength(12)
+        freq.setPlaceholderText("MHz, e.g. 14.074")
+        f.addRow("Freq (MHz):", freq)
+
         band = QComboBox()
         bands = ["160m","80m","60m","40m","30m","20m",
                  "17m","15m","12m","10m","6m","2m","70cm"]
@@ -1095,6 +1138,16 @@ class LogTab(SquelchPanel, QWidget):
         if qso.band in bands:
             band.setCurrentText(qso.band)
         f.addRow("Band:", band)
+
+        dt_val = QDateTime.fromString(
+            qso.datetime_on or "", "yyyy-MM-ddTHH:mm:ssZ")
+        if not dt_val.isValid():
+            dt_val = QDateTime.currentDateTimeUtc()
+        dt_edit = QDateTimeEdit(dt_val)
+        dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm")
+        dt_edit.setTimeSpec(Qt.TimeSpec.UTC)
+        dt_edit.setToolTip("QSO date/time in UTC")
+        f.addRow("DateTime (UTC):", dt_edit)
 
         mode = QComboBox()
         modes = ["FT8","FT4","CW","SSB","USB","LSB",
@@ -1127,19 +1180,27 @@ class LogTab(SquelchPanel, QWidget):
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         f.addRow(btns)
-        return call, band, mode, rst_s, rst_r, grid, name, comment
+        return call, freq, band, dt_edit, mode, rst_s, rst_r, grid, name, comment
 
-    def _apply_qso_edit(self, qso, call, band, mode,
-                        rst_s, rst_r, grid, name, comment):
+    def _apply_qso_edit(self, qso, call, freq, band, dt_edit,
+                        mode, rst_s, rst_r, grid, name, comment):
         try:
-            qso.call     = call.text().strip().upper()
-            qso.band     = band.currentText()
-            qso.mode     = mode.currentText()
-            qso.rst_sent = rst_s.text().strip()
-            qso.rst_rcvd = rst_r.text().strip()
-            qso.grid     = grid.text().strip().upper()
-            qso.name     = name.text().strip()
-            qso.comment  = comment.text().strip()
+            qso.call        = call.text().strip().upper()
+            qso.band        = band.currentText()
+            qso.mode        = mode.currentText()
+            qso.rst_sent    = rst_s.text().strip()
+            qso.rst_rcvd    = rst_r.text().strip()
+            qso.grid        = grid.text().strip().upper()
+            qso.name        = name.text().strip()
+            qso.comment     = comment.text().strip()
+            qso.datetime_on = (dt_edit.dateTime().toUTC()
+                               .toString("yyyy-MM-ddTHH:mm:ssZ"))
+            try:
+                qso.freq_hz = int(
+                    float(freq.text().strip()
+                          .replace(",", ".")) * 1_000_000)
+            except (ValueError, TypeError):
+                qso.freq_hz = 0
             self.log_db.update_qso(qso)
             self._load_log()
             log.info(f"QSO edited: {qso.call}")

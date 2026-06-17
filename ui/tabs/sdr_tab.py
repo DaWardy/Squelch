@@ -1098,8 +1098,6 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._manager.set_frequency(hz)
         self._update_axes()
         self._draw_band_segments()
-        if HAS_PG:
-            self._cf_line.setValue(hz)
 
     def _set_step(self, idx: int):
         self._step_idx = idx

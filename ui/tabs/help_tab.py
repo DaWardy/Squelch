@@ -230,6 +230,25 @@ Standard FT8 frequencies by band:
 Squelch logs QSOs to:
   Windows: %APPDATA%\\Squelch\\logs\\squelch_log.db
 ADIF export: Log tab → Export ADIF
+Cabrillo export: Log tab → Export Cabrillo (contest submissions)
+CSV export: Log tab → Export CSV (spreadsheet)
+
+## Uploading to LoTW (Logbook of the World)
+1. Install TQSL from tqsl.arrl.org and set up your certificate
+2. Add your LoTW callsign and password in Settings → APIs → LoTW
+3. Log tab → Upload LoTW queue — uploads pending QSOs via TQSL
+   Confirmations typically arrive within 24–48 hours.
+
+## Uploading to QRZ Logbook
+1. Log in to qrz.com, go to Logbook → Settings → Enable API
+2. Copy your API key (free — no subscription required for logbook)
+3. Add the key in Settings → APIs → QRZ.com → Logbook API Key
+4. Log tab → Upload QRZ queue — syncs pending QSOs to your QRZ logbook
+
+## Awards Progress (Log tab)
+Squelch tracks DXCC, WAS (50 states), and Maidenhead grid squares
+worked and confirmed. Progress bars at the top of the Log tab update
+automatically as you log QSOs and receive LoTW/QRZ confirmations.
 """),
 
     ("SignaLink USB Setup", "Audio & Hardware",

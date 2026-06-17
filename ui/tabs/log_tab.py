@@ -297,6 +297,13 @@ class LogTab(SquelchPanel, QWidget):
         eqsl_btn.clicked.connect(self._show_eqsl_upload)
         btn_row.addWidget(eqsl_btn)
 
+        hrdlog_btn = QPushButton(self.tr("Upload HRDLog"))
+        hrdlog_btn.setToolTip(
+            "Upload log to HRDLog.net\n"
+            "Requires callsign and API key in Settings → APIs")
+        hrdlog_btn.clicked.connect(self._show_hrdlog_upload)
+        btn_row.addWidget(hrdlog_btn)
+
         btn_row.addStretch()
         self._queue_label = QLabel("")
         self._queue_label.setStyleSheet(" ")
@@ -1238,6 +1245,57 @@ class LogTab(SquelchPanel, QWidget):
                 self, "eQSL Upload Failed",
                 f"Upload failed:\n{result.error}\n\n"
                 "Check Settings → APIs for your eQSL credentials.")
+
+    def _show_hrdlog_upload(self):
+        from network.hrdlog_sync import HRDLogSync
+        total = self.log_db.total_qsos()
+        if not total:
+            QMessageBox.information(
+                self, "HRDLog", "No QSOs in log to upload.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Upload to HRDLog.net",
+            f"Upload all {total} QSOs to HRDLog.net now?\n\n"
+            "Requires callsign and API key in Settings → APIs.",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        prog = QProgressDialog(
+            "Uploading to HRDLog.net…", "Cancel",
+            0, 100, self)
+        prog.setWindowTitle("HRDLog Upload")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.show()
+
+        sync = HRDLogSync(self.cfg)
+
+        def _on_progress(msg: str, pct: int):
+            QTimer.singleShot(0, lambda: (
+                prog.setLabelText(msg),
+                prog.setValue(pct)))
+
+        def _on_complete(result):
+            QTimer.singleShot(0,
+                lambda r=result: self._hrdlog_done(r, prog))
+
+        sync.on_progress(_on_progress)
+        sync.on_complete(_on_complete)
+        sync.upload_async(self.log_db)
+
+    def _hrdlog_done(self, result, prog) -> None:
+        prog.close()
+        if result.success:
+            QMessageBox.information(
+                self, "HRDLog Upload Complete",
+                f"{result.message}")
+        else:
+            QMessageBox.warning(
+                self, "HRDLog Upload Failed",
+                f"Upload failed:\n{result.error}\n\n"
+                "Check Settings → APIs for your HRDLog credentials.")
 
     # ── Public ────────────────────────────────────────────────────────────
 

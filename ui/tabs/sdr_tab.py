@@ -1168,9 +1168,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
                 self._span_hz = min(
                     self._span_hz,
                     self._current.max_span)
-            sr = max(self._span_hz,
-                     self._span_hz)
-            self._manager.set_sample_rate(sr)
+            self._manager.set_sample_rate(self._span_hz)
             self._update_axes()
             self._draw_band_segments()
 

@@ -37,15 +37,31 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QLineEdit,
     QComboBox, QSplitter, QFrame, QMessageBox,
     QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
-    QProgressBar, QSpinBox, QProgressDialog
+    QProgressBar, QSpinBox, QProgressDialog, QDateEdit
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate
 from PyQt6.QtGui import QColor, QBrush, QFont
 
 from core.log_db import LogDB, QSO, get_log_db
 from core.validator import callsign_soft, grid_square_soft
 
 log = logging.getLogger(__name__)
+
+
+def _adif_to_iso(date_str: str, time_str: str) -> str:
+    """Convert ADIF QSO_DATE (YYYYMMDD) + TIME_ON (HHMM[SS]) to ISO UTC."""
+    if not date_str or len(date_str) < 8:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        y = int(date_str[:4])
+        m = int(date_str[4:6])
+        d = int(date_str[6:8])
+        h  = int(time_str[:2]) if len(time_str) >= 2 else 0
+        mn = int(time_str[2:4]) if len(time_str) >= 4 else 0
+        sc = int(time_str[4:6]) if len(time_str) >= 6 else 0
+        return f"{y:04d}-{m:02d}-{d:02d}T{h:02d}:{mn:02d}:{sc:02d}Z"
+    except (ValueError, TypeError):
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 
@@ -185,6 +201,25 @@ class LogTab(SquelchPanel, QWidget):
         ])
         self._mode_filter.currentTextChanged.connect(self._apply_filter)
         filter_row.addWidget(self._mode_filter)
+
+        filter_row.addWidget(QLabel(self.tr("From:")))
+        self._date_from = QDateEdit()
+        self._date_from.setDisplayFormat("yyyy-MM-dd")
+        self._date_from.setDate(QDate(2000, 1, 1))
+        self._date_from.setCalendarPopup(True)
+        self._date_from.setMaximumWidth(105)
+        self._date_from.dateChanged.connect(self._apply_filter)
+        filter_row.addWidget(self._date_from)
+
+        filter_row.addWidget(QLabel("–"))
+
+        self._date_to = QDateEdit()
+        self._date_to.setDisplayFormat("yyyy-MM-dd")
+        self._date_to.setDate(QDate(2099, 12, 31))
+        self._date_to.setCalendarPopup(True)
+        self._date_to.setMaximumWidth(105)
+        self._date_to.dateChanged.connect(self._apply_filter)
+        filter_row.addWidget(self._date_to)
 
         refresh_btn = QPushButton(self.tr("↺ Refresh"))
         refresh_btn.setFixedWidth(90)
@@ -460,6 +495,10 @@ class LogTab(SquelchPanel, QWidget):
         call_filter = self._search.text().strip().upper()
         band_filter = self._band_filter.currentText()
         mode_filter = self._mode_filter.currentText()
+        date_from_str = self._date_from.date().toString("yyyy-MM-dd")
+        date_to_str   = self._date_to.date().toString("yyyy-MM-dd")
+        filter_dates  = (date_from_str != "2000-01-01"
+                         or date_to_str != "2099-12-31")
 
         filtered = []
         for q in self._all_qsos:
@@ -469,6 +508,10 @@ class LogTab(SquelchPanel, QWidget):
                 continue
             if mode_filter != self.tr("All modes") and q.mode != mode_filter:
                 continue
+            if filter_dates:
+                qdate = q.datetime_on[:10] if q.datetime_on else ""
+                if qdate < date_from_str or qdate > date_to_str:
+                    continue
             filtered.append(q)
 
         self._populate_table(filtered)
@@ -878,38 +921,80 @@ class LogTab(SquelchPanel, QWidget):
             import adif_io
             with open(path, 'r', encoding='utf-8',
                       errors='replace') as f:
-                qsos, _ = adif_io.read_from_string(f.read())
+                records, _ = adif_io.read_from_string(f.read())
 
-            count = 0
-            for record in qsos:
+            imported = skipped = errors = 0
+            my_call = operating_callsign(self.cfg)
+            for record in records:
                 try:
-                    call = callsign_soft(
-                        record.get('CALL', ''))
+                    call = callsign_soft(record.get('CALL', ''))
                     if not call:
                         continue
+                    dt_on = _adif_to_iso(
+                        record.get('QSO_DATE', ''),
+                        record.get('TIME_ON', ''))
+                    if self.log_db.has_qso_at(call, dt_on):
+                        skipped += 1
+                        continue
+                    try:
+                        freq_hz = int(float(
+                            record.get('FREQ', 0) or 0) * 1e6)
+                    except (ValueError, TypeError):
+                        freq_hz = 0
+                    try:
+                        tx_pwr = float(record.get('TX_PWR', 0) or 0)
+                    except (ValueError, TypeError):
+                        tx_pwr = 0.0
+                    try:
+                        cqz = int(record.get('CQZ', 0) or 0)
+                    except (ValueError, TypeError):
+                        cqz = 0
+                    try:
+                        ituz = int(record.get('ITUZ', 0) or 0)
+                    except (ValueError, TypeError):
+                        ituz = 0
+                    dt_off = _adif_to_iso(
+                        record.get('QSO_DATE_OFF',
+                                   record.get('QSO_DATE', '')),
+                        record.get('TIME_OFF', ''))
                     qso = QSO(
-                        call      = call,
-                        band      = record.get('BAND', '').lower(),
-                        mode      = record.get('MODE', '').upper(),
-                        rst_sent  = record.get('RST_SENT', '59'),
-                        rst_rcvd  = record.get('RST_RCVD', '59'),
-                        grid      = grid_square_soft(
+                        call         = call,
+                        datetime_on  = dt_on,
+                        datetime_off = dt_off,
+                        band         = record.get('BAND', '').lower(),
+                        freq_hz      = freq_hz,
+                        mode         = record.get('MODE', '').upper(),
+                        submode      = record.get('SUBMODE', '').upper(),
+                        rst_sent     = record.get('RST_SENT', '59'),
+                        rst_rcvd     = record.get('RST_RCVD', '59'),
+                        grid         = grid_square_soft(
                             record.get('GRIDSQUARE', '')),
-                        name      = record.get('NAME', '')[:50],
-                        comment   = record.get('COMMENT', '')[:200],
-                        my_call   = operating_callsign(self.cfg),
-                        my_grid   = self.cfg.grid,
-                        source    = "adif_import",
+                        name         = record.get('NAME', '')[:50],
+                        comment      = (record.get('COMMENT', '')
+                                        or record.get('NOTES', ''))[:200],
+                        dxcc         = record.get('DXCC', ''),
+                        country      = record.get('COUNTRY', '')[:60],
+                        state        = record.get('STATE', '')[:10],
+                        cqz          = cqz,
+                        ituz         = ituz,
+                        tx_pwr_w     = tx_pwr,
+                        my_call      = my_call,
+                        my_grid      = self.cfg.grid,
+                        source       = "adif_import",
                     )
                     self.log_db.log_qso(qso)
-                    count += 1
+                    imported += 1
                 except Exception:
-                    pass
+                    errors += 1
 
             self._load_log()
+            msg = f"Imported {imported} QSOs."
+            if skipped:
+                msg += f"\nSkipped {skipped} duplicates."
+            if errors:
+                msg += f"\n{errors} records had errors and were skipped."
             QMessageBox.information(
-                self, self.tr("Import Complete"),
-                f"Imported {count} QSOs from {path}")
+                self, self.tr("Import Complete"), msg)
         except Exception as e:
             QMessageBox.warning(
                 self, "Import Failed", str(e))

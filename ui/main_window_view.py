@@ -87,6 +87,43 @@ class _MainWindowViewMixin:
                 if hasattr(rig_tab, '_spec_toggle'):
                     rig_tab._spec_toggle.setChecked(visible)
 
+    def _toggle_rf_lab_mode(self, enable: bool):
+        """Switch between standard ham layout and RF Lab / Education layout."""
+        from ui.main_window import _RF_LAB_HIDDEN, _RF_LAB_SHOWN
+        if enable:
+            self.cfg.set("ui.mode", "rf_lab")
+            for key in _RF_LAB_HIDDEN:
+                self._set_tab_visible(key, False)
+                if key in getattr(self, "_tab_actions", {}):
+                    self._tab_actions[key].setChecked(False)
+            for key in _RF_LAB_SHOWN:
+                self._set_tab_visible(key, True)
+                if key in getattr(self, "_tab_actions", {}):
+                    self._tab_actions[key].setChecked(True)
+            self.statusBar().showMessage(
+                "RF Lab mode active — Rig/Log/Digital tabs hidden; "
+                "SDR + RF Lab + Map visible", 5000)
+        else:
+            self.cfg.set("ui.mode", "ham")
+            for key in _RF_LAB_HIDDEN:
+                self._set_tab_visible(key, True)
+                if key in getattr(self, "_tab_actions", {}):
+                    self._tab_actions[key].setChecked(True)
+            self._set_tab_visible("rf_lab", False)
+            if "rf_lab" in getattr(self, "_tab_actions", {}):
+                self._tab_actions["rf_lab"].setChecked(False)
+            self.statusBar().showMessage(
+                "Ham Radio mode restored — all tabs visible", 4000)
+        self.cfg.save()
+
+    def _apply_saved_rf_lab_mode(self):
+        """Restore RF Lab mode on startup if it was active last session."""
+        if self.cfg.get("ui.mode", "ham") == "rf_lab":
+            act = getattr(self, "_rflab_action", None)
+            if act:
+                act.setChecked(True)
+            self._toggle_rf_lab_mode(True)
+
     def _toggle_ui_lock(self, locked: bool):
         """Lock/unlock UI layout — prevent accidental tab moves."""
         self.cfg.set("ui.layout_locked", locked)

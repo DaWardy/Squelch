@@ -127,41 +127,50 @@ class _MainWindowFirstrunMixin:
 
 
     def _first_run_dialog_impl(self):
-        dlg, cs_edit, loc_edit, rig_combo = self._build_firstrun_dialog()
+        dlg, cs_edit, loc_edit, rig_combo, mode_combo = self._build_firstrun_dialog()
         dlg.raise_()
         dlg.activateWindow()
         if not dlg.exec():
             return
+        mode_key = mode_combo.currentData() or "ham"
         cs = re.sub(r'[^A-Z0-9/]', '', cs_edit.text().strip().upper())
         loc = loc_edit.text().strip()
         rig_choice = rig_combo.currentData()
         if rig_choice and rig_choice not in ("", "none"):
             self.cfg.set("rig.preset", rig_choice)
-            self.cfg.save()
         if cs:
             self.cfg.callsign = cs
             self._cs_lbl.setText(cs)
         if loc:
             self._apply_firstrun_location(loc.strip())
+        if mode_key == "rf_lab":
+            self.cfg.set("ui.mode", "rf_lab")
+            QTimer.singleShot(500, lambda: self._toggle_rf_lab_mode(True))
+            if hasattr(self, "_rflab_action"):
+                self._rflab_action.setChecked(True)
         self.cfg.save()
 
     def _build_firstrun_dialog(self) -> "tuple":
-        """Build and return (dlg, cs_edit, loc_edit, rig_combo)."""
+        """Build and return (dlg, cs_edit, loc_edit, rig_combo, mode_combo)."""
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Welcome to {APP_NAME}")
-        dlg.setMinimumWidth(440)
+        dlg.setMinimumWidth(460)
         lay = QVBoxLayout(dlg)
         intro = QLabel(
             f"<b>Welcome to {APP_NAME} v{VERSION}</b><br><br>"
-            "Enter your callsign and location to get started.<br>"
-            "Location resolves to a Maidenhead grid square — "
-            "the universal reference for amateur radio.<br>"
-            "You can also click either value in the top bar to edit at any time.")
+            "Choose your usage mode, then enter your location to get started.<br>"
+            "You can switch modes at any time via <b>View → RF Lab / Education Mode</b>.")
         intro.setWordWrap(True)
         lay.addWidget(intro)
         form = QFormLayout()
+
+        mode_combo = QComboBox()
+        mode_combo.addItem("🎙  Ham Radio Operator  (full rig + log + digital modes)", "ham")
+        mode_combo.addItem("🔬  RF Lab / Education  (SDR-only, no callsign required)", "rf_lab")
+        form.addRow("Usage mode:", mode_combo)
+
         cs_edit = QLineEdit()
-        cs_edit.setPlaceholderText("e.g. W4XYZ")
+        cs_edit.setPlaceholderText("e.g. W4XYZ  (leave blank for RF Lab mode)")
         cs_edit.setMaxLength(12)
         loc_edit = QLineEdit()
         loc_edit.setPlaceholderText("Maidenhead grid (DM79rr), ZIP, city, or MGRS")
@@ -179,10 +188,21 @@ class _MainWindowFirstrunMixin:
                           "YAESU FT-991A", "KENWOOD TS-590S",
                           "Other / configure later"):
                 rig_combo.addItem(label, label)
+
         form.addRow("Callsign:", cs_edit)
         form.addRow("Location:", loc_edit)
         form.addRow("Radio:", rig_combo)
         lay.addLayout(form)
+
+        def _on_mode_change(idx):
+            is_rf_lab = mode_combo.currentData() == "rf_lab"
+            cs_edit.setEnabled(not is_rf_lab)
+            rig_combo.setEnabled(not is_rf_lab)
+            cs_edit.setPlaceholderText(
+                "Not needed in RF Lab mode" if is_rf_lab
+                else "e.g. W4XYZ  (leave blank for RF Lab mode)")
+        mode_combo.currentIndexChanged.connect(_on_mode_change)
+
         hint = QLabel(
             "Find your grid: "
             "<a href='https://www.levinecentral.com/ham/grid_square.php'"
@@ -193,7 +213,7 @@ class _MainWindowFirstrunMixin:
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.accept)
         lay.addWidget(btns)
-        return dlg, cs_edit, loc_edit, rig_combo
+        return dlg, cs_edit, loc_edit, rig_combo, mode_combo
 
     def _apply_firstrun_location(self, loc_clean: str) -> None:
         """Apply first-run location: direct grid or async geocoder search."""

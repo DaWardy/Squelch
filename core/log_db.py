@@ -304,7 +304,7 @@ class LogDB:
             row = self._conn.execute("""
                 SELECT id FROM qso
                 WHERE call=? AND band=? AND mode=?
-                  AND datetime_on > datetime('now', ?)
+                  AND datetime_on > strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)
                 LIMIT 1
             """, (call.upper(), band, mode,
                   f"-{hours} hours")).fetchone()

@@ -364,9 +364,7 @@ class LogTab(SquelchPanel, QWidget):
         self._dxcc_bar = QProgressBar()
         self._dxcc_bar.setRange(0, 340)
         self._dxcc_bar.setStyleSheet(
-            "QProgressBar{background:#111;border:1px solid #333;"
-            "border-radius:3px;}"
-            "QProgressBar::chunk{background:#3fbe6f;}")
+            "QProgressBar::chunk{background:#3fbe6f;border-radius:2px;}")
         dxcc_l.addWidget(self._dxcc_bar)
         awards_l.addLayout(dxcc_l)
 
@@ -375,9 +373,7 @@ class LogTab(SquelchPanel, QWidget):
         self._was_bar = QProgressBar()
         self._was_bar.setRange(0, 50)
         self._was_bar.setStyleSheet(
-            "QProgressBar{background:#111;border:1px solid #333;"
-            "border-radius:3px;}"
-            "QProgressBar::chunk{background:#44aaff;}")
+            "QProgressBar::chunk{background:#44aaff;border-radius:2px;}")
         was_l.addWidget(self._was_bar)
         awards_l.addLayout(was_l)
 
@@ -386,9 +382,7 @@ class LogTab(SquelchPanel, QWidget):
         self._grids_bar = QProgressBar()
         self._grids_bar.setRange(0, 500)
         self._grids_bar.setStyleSheet(
-            "QProgressBar{background:#111;border:1px solid #333;"
-            "border-radius:3px;}"
-            "QProgressBar::chunk{background:#aa44ff;}")
+            "QProgressBar::chunk{background:#aa44ff;border-radius:2px;}")
         grids_l.addWidget(self._grids_bar)
         awards_l.addLayout(grids_l)
 
@@ -447,10 +441,7 @@ class LogTab(SquelchPanel, QWidget):
             bar.setFormat("%v/%m")
             bar.setTextVisible(True)
             bar.setStyleSheet(
-                "QProgressBar{background:#141414;"
-                "border:1px solid #1a1a1a;"
-                "border-radius:3px;text-align:center;"
-                "}"
+                "QProgressBar{border-radius:3px;text-align:center;}"
                 "QProgressBar::chunk{"
                 "background:#3fbe6f;border-radius:2px;}")
             self._award_bars[key] = bar
@@ -652,6 +643,10 @@ class LogTab(SquelchPanel, QWidget):
         cs_edit.setMaxLength(15)
         lay.addRow("Callsign:", cs_edit)
 
+        dupe_label = QLabel("")
+        dupe_label.setStyleSheet("font-size:10px;font-style:italic;")
+        lay.addRow("", dupe_label)
+
         freq_edit = QLineEdit()
         freq_edit.setPlaceholderText("MHz, e.g. 14.074")
         freq_edit.setMaxLength(12)
@@ -732,6 +727,7 @@ class LogTab(SquelchPanel, QWidget):
             "name_edit": name_edit, "lkp_status": lkp_status,
             "bearing_label": bearing_label,
             "comment_edit": comment_edit,
+            "dupe_label": dupe_label,
         }
 
     def _build_manual_entry_dialog(self):
@@ -798,10 +794,44 @@ class LogTab(SquelchPanel, QWidget):
         f["cs_edit"].editingFinished.connect(_on_cs_finished)
         f["grid_edit"].editingFinished.connect(_update_bearing)
 
+    def _wire_dupe_check(self, f: dict) -> None:
+        """Show inline dupe warning as callsign/band/mode change."""
+        dupe_lbl = f.get("dupe_label")
+        if dupe_lbl is None:
+            return
+
+        def _check():
+            call = f["cs_edit"].text().strip().upper()
+            band = f["band_combo"].currentText()
+            mode = f["mode_combo"].currentText().upper()
+            if not call:
+                dupe_lbl.setText("")
+                return
+            try:
+                if self.log_db.is_duplicate(call, band, mode):
+                    dupe_lbl.setStyleSheet(
+                        "color:#e06c00;font-size:10px;font-style:italic;")
+                    dupe_lbl.setText(
+                        f"⚠ Worked {call} on {band}/{mode} in last 24h")
+                elif self.log_db.worked_before(call):
+                    dupe_lbl.setStyleSheet(
+                        "color:#888;font-size:10px;font-style:italic;")
+                    dupe_lbl.setText(
+                        f"ℹ Worked {call} before (different band/mode)")
+                else:
+                    dupe_lbl.setText("")
+            except Exception:
+                dupe_lbl.setText("")
+
+        f["cs_edit"].editingFinished.connect(_check)
+        f["band_combo"].currentTextChanged.connect(lambda _: _check())
+        f["mode_combo"].currentTextChanged.connect(lambda _: _check())
+
     def _manual_entry(self):
         """Open the manual QSO entry dialog and log on accept."""
         dlg, f = self._build_manual_entry_dialog()
         self._wire_callsign_lookup(dlg, f)
+        self._wire_dupe_check(f)
         if not dlg.exec():
             return
         call = callsign_soft(f["cs_edit"].text())
@@ -902,7 +932,7 @@ class LogTab(SquelchPanel, QWidget):
                 f"GRID-LOCATOR: {grid}",
                 "CONTEST: ",
                 f"OPERATORS: {cs}",
-                "CREATED-BY: Squelch v0.9.0-alpha",
+                f"CREATED-BY: Squelch v{APP_VERSION}",
                 "",
             ]
             for q in qsos:

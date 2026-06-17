@@ -191,26 +191,62 @@ class AwardTracker:
     @staticmethod
     def _prefix_to_dxcc(callsign: str) -> str:
         """
-        Very rough DXCC prefix extraction.
-        Full implementation uses CTY.dat (see network/cty_data.py).
+        Map a callsign to a DXCC entity name using CTY.DAT (longest prefix
+        match).  Falls back to a rough manual table when CTY.DAT is absent so
+        DXCC tracking stays functional on first install before the file is
+        downloaded.  Never triggers a network download — callers should start
+        the background CTY loader separately.
         """
         if not callsign:
             return ""
+
+        # Try CTY.DAT if it's already loaded into the singleton.
+        try:
+            from network.cty_data import CTY_LOCAL, get_cty
+            if CTY_LOCAL.exists():
+                cty = get_cty()
+                if cty.is_loaded:
+                    name = cty.dxcc_name(callsign)
+                    if name:
+                        return name
+        except Exception:
+            pass
+
+        # Rough fallback (covers the most common DXCC entities without CTY.DAT)
         cs = callsign.upper().split("/")[0]
-        # Common prefixes
-        if cs.startswith(("W","K","N","AA"-"AK"
-                          if False else "W")):
-            if cs[0] in "WKNA":
-                return "K"   # USA
-        if cs.startswith("VE") or cs.startswith("VA"):
-            return "VE"  # Canada
-        if cs.startswith("G") or cs.startswith("M"):
-            return "G"   # England
-        if cs.startswith("DL") or cs.startswith("DA"):
-            return "DL"  # Germany
+        if cs and cs[0] in "WKNA":
+            return "K"    # United States of America
+        if cs.startswith(("VE", "VA", "VO", "VY")):
+            return "VE"   # Canada
+        if cs.startswith(("G", "M", "2")):
+            return "G"    # England
+        if cs.startswith(("DL", "DA", "DB", "DC", "DD", "DE", "DF", "DG",
+                           "DH", "DI", "DJ", "DK", "DM", "DN", "DO", "DP",
+                           "DQ", "DR")):
+            return "DL"   # Germany
         if cs.startswith("F"):
-            return "F"   # France
+            return "F"    # France
         if cs.startswith("JA"):
-            return "JA"  # Japan
-        # Return first 1-2 chars as rough prefix
+            return "JA"   # Japan
+        if cs.startswith(("I", "IK", "IT", "IW", "IZ")):
+            return "I"    # Italy
+        if cs.startswith(("SP", "SQ", "SR", "SN")):
+            return "SP"   # Poland
+        if cs.startswith("PA"):
+            return "PA"   # Netherlands
+        if cs.startswith(("VK", "AX")):
+            return "VK"   # Australia
+        if cs.startswith("ZL"):
+            return "ZL"   # New Zealand
+        if cs.startswith("PY"):
+            return "PY"   # Brazil
+        if cs.startswith("LU"):
+            return "LU"   # Argentina
+        if cs.startswith("UA"):
+            return "UA"   # Russia (European)
+        if cs.startswith(("RA", "RB", "RC", "RD", "RE", "RF", "RG",
+                           "RJ", "RK", "RL", "RM", "RN", "RO", "RP",
+                           "RQ", "RR", "RS", "RT", "RU", "RV", "RW",
+                           "RX", "RY", "RZ")):
+            return "UA"   # Russia
         return cs[:2] if len(cs) >= 2 else cs

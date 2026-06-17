@@ -548,12 +548,20 @@ class ClubLogClient:
     def __init__(self, config):
         self.cfg = config
 
+    def _password(self) -> str:
+        try:
+            from core.credentials import get_store
+            return get_store(
+                self.cfg.get("profile.name", "default")
+            ).retrieve("clublog_password")
+        except Exception:
+            return ""
+
     @property
     def has_credentials(self) -> bool:
-        return bool(
-            self.cfg.get("apis.clublog_email") and
-            self.cfg.get("apis.clublog_pass") and
-            self.cfg.get("apis.clublog_callsign"))
+        email    = self.cfg.get("apis.clublog_email", "")
+        callsign = self.cfg.callsign
+        return bool(email and self._password() and callsign)
 
     def upload_adif(self, adif_content: str) -> bool:
         """Upload an ADIF string to ClubLog."""
@@ -561,12 +569,14 @@ class ClubLogClient:
             log.warning("ClubLog: no credentials configured")
             return False
         try:
+            from core.netlog import record_connection
+            record_connection("clublog_upload", self.BASE, "POST")
             resp = requests.post(
                 self.BASE,
                 data={
                     "email":    self.cfg.get("apis.clublog_email"),
-                    "password": self.cfg.get("apis.clublog_pass"),
-                    "callsign": self.cfg.get("apis.clublog_callsign"),
+                    "password": self._password(),
+                    "callsign": self.cfg.callsign,
                     "adif":     adif_content,
                 },
                 timeout=30,

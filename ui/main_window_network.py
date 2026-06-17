@@ -96,6 +96,22 @@ class _MainWindowNetworkMixin:
             log.debug(f"PSKReporter init: {e}")
             self._pskreporter = None
 
+    def _load_cty_background(self) -> None:
+        """Load CTY.DAT in a background thread so DXCC lookup is accurate."""
+        import threading
+        def _worker():
+            try:
+                from network.cty_data import get_cty
+                cty = get_cty()
+                if cty.is_loaded:
+                    log.info(
+                        f"CTY.DAT ready: {cty.entity_count} DXCC entities")
+                else:
+                    log.warning("CTY.DAT could not be loaded")
+            except Exception as e:
+                log.debug(f"CTY.DAT load failed: {e}")
+        threading.Thread(
+            target=_worker, daemon=True, name="CTYLoader").start()
 
     def _on_aprs_packet(self, packet):
         """Update map tab with new APRS station and run anomaly detection."""

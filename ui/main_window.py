@@ -233,6 +233,7 @@ class MainWindow(
         self._populate_profiles()
         QTimer.singleShot(800, self._restore_location)
         self._apply_saved_guest_mode()
+        QTimer.singleShot(3000, self._load_cty_background)
 
     def _setup_window(self) -> None:
         """Set window title, icon, geometry, and stylesheet from saved config."""

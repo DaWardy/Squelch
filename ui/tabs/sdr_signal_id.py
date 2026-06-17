@@ -134,6 +134,9 @@ class _SDRSignalIDMixin:
 
         lo = freq_hz - bw_hz / 2
         hi = freq_hz + bw_hz / 2
+        lo_mhz = lo / 1e6
+        hi_mhz = hi / 1e6
+        freq_mhz = freq_hz / 1e6
 
         cat = (match.category or "").lower().split("/")[0].strip()
         r, g, b, a = _CATEGORY_ANNOTATION_COLOR.get(
@@ -143,7 +146,7 @@ class _SDRSignalIDMixin:
         self._clear_sigid_annotations(freq_hz)
 
         ann_spec = pg.LinearRegionItem(
-            [lo, hi], movable=False,
+            [lo_mhz, hi_mhz], movable=False,
             brush=pg.mkBrush(r, g, b, a),
             pen=pg.mkPen(r, g, b, 180, width=1))
         ann_spec.setZValue(10)
@@ -154,13 +157,13 @@ class _SDRSignalIDMixin:
             text=match.name[:30],
             color=(r, g, b),
             anchor=(0.5, 1.0))
-        label.setPos(freq_hz, spec.getViewBox().viewRange()[1][1])
+        label.setPos(freq_mhz, spec.getViewBox().viewRange()[1][1])
         label.setFont(_annotation_font())
         spec.addItem(label)
 
         if wf is not None:
             ann_wf = pg.LinearRegionItem(
-                [lo, hi], movable=False,
+                [lo_mhz, hi_mhz], movable=False,
                 brush=pg.mkBrush(r, g, b, 40),
                 pen=pg.mkPen(r, g, b, 120, width=1),
                 orientation="vertical")

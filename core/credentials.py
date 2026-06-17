@@ -53,6 +53,7 @@ SERVICE_PREFIX = "squelch"
 # Credential keys
 QRZ_PASSWORD       = "qrz_password"    # nosec B105
 QRZ_SESSION        = "qrz_session"
+QRZ_LOGBOOK_KEY    = "qrz_logbook_key"
 HAMQTH_PASSWORD    = "hamqth_password" # nosec B105
 RR_API_KEY         = "radioreference_key"
 HAMALERT_KEY       = "hamalert_key"
@@ -64,6 +65,7 @@ HRDLOG_KEY         = "hrdlog_key"
 # Human-readable labels for UI
 CREDENTIAL_LABELS = {
     QRZ_PASSWORD:    "QRZ.com Password",
+    QRZ_LOGBOOK_KEY: "QRZ Logbook API Key",
     HAMQTH_PASSWORD: "HamQTH Password",
     RR_API_KEY:      "RadioReference API Key",
     HAMALERT_KEY:    "HamAlert API Key",
@@ -237,6 +239,9 @@ class CredentialStore:
 
     def qrz_password(self) -> str:
         return self.retrieve(QRZ_PASSWORD)
+
+    def qrz_logbook_key(self) -> str:
+        return self.retrieve(QRZ_LOGBOOK_KEY)
 
     def hamqth_password(self) -> str:
         return self.retrieve(HAMQTH_PASSWORD)

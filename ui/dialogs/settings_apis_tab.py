@@ -88,6 +88,18 @@ class _SettingsApisTab:
         note.setStyleSheet("")
         note.setWordWrap(True)
         f.addRow("", note)
+        self._qrz_logbook_key = QLineEdit()
+        self._qrz_logbook_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._qrz_logbook_key.setPlaceholderText("QRZ logbook API key")
+        self._qrz_logbook_key.setToolTip(
+            "Get this from qrz.com → Logbook → Settings → Enable API.\n"
+            "Free — does not require a QRZ subscription.")
+        f.addRow("Logbook API Key:", self._qrz_logbook_key)
+        lb_note = QLabel(
+            "Logbook API key is free — get it from qrz.com → Logbook → Settings.")
+        lb_note.setWordWrap(True)
+        lb_note.setStyleSheet("")
+        f.addRow("", lb_note)
 
     def _apis_add_hamqth_section(self, f: "QFormLayout") -> None:
         f.addRow(_sep())

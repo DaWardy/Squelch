@@ -157,6 +157,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             from core.credentials import get_store
             store = get_store(cfg.get("profile.name", "default"))
             self._qrz_user.setText(cfg.get("apis.qrz_user", ""))
+            self._qrz_logbook_key.setText(
+                store.retrieve("qrz_logbook_key") or "")
             self._hamqth_user.setText(cfg.get("apis.hamqth_user", ""))
             self._rr_user.setText(cfg.get("apis.rr_user", ""))
             self._lotw_user.setText(cfg.get("apis.lotw_user", ""))
@@ -408,6 +410,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             store = get_store(cfg.get("profile.name", "default"))
             for attr, key in [
                 (self._qrz_pass,          "qrz_password"),
+                (self._qrz_logbook_key,   "qrz_logbook_key"),
                 (self._hamqth_pass,       "hamqth_password"),
                 (self._lotw_pass,         "lotw_password"),
                 (self._clublog_pass,      "clublog_password"),

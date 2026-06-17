@@ -165,6 +165,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             self._clublog_email.setText(cfg.get("apis.clublog_email", ""))
             self._eqsl_user.setText(cfg.get("apis.eqsl_username", ""))
             self._eqsl_pass.setText(store.retrieve("eqsl_password") or "")
+            self._hrdlog_callsign.setText(cfg.get("apis.hrdlog_callsign", ""))
+            self._hrdlog_key.setText(store.retrieve("hrdlog_key") or "")
             self._rb_token.setText(store.retrieve("repeaterbook_token") or "")
             self._hamalert_user.setText(cfg.get("apis.hamalert_user", ""))
             self._hamalert_url_secret.setText(cfg.get("apis.hamalert_url_secret", ""))
@@ -406,6 +408,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         cfg.set("apis.lotw_user",          self._lotw_user.text().strip())
         cfg.set("apis.clublog_email",      self._clublog_email.text().strip())
         cfg.set("apis.eqsl_username",      self._eqsl_user.text().strip())
+        cfg.set("apis.hrdlog_callsign",    self._hrdlog_callsign.text().strip().upper())
         cfg.set("apis.hamalert_user",      self._hamalert_user.text().strip())
         cfg.set("apis.hamalert_url_secret", self._hamalert_url_secret.text().strip())
         try:
@@ -418,6 +421,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 (self._lotw_pass,         "lotw_password"),
                 (self._clublog_pass,      "clublog_password"),
                 (self._eqsl_pass,         "eqsl_password"),
+                (self._hrdlog_key,        "hrdlog_key"),
                 (self._rb_token,          "repeaterbook_token"),
                 (self._hamalert_key,      "hamalert_password"),
                 (self._hamalert_sms_token, "hamalert_sms_token"),

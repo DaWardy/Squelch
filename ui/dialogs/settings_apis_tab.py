@@ -70,6 +70,7 @@ class _SettingsApisTab:
         self._apis_add_lotw_section(f)
         self._apis_add_clublog_section(f)
         self._apis_add_eqsl_section(f)
+        self._apis_add_hrdlog_section(f)
         self._apis_add_repeaterbook_section(f)
         return scroll
 
@@ -193,6 +194,25 @@ class _SettingsApisTab:
         self._eqsl_pass.setPlaceholderText("eQSL password")
         f.addRow("Password:", self._eqsl_pass)
         note = QLabel("Free account at eqsl.cc. Uploads full log as ADIF.")
+        note.setWordWrap(True)
+        note.setStyleSheet("")
+        f.addRow("", note)
+
+    def _apis_add_hrdlog_section(self, f: "QFormLayout") -> None:
+        f.addRow(_sep())
+        _section(f, "HRDLog.net")
+        self._hrdlog_callsign = QLineEdit()
+        self._hrdlog_callsign.setPlaceholderText("Your callsign")
+        f.addRow("Callsign:", self._hrdlog_callsign)
+        self._hrdlog_key = QLineEdit()
+        self._hrdlog_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._hrdlog_key.setPlaceholderText("HRDLog API key")
+        self._hrdlog_key.setToolTip(
+            "Get from hrdlog.net → Settings → API Key.\n"
+            "Free account required.")
+        f.addRow("API Key:", self._hrdlog_key)
+        note = QLabel(
+            "Free account at hrdlog.net. Uploads full log as ADIF.")
         note.setWordWrap(True)
         note.setStyleSheet("")
         f.addRow("", note)

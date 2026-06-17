@@ -1770,6 +1770,67 @@ Setup:
   When enabled, each logged QSO is queued automatically.
   Other services: manual upload only (Log tab buttons).
 """),
+
+    ("ADIF Import / Export", "Logging",
+     """# ADIF Import / Export
+
+ADIF (Amateur Data Interchange Format) is the universal exchange
+format supported by every logging program.
+
+## Importing an ADIF file
+1. Log tab → Import ADIF
+2. Select your .adi or .adif file
+3. Squelch parses every record and imports:
+   - QSO date and time (QSO_DATE + TIME_ON)
+   - Band, mode, submode, RST sent/received
+   - Frequency (Hz), transmit power
+   - Name, grid square, DXCC entity, country, state
+   - CQ zone, ITU zone
+4. Duplicates (same callsign at the same UTC minute) are skipped
+5. A summary shows: imported / skipped / errors
+
+**Note:** ADIF files exported from WSJT-X, Log4OM, Ham Radio Deluxe,
+and DXKeeper all work. If a field is missing it is left blank; the
+QSO is still imported.
+
+## Exporting an ADIF file
+1. Log tab → Export ADIF
+2. Choose a filename — all QSOs are exported by default
+3. The file is valid ADIF 3.x compatible with all major programs
+
+## Date-range filter
+Use the From / To date pickers in the log filter bar to restrict
+the visible QSOs to a specific period before exporting.
+"""),
+
+    ("Log Analytics", "Logging",
+     """# Log Analytics
+
+The 📊 Analytics button in the Log tab opens a breakdown of your
+QSO history across four dimensions:
+
+## Band
+Bar chart of QSOs per band (descending). Quickly see where you
+spend the most operating time.
+
+## Mode
+Bar chart of QSOs per mode. FT8, SSB, CW, etc.
+
+## Year
+Bar chart of QSOs per calendar year (ascending). Tracks your
+activity over time.
+
+## Entity
+Top 10 worked countries by QSO count.
+
+The header row shows total QSOs, DXCC entities worked, grids
+worked, and WAS count.
+
+## QSO Rate
+The "QSOs / hr" counter in the stats bar shows how many QSOs
+you've logged in the current UTC hour. Useful for pacing during
+contests or activations.
+"""),
 ]
 
 # Build search index

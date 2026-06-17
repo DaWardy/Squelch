@@ -754,6 +754,12 @@ class MainWindow(
             "Improves DXCC tracking accuracy for all logged QSOs.")
         update_cty.triggered.connect(self._update_cty_dat)
         hm.addAction(update_cty)
+        band_plan_a = QAction(self.tr("Band Plan Reference…"), self)
+        band_plan_a.setToolTip(
+            "FCC Part 97 amateur band plan — segment types, "
+            "license class privileges")
+        band_plan_a.triggered.connect(self._show_band_plan)
+        hm.addAction(band_plan_a)
         hm.addSeparator()
         about_a = QAction(self.tr("About Squelch"), self)
         about_a.triggered.connect(self._about)
@@ -977,6 +983,12 @@ class MainWindow(
 
 
 
+
+    def _show_band_plan(self):
+        from ui.dialogs.band_plan_dialog import BandPlanDialog
+        lic = self.cfg.get("station.license", "Extra")
+        dlg = BandPlanDialog(license_class=lic, parent=self)
+        dlg.exec()
 
     def _show_network_log(self):
         """C-12 (Priya): show the network activity log so the user can audit

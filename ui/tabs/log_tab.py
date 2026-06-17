@@ -161,6 +161,7 @@ class LogTab(SquelchPanel, QWidget):
             ("was",    "WAS"),
             ("grids",  "Grids"),
             ("lotw",   "LoTW ✅"),
+            ("rate",   "QSOs / hr"),
         ]:
             grp = QGroupBox(label)
             grp.setFixedHeight(56)
@@ -596,6 +597,17 @@ class LogTab(SquelchPanel, QWidget):
             self._was_bar.setValue(stats["was_worked"])
             self._grids_bar.setValue(
                 min(stats["grids_worked"], 500))
+
+            # QSO rate — count QSOs in the last 60 minutes
+            now_str = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            cutoff = datetime.now(timezone.utc).replace(
+                minute=0, second=0, microsecond=0)
+            hour_ago = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+            rate = sum(
+                1 for q in self._all_qsos
+                if q.datetime_on and q.datetime_on >= hour_ago)
+            self._stat_widgets["rate"].setText(str(rate))
 
             # Queue counts
             lotw_q = len(self.log_db.lotw_pending())

@@ -79,11 +79,12 @@ C_DXCC  = 8
 C_LOTW  = 9
 C_QRZ   = 10
 C_DIST  = 11
+C_NAME  = 12
 
 HEADERS = [
     "Date","Time","Callsign","Band","Mode",
     "RST Sent","RST Rcvd","Grid","DXCC",
-    "LoTW","QRZ","Dist km"
+    "LoTW","QRZ","Dist km","Name"
 ]
 
 STATUS_COLORS = {
@@ -181,9 +182,10 @@ class LogTab(SquelchPanel, QWidget):
         """Search box + band/mode filter dropdowns."""
         filter_row = QHBoxLayout()
         self._search = QLineEdit()
-        self._search.setPlaceholderText(self.tr("Search callsign…"))
+        self._search.setPlaceholderText(
+            self.tr("Search callsign, name, grid…"))
         self._search.textChanged.connect(self._apply_filter)
-        self._search.setMaxLength(15)
+        self._search.setMaxLength(20)
         filter_row.addWidget(self._search, 2)
 
         self._band_filter = QComboBox()
@@ -509,8 +511,12 @@ class LogTab(SquelchPanel, QWidget):
 
         filtered = []
         for q in self._all_qsos:
-            if call_filter and call_filter not in q.call.upper():
-                continue
+            if call_filter:
+                term = call_filter
+                if (term not in q.call.upper()
+                        and term not in q.name.upper()
+                        and term not in (q.grid or "").upper()):
+                    continue
             if band_filter != self.tr("All bands") and q.band != band_filter:
                 continue
             if mode_filter != self.tr("All modes") and q.mode != mode_filter:
@@ -550,6 +556,7 @@ class LogTab(SquelchPanel, QWidget):
                 STATUS_LABELS.get(q.lotw_status, "—"),
                 STATUS_LABELS.get(q.qrz_status, "—"),
                 f"{q.dist_km:.0f}" if q.dist_km else "—",
+                q.name or "—",
             ]
 
             for col, val in enumerate(values):
@@ -1064,17 +1071,23 @@ class LogTab(SquelchPanel, QWidget):
     def _log_context_menu(self, pos):
         """Right-click menu on log table rows."""
         from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QGuiApplication
         row = self._table.rowAt(pos.y())
         if row < 0:
             return
         menu = QMenu(self)
         edit_act = menu.addAction("✏️  Edit QSO")
+        copy_act = menu.addAction("📋  Copy callsign")
         menu.addSeparator()
         del_act  = menu.addAction("🗑  Delete QSO…")
         action   = menu.exec(
             self._table.mapToGlobal(pos))
         if action == edit_act:
             self._edit_qso_row(row)
+        elif action == copy_act:
+            qso = self._get_row_qso(row)
+            if qso:
+                QGuiApplication.clipboard().setText(qso.call)
         elif action == del_act:
             self._delete_qso_row(row)
 

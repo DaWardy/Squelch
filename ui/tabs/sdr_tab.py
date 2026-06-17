@@ -361,6 +361,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._tx_indicator.hide()
         lay.addWidget(self._tx_indicator)
         lay.addStretch()
+        shot_btn = QPushButton(self.tr("📸"))
+        shot_btn.setFixedWidth(32)
+        shot_btn.setToolTip(self.tr(
+            "Save spectrum+waterfall screenshot to Desktop"))
+        shot_btn.clicked.connect(self._save_screenshot)
+        lay.addWidget(shot_btn)
         audio_btn = QPushButton(self.tr("🎙 Rig Audio"))
         audio_btn.setFixedWidth(96)
         audio_btn.setToolTip(self.tr(
@@ -375,6 +381,33 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             rig_btn.setToolTip(self.tr("Tune SDR to current rig frequency"))
             rig_btn.clicked.connect(self._tune_to_rig)
             lay.addWidget(rig_btn)
+
+    def _save_screenshot(self) -> None:
+        """Grab the visible SDR tab and save as a timestamped PNG."""
+        from pathlib import Path
+        from PyQt6.QtCore import QDateTime
+        ts = QDateTime.currentDateTime().toString("yyyyMMdd_HHmmss")
+        fname = f"squelch_sdr_{ts}.png"
+        out_dir = next(
+            (p for p in (Path.home() / "Desktop", Path.home() / "Downloads")
+             if p.exists()),
+            Path.home())
+        out = out_dir / fname
+        pixmap = self.grab()
+        if pixmap.save(str(out)):
+            try:
+                self.window().statusBar().showMessage(
+                    f"Screenshot saved: {out}", 5000)
+            except Exception:
+                pass
+        else:
+            try:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self, "Screenshot failed",
+                    f"Could not save to {out}")
+            except Exception:
+                pass
 
     def _build_waterfall(self) -> QWidget:
         from PyQt6.QtWidgets import QSplitter

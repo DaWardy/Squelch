@@ -47,6 +47,53 @@ class TestQSODataclass:
         q = QSO(call="W4XYZ", band="20m", mode="FT8", grid="")
         assert q.lat == 0.0
 
+    def test_dist_km_zero_without_coords(self):
+        q = QSO(call="W4XYZ", band="20m", mode="FT8")
+        assert q.dist_km == 0.0
+
+    def test_dist_km_zero_without_my_coords(self):
+        q = QSO(call="W4XYZ", band="20m", mode="FT8",
+                lat=51.5, lon=-0.1)
+        assert q.dist_km == 0.0
+
+    def test_dist_km_london_to_nyc(self):
+        """London (51.5°N, 0°W) to NYC (40.7°N, 74°W) ≈ 5570 km."""
+        q = QSO(call="W4XYZ", band="20m", mode="FT8",
+                my_lat=51.5, my_lon=0.0,
+                lat=40.7, lon=-74.0)
+        assert 5400 < q.dist_km < 5800
+
+    def test_dist_km_zero_distance(self):
+        """Same location → 0 km."""
+        q = QSO(call="W4XYZ", band="20m", mode="FT8",
+                my_lat=40.0, my_lon=-74.0,
+                lat=40.0, lon=-74.0)
+        assert q.dist_km < 1.0
+
+    def test_bearing_deg_zero_without_coords(self):
+        q = QSO(call="W4XYZ", band="20m", mode="FT8")
+        assert q.bearing_deg == 0.0
+
+    def test_bearing_deg_north(self):
+        """Station due north → bearing ≈ 0°."""
+        q = QSO(call="W4XYZ", band="20m", mode="FT8",
+                my_lat=1.0, my_lon=1.0,
+                lat=10.0, lon=1.0)
+        assert q.bearing_deg < 1.0 or q.bearing_deg > 359.0
+
+    def test_bearing_deg_east(self):
+        """Station due east → bearing ≈ 90°."""
+        q = QSO(call="W4XYZ", band="20m", mode="FT8",
+                my_lat=1.0, my_lon=1.0,
+                lat=1.0, lon=10.0)
+        assert 85 < q.bearing_deg < 95
+
+    def test_bearing_deg_in_range(self):
+        q = QSO(call="W4XYZ", band="20m", mode="FT8",
+                my_lat=51.5, my_lon=0.0,
+                lat=40.7, lon=-74.0)
+        assert 0 <= q.bearing_deg < 360
+
 
 class TestLogDB:
     def test_create_db(self, db):

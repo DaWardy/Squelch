@@ -141,6 +141,39 @@ class QSO:
             except Exception:
                 pass
 
+    def _has_coords(self) -> bool:
+        """True when both endpoints have at least one non-zero coordinate."""
+        return bool(self.lat or self.lon) and bool(self.my_lat or self.my_lon)
+
+    @property
+    def dist_km(self) -> float:
+        """Great-circle distance in km between operator and worked station."""
+        if not self._has_coords():
+            return 0.0
+        import math
+        R = 6371.0
+        φ1 = math.radians(self.my_lat)
+        φ2 = math.radians(self.lat)
+        Δφ = math.radians(self.lat - self.my_lat)
+        Δλ = math.radians(self.lon - self.my_lon)
+        a = (math.sin(Δφ / 2) ** 2
+             + math.cos(φ1) * math.cos(φ2) * math.sin(Δλ / 2) ** 2)
+        return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
+    @property
+    def bearing_deg(self) -> float:
+        """True bearing in degrees (0–360) from operator to worked station."""
+        if not self._has_coords():
+            return 0.0
+        import math
+        φ1 = math.radians(self.my_lat)
+        φ2 = math.radians(self.lat)
+        Δλ = math.radians(self.lon - self.my_lon)
+        x = math.sin(Δλ) * math.cos(φ2)
+        y = (math.cos(φ1) * math.sin(φ2)
+             - math.sin(φ1) * math.cos(φ2) * math.cos(Δλ))
+        return (math.degrees(math.atan2(x, y)) + 360) % 360
+
 
 class LogDB:
     """

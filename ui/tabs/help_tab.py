@@ -1221,6 +1221,9 @@ Enter the number in Squelch → Rig tab → Model (manual)
   Ctrl+Shift+3  Workspace preset 3
   Ctrl+Shift+4  Workspace preset 4
 
+## SDR
+  📸 button     Save spectrum+waterfall screenshot to Desktop
+
 ## General
   Ctrl+Z     Undo (in text fields)
   Ctrl+A     Select all
@@ -1655,6 +1658,59 @@ capability (USRP B200/B210, HackRF One) can transmit via:
   SDR tab → TX controls (when hardware is detected)
 This allows experiment and educational TX under appropriate
 regulatory authorisation.
+
+## Saving a Spectrum Screenshot
+The SDR tab toolbar includes a 📸 button (far right of toolbar).
+Clicking it grabs the entire visible SDR tab — spectrum plot,
+waterfall, and controls — and saves a timestamped PNG:
+
+  Filename: squelch_sdr_YYYYMMDD_HHmmss.png
+  Saved to: Desktop (falls back to Downloads if Desktop is absent)
+  Confirmation: "Screenshot saved: <path>" in the status bar
+
+Use this to capture interesting signals for classroom handouts,
+incident documentation, or offline analysis.
+"""),
+
+    ("Manual QSO Logging", "Logging",
+     """# Manual QSO Logging
+
+## Opening the Entry Form
+Log tab toolbar → "+ Manual Entry"  (or Ctrl+N)
+
+## Callsign Lookup
+When you tab out of the Callsign field, Squelch automatically
+looks up the callsign via QRZ XML API (subscription) or HamQTH
+(free). If credentials are set in Settings → APIs, the lookup:
+  • Fills the Name field (if empty)
+  • Fills the Their Grid field (if empty)
+  • Shows a "Looking up…" status while the request is in flight
+
+To set up callsign lookup:
+  QRZ: Settings → APIs → QRZ.com → enter username + password
+       (XML data requires a QRZ subscription)
+  HamQTH: Settings → APIs → HamQTH → enter callsign + password
+           (free, no subscription needed)
+Both services are tried; QRZ is primary, HamQTH is the fallback.
+
+## Distance & Bearing (Path: label)
+When a grid square is present (typed or auto-filled from lookup),
+the Path: label shows:
+  e.g.  5 571 km  ·  287°
+
+This uses your station location (Settings → Station → Location)
+and the worked station's Maidenhead grid square. The distance
+also appears in the Dist km column of the QSO table.
+
+## DXCC Awards Table
+Log tab → Awards Progress → "DX Needed…" opens a searchable
+table of all 340 DXCC entities showing:
+  ✓ Confirmed — worked and LoTW-confirmed
+  ✓ Worked    — logged but not yet confirmed
+  — Needed    — never worked
+
+Filter by entity name, prefix, or continent. Toggle "Show needed
+only" to see your target list.
 """),
 
     ("Log Upload Services", "Reference",

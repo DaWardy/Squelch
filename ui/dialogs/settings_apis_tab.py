@@ -69,6 +69,7 @@ class _SettingsApisTab:
         self._apis_add_radioreference_section(f)
         self._apis_add_lotw_section(f)
         self._apis_add_clublog_section(f)
+        self._apis_add_eqsl_section(f)
         self._apis_add_repeaterbook_section(f)
         return scroll
 
@@ -180,6 +181,21 @@ class _SettingsApisTab:
         self._clublog_pass.setEchoMode(QLineEdit.EchoMode.Password)
         self._clublog_pass.setPlaceholderText("ClubLog password")
         f.addRow("Password:", self._clublog_pass)
+
+    def _apis_add_eqsl_section(self, f: "QFormLayout") -> None:
+        f.addRow(_sep())
+        _section(f, "eQSL.cc (Electronic QSL)")
+        self._eqsl_user = QLineEdit()
+        self._eqsl_user.setPlaceholderText("eQSL username / callsign")
+        f.addRow("Username:", self._eqsl_user)
+        self._eqsl_pass = QLineEdit()
+        self._eqsl_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        self._eqsl_pass.setPlaceholderText("eQSL password")
+        f.addRow("Password:", self._eqsl_pass)
+        note = QLabel("Free account at eqsl.cc. Uploads full log as ADIF.")
+        note.setWordWrap(True)
+        note.setStyleSheet("")
+        f.addRow("", note)
 
     def _apis_add_repeaterbook_section(self, f: "QFormLayout") -> None:
         f.addRow(_sep())

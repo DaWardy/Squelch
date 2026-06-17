@@ -290,6 +290,13 @@ class LogTab(SquelchPanel, QWidget):
         clublog_btn.clicked.connect(self._show_clublog_upload)
         btn_row.addWidget(clublog_btn)
 
+        eqsl_btn = QPushButton(self.tr("Upload eQSL"))
+        eqsl_btn.setToolTip(
+            "Upload log to eQSL.cc\n"
+            "Requires eQSL username and password in Settings → APIs")
+        eqsl_btn.clicked.connect(self._show_eqsl_upload)
+        btn_row.addWidget(eqsl_btn)
+
         btn_row.addStretch()
         self._queue_label = QLabel("")
         self._queue_label.setStyleSheet(" ")
@@ -1180,6 +1187,57 @@ class LogTab(SquelchPanel, QWidget):
                 self, "ClubLog Upload Failed",
                 f"Upload failed.\n{error}\n\n"
                 "Check Settings → APIs for your ClubLog credentials.")
+
+    def _show_eqsl_upload(self):
+        from network.eqsl_sync import EQSLSync
+        total = self.log_db.total_qsos()
+        if not total:
+            QMessageBox.information(
+                self, "eQSL", "No QSOs in log to upload.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Upload to eQSL.cc",
+            f"Upload all {total} QSOs to eQSL.cc now?\n\n"
+            "Requires eQSL username and password in Settings → APIs.",
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        prog = QProgressDialog(
+            "Uploading to eQSL.cc…", "Cancel",
+            0, 100, self)
+        prog.setWindowTitle("eQSL Upload")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.show()
+
+        sync = EQSLSync(self.cfg)
+
+        def _on_progress(msg: str, pct: int):
+            QTimer.singleShot(0, lambda: (
+                prog.setLabelText(msg),
+                prog.setValue(pct)))
+
+        def _on_complete(result):
+            QTimer.singleShot(0,
+                lambda r=result: self._eqsl_done(r, prog))
+
+        sync.on_progress(_on_progress)
+        sync.on_complete(_on_complete)
+        sync.upload_async(self.log_db)
+
+    def _eqsl_done(self, result, prog) -> None:
+        prog.close()
+        if result.success:
+            QMessageBox.information(
+                self, "eQSL Upload Complete",
+                f"{result.message}")
+        else:
+            QMessageBox.warning(
+                self, "eQSL Upload Failed",
+                f"Upload failed:\n{result.error}\n\n"
+                "Check Settings → APIs for your eQSL credentials.")
 
     # ── Public ────────────────────────────────────────────────────────────
 

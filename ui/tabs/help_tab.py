@@ -1803,6 +1803,32 @@ Use the From / To date pickers in the log filter bar to restrict
 the visible QSOs to a specific period before exporting.
 """),
 
+    ("Duplicate QSO Detection", "Logging",
+     """# Duplicate QSO Detection
+
+Squelch checks for duplicate contacts in two places:
+
+## Inline indicator (manual entry form)
+As you type a callsign and select band/mode, the form shows:
+- **⚠ orange warning** — you already logged this call on the same
+  band and mode within the last 24 hours (recent dupe)
+- **ℹ grey info** — you worked this call before, but on a different
+  band or mode
+
+The indicator updates each time you change callsign, band, or mode.
+
+## Save-time confirmation
+If you click OK with a recent dupe, a dialog asks "Log anyway?"
+Set **Settings → Logging → Warn on duplicate QSOs** to off if you
+prefer to log dupes silently (e.g. during contest practice).
+
+## What counts as a duplicate?
+Same callsign + same band + same mode worked within the last 24 hours.
+Different band or different mode on the same day is NOT a duplicate —
+mixed-mode and multi-band contacts are intentional and tracked
+separately in DXCC/WAS/WAZ awards.
+"""),
+
     ("Log Analytics", "Logging",
      """# Log Analytics
 

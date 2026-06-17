@@ -728,6 +728,7 @@ class LogTab(SquelchPanel, QWidget):
             "bearing_label": bearing_label,
             "comment_edit": comment_edit,
             "dupe_label": dupe_label,
+            "_qrz_info": None,
         }
 
     def _build_manual_entry_dialog(self):
@@ -781,13 +782,16 @@ class LogTab(SquelchPanel, QWidget):
             get_lookup(self.cfg).lookup_async(call, bridge.found.emit)
 
         def _on_result(info):
-            f["lkp_status"].setText("")
+            f["_qrz_info"] = info
             if not info:
+                f["lkp_status"].setText(self.tr("Not found"))
                 return
             if info.name and not f["name_edit"].text().strip():
                 f["name_edit"].setText(info.name)
             if info.grid and not f["grid_edit"].text().strip():
                 f["grid_edit"].setText(info.grid[:6])
+            parts = [p for p in (info.name, info.country or info.dxcc) if p]
+            f["lkp_status"].setText(" — ".join(parts) if parts else self.tr("Found"))
             _update_bearing()
 
         bridge.found.connect(_on_result)
@@ -860,6 +864,7 @@ class LogTab(SquelchPanel, QWidget):
                 freq_hz = 0
             dt_str = (f["dt_edit"].dateTime()
                       .toUTC().toString("yyyy-MM-ddTHH:mm:ssZ"))
+            qrz = f.get("_qrz_info")
             qso = QSO(
                 call         = call,
                 datetime_on  = dt_str,
@@ -871,6 +876,11 @@ class LogTab(SquelchPanel, QWidget):
                 grid         = grid_square_soft(f["grid_edit"].text()),
                 name         = f["name_edit"].text().strip()[:50],
                 comment      = f["comment_edit"].text().strip()[:200],
+                country      = (qrz.country if qrz else ""),
+                dxcc         = (qrz.dxcc    if qrz else ""),
+                state        = (qrz.state   if qrz else ""),
+                cqz          = (qrz.cq_zone if qrz else 0),
+                ituz         = (qrz.itu_zone if qrz else 0),
                 my_call      = operating_callsign(self.cfg),
                 my_grid      = self.cfg.grid,
                 my_lat       = self.cfg.get("location.lat", 0.0),

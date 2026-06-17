@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
     QFrame, QProgressBar, QCheckBox, QMessageBox,
     QSizePolicy, QScrollArea, QLineEdit, QButtonGroup,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSlot
 from PyQt6.QtGui import QWheelEvent, QFont
 
 from ui.widgets.launch_bar import LaunchBar
@@ -159,6 +159,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._rtltcp_dev = None
         # Spectrum state
         self._center_hz  = 100_000_000
+        self._sample_rate = 2_400_000
         self._span_hz    = 2_400_000
         self._step_idx   = 4
         self._floor_db   = -100.0
@@ -413,6 +414,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._spec_plot.getAxis("left").setWidth(40)
         self._spec_plot.setLabel(
             "left", "dBFS", color="#444", **{"font-size": "9px"})
+        self._spec_plot.setLabel(
+            "bottom", "MHz", color="#444", **{"font-size": "9px"})
+        self._spec_plot.getAxis("bottom").setStyle(tickFont=_small_font())
         self._spec_curve = self._spec_plot.plot(
             pen=pg.mkPen("#3fbe6f", width=1))
         self._peak_curve = self._spec_plot.plot(
@@ -437,6 +441,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._wf_plot = pg.PlotWidget(background="#080808")
         self._wf_plot.setMenuEnabled(False)
         self._wf_plot.hideAxis("left")
+        self._wf_plot.showAxis("bottom")
+        self._wf_plot.setLabel(
+            "bottom", "MHz", color="#444", **{"font-size": "9px"})
         self._wf_plot.getAxis("bottom").setStyle(tickFont=_small_font())
         self._wf_img = pg.ImageItem()
         cmap = _make_colormap(self._palette)
@@ -1206,11 +1213,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         try:
             pos = self._wf_plot.plotItem.vb\
                 .mapSceneToView(event.scenePos())
-            half  = self._span_hz / 2
-            lo    = self._center_hz - half
-            hi    = self._center_hz + half
-            frac  = pos.x() / FFT_SIZE
-            hz    = int(lo + frac * (hi - lo))
+            hz = int(pos.x() * 1e6)
             if hz <= 0:
                 return
             if event.button() == Qt.MouseButton.RightButton:
@@ -1226,7 +1229,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         try:
             pos = self._spec_plot.plotItem.vb\
                 .mapSceneToView(event.scenePos())
-            hz = int(pos.x())
+            hz = int(pos.x() * 1e6)
             if hz <= 0:
                 return
             if event.button() == Qt.MouseButton.RightButton:
@@ -1271,6 +1274,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
     def _on_samples(self, iq: np.ndarray,
                      sample_rate: int, center_hz: int):
         """Called from SDR RX thread with IQ samples."""
+        self._sample_rate = sample_rate
+        self._center_hz   = center_hz
         # FFT
         window  = np.hanning(len(iq))
         fft_out = np.fft.fftshift(
@@ -1319,8 +1324,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
         half  = self._span_hz / 2
         freqs = np.linspace(
-            self._center_hz - half,
-            self._center_hz + half,
+            (self._center_hz - half) / 1e6,
+            (self._center_hz + half) / 1e6,
             len(fft))
 
         # Spectrum
@@ -1353,15 +1358,16 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
     def _update_axes(self):
         if not HAS_PG:
             return
-        half = self._span_hz / 2
-        lo   = self._center_hz - half
-        hi   = self._center_hz + half
-        self._spec_plot.setXRange(lo, hi, padding=0)
+        half   = self._span_hz / 2
+        lo_mhz = (self._center_hz - half) / 1e6
+        hi_mhz = (self._center_hz + half) / 1e6
+        self._spec_plot.setXRange(lo_mhz, hi_mhz, padding=0)
         self._spec_plot.setYRange(
             self._floor_db, self._ceiling_db, padding=0)
-        self._wf_plot.setXRange(
-            0, FFT_SIZE // 2, padding=0)
-        self._cf_line.setValue(self._center_hz)
+        self._wf_img.setRect(
+            QRectF(lo_mhz, 0, hi_mhz - lo_mhz, WF_ROWS))
+        self._wf_plot.setXRange(lo_mhz, hi_mhz, padding=0)
+        self._cf_line.setValue(self._center_hz / 1e6)
 
     def _draw_band_segments(self):
         if not HAS_PG:
@@ -1379,8 +1385,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
         from core.band_plan import segments_in_range
         for seg in segments_in_range(lo, hi):
-            sl = max(seg.freq_lo, lo)
-            sh = min(seg.freq_hi, hi)
+            sl = max(seg.freq_lo, lo) / 1e6
+            sh = min(seg.freq_hi, hi) / 1e6
             region = pg.LinearRegionItem(
                 values=[sl, sh],
                 movable=False,
@@ -1389,6 +1395,37 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             region.setZValue(-10)
             self._spec_plot.addItem(region)
             self._seg_items.append(region)
+
+    # ── SquelchPanel persistence ───────────────────────────────────────────
+
+    def save_state(self) -> dict:
+        return {
+            "center_hz": self._center_hz,
+            "span":      self._span_combo.currentText(),
+            "gain":      self._gain_slider.value(),
+            "ppm":       self._ppm_spin.value(),
+            "palette":   self._palette,
+            "floor_db":  self._floor_db,
+            "ceil_db":   self._ceiling_db,
+            "peak_hold": self._peak_hold,
+        }
+
+    def restore_state(self, state: dict) -> None:
+        if "center_hz" in state:
+            self._set_freq(int(state["center_hz"]))
+        if "span" in state:
+            self._span_combo.setCurrentText(state["span"])
+        if "gain" in state:
+            self._gain_slider.setValue(int(state["gain"]))
+        if "ppm" in state:
+            self._ppm_spin.setValue(int(state["ppm"]))
+        if "palette" in state:
+            self._palette_combo.setCurrentText(state["palette"])
+        if "floor_db" in state and "ceil_db" in state:
+            self._floor_spin.setValue(float(state["floor_db"]))
+            self._ceil_spin.setValue(float(state["ceil_db"]))
+        if "peak_hold" in state:
+            self._peak_cb.setChecked(bool(state["peak_hold"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

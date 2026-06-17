@@ -719,6 +719,19 @@ class MainWindow(
             "(not the QSO logbook)")
         open_logs.triggered.connect(self._open_log_folder)
         hm.addAction(open_logs)
+        net_log_a = QAction(self.tr("Network Activity"), self)
+        net_log_a.setToolTip(
+            "Audit all outbound network connections made this session\n"
+            "(C-12 Priya-38 compliance — Settings → APIs credential audit)")
+        net_log_a.triggered.connect(self._show_network_log)
+        hm.addAction(net_log_a)
+        hm.addSeparator()
+        update_cty = QAction(self.tr("Update DXCC Data (CTY.dat)"), self)
+        update_cty.setToolTip(
+            "Download the latest DXCC country file from country-files.com\n"
+            "Improves DXCC tracking accuracy for all logged QSOs.")
+        update_cty.triggered.connect(self._update_cty_dat)
+        hm.addAction(update_cty)
         hm.addSeparator()
         about_a = QAction(self.tr("About Squelch"), self)
         about_a.triggered.connect(self._about)

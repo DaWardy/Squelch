@@ -199,3 +199,260 @@ class TestWAZCount:
         stats = db.stats()
         assert "waz_worked" in stats
         assert stats["waz_worked"] == 1
+
+
+class TestExportCSV:
+    def test_csv_creates_file(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8",
+                       name="Hiram", grid="FN31", cqz=5))
+        out = tmp_path / "log.csv"
+        count = db.export_csv(out)
+        assert count == 1
+        assert out.exists()
+
+    def test_csv_has_headers(self, db, tmp_path):
+        import csv
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        out = tmp_path / "log.csv"
+        db.export_csv(out)
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        assert rows[0][0] == "Date"
+        assert "Callsign" in rows[0]
+        assert "Band" in rows[0]
+        assert "Mode" in rows[0]
+
+    def test_csv_data_row(self, db, tmp_path):
+        import csv
+        db.log_qso(QSO(call="K4ABC", band="40m", mode="CW",
+                       freq_hz=7_074_000, name="Test", grid="EM72"))
+        out = tmp_path / "log.csv"
+        db.export_csv(out)
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        assert rows[1][2] == "K4ABC"
+        assert rows[1][3] == "40m"
+        assert rows[1][5] == "CW"
+
+    def test_csv_filtered_subset(self, db, tmp_path):
+        import csv
+        db.log_qso(QSO(call="W1AW",  band="20m", mode="FT8"))
+        db.log_qso(QSO(call="K4ABC", band="40m", mode="CW"))
+        qsos_20m = [q for q in db.recent_qsos() if q.band == "20m"]
+        out = tmp_path / "log_filtered.csv"
+        count = db.export_csv(out, qsos=qsos_20m)
+        assert count == 1
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        assert len(rows) == 2  # header + 1 data row
+        assert rows[1][2] == "W1AW"
+
+    def test_csv_injection_prevention(self, db, tmp_path):
+        import csv
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8",
+                       name="=SUM(1+1)", comment="@bad"))
+        out = tmp_path / "log.csv"
+        db.export_csv(out)
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        # csv_safe() prefixes formula triggers with ' to neutralize them
+        name_cell = rows[1][9]   # Name column
+        comment_cell = rows[1][20]  # Comment column
+        assert name_cell.startswith("'"), f"name not prefixed: {name_cell!r}"
+        assert comment_cell.startswith("'"), f"comment not prefixed: {comment_cell!r}"
+
+    def test_csv_returns_count(self, db, tmp_path):
+        for i in range(5):
+            db.log_qso(QSO(call=f"W{i}AW", band="20m", mode="FT8"))
+        out = tmp_path / "log.csv"
+        assert db.export_csv(out) == 5
+
+    def test_csv_empty_log(self, db, tmp_path):
+        out = tmp_path / "empty.csv"
+        count = db.export_csv(out, qsos=[])
+        assert count == 0
+        import csv
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        assert rows[0][0] == "Date"  # header still written
+
+    def test_adif_export_accepts_qsos_param(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW",  band="20m", mode="FT8"))
+        db.log_qso(QSO(call="K4ABC", band="40m", mode="CW"))
+        qsos = [q for q in db.recent_qsos() if q.band == "20m"]
+        out = tmp_path / "filtered.adi"
+        count = db.export_adif(out, qsos=qsos)
+        assert count == 1
+        text = out.read_text(encoding="utf-8")
+        assert "W1AW" in text
+        assert "K4ABC" not in text
+
+
+class TestDistinctCallsigns:
+    def test_empty_log(self, db):
+        assert db.distinct_callsigns() == []
+
+    def test_single_call(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        calls = db.distinct_callsigns()
+        assert calls == ["W1AW"]
+
+    def test_deduplicates(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        db.log_qso(QSO(call="W1AW", band="40m", mode="CW"))
+        assert db.distinct_callsigns().count("W1AW") == 1
+
+    def test_sorted(self, db):
+        for call in ["W4XYZ", "K4ABC", "W1AW"]:
+            db.log_qso(QSO(call=call, band="20m", mode="FT8"))
+        assert db.distinct_callsigns() == ["K4ABC", "W1AW", "W4XYZ"]
+
+    def test_prefix_filter(self, db):
+        db.log_qso(QSO(call="W1AW",  band="20m", mode="FT8"))
+        db.log_qso(QSO(call="W4XYZ", band="20m", mode="FT8"))
+        db.log_qso(QSO(call="K4ABC", band="20m", mode="FT8"))
+        assert db.distinct_callsigns(prefix="W") == ["W1AW", "W4XYZ"]
+
+    def test_prefix_case_insensitive(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        assert db.distinct_callsigns(prefix="w") == ["W1AW"]
+
+    def test_prefix_no_match(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        assert db.distinct_callsigns(prefix="K") == []
+
+
+class TestLastQSOWith:
+    def test_no_prior_qso(self, db):
+        assert db.last_qso_with("W1AW") is None
+
+    def test_returns_most_recent(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8",
+                       name="Old", datetime_on="2024-01-01T10:00:00Z"))
+        db.log_qso(QSO(call="W1AW", band="40m", mode="CW",
+                       name="New", datetime_on="2024-06-01T10:00:00Z"))
+        q = db.last_qso_with("W1AW")
+        assert q is not None
+        assert q.name == "New"
+        assert q.band == "40m"
+
+    def test_case_insensitive(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", grid="FN31"))
+        assert db.last_qso_with("w1aw") is not None
+
+    def test_returns_grid(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8", grid="FN31"))
+        q = db.last_qso_with("W1AW")
+        assert q.grid == "FN31"
+
+    def test_unrelated_call_not_returned(self, db):
+        db.log_qso(QSO(call="K4ABC", band="20m", mode="FT8"))
+        assert db.last_qso_with("W1AW") is None
+
+
+class TestExportCabrillo:
+    def test_creates_file(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="CW",
+                       freq_hz=14_074_000, rst_sent="599", rst_rcvd="599"))
+        out = tmp_path / "log.cbr"
+        count = db.export_cabrillo(out, my_call="W4XYZ", contest="CQ-WW-CW",
+                                   exchange="5NN 4")
+        assert count == 1
+        assert out.exists()
+
+    def test_header_fields(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="CW", freq_hz=14_025_000))
+        out = tmp_path / "log.cbr"
+        db.export_cabrillo(out, my_call="W4XYZ", my_grid="EM72",
+                           contest="CQ-WW-CW", exchange="5NN 4")
+        text = out.read_text(encoding="utf-8")
+        assert "START-OF-LOG: 3.0" in text
+        assert "CALLSIGN: W4XYZ" in text
+        assert "GRID-LOCATOR: EM72" in text
+        assert "CONTEST: CQ-WW-CW" in text
+        assert "END-OF-LOG:" in text
+
+    def test_qso_line_structure(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="CW",
+                       freq_hz=14_025_000, rst_sent="599", rst_rcvd="579",
+                       datetime_on="2024-11-16T14:32:00Z"))
+        out = tmp_path / "log.cbr"
+        db.export_cabrillo(out, my_call="W4XYZ", exchange="5NN 4")
+        lines = out.read_text(encoding="utf-8").splitlines()
+        qso_lines = [l for l in lines if l.startswith("QSO:")]
+        assert len(qso_lines) == 1
+        parts = qso_lines[0].split()
+        assert parts[0] == "QSO:"
+        assert parts[1] == "14025"     # freq kHz
+        assert parts[2] == "CW"        # mode
+        assert parts[3] == "2024-11-16"  # date
+        assert parts[4] == "14:32"     # time
+
+    def test_exchange_sent_in_qso_line(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="CW",
+                       freq_hz=14_025_000))
+        out = tmp_path / "log.cbr"
+        db.export_cabrillo(out, my_call="W4XYZ", exchange="5NN 4")
+        text = out.read_text(encoding="utf-8")
+        assert "5NN" in text
+
+    def test_exchange_received_from_comment(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="CW",
+                       freq_hz=14_025_000, comment="5NN 14"))
+        out = tmp_path / "log.cbr"
+        db.export_cabrillo(out, my_call="W4XYZ", exchange="5NN 4")
+        text = out.read_text(encoding="utf-8")
+        # First token of comment used as received exchange
+        qso_line = [l for l in text.splitlines() if l.startswith("QSO:")][0]
+        assert "5NN" in qso_line
+
+    def test_empty_log_produces_valid_file(self, db, tmp_path):
+        out = tmp_path / "empty.cbr"
+        count = db.export_cabrillo(out, my_call="W4XYZ", qsos=[])
+        assert count == 0
+        text = out.read_text(encoding="utf-8")
+        assert "START-OF-LOG:" in text
+        assert "END-OF-LOG:" in text
+
+    def test_filtered_qsos_honored(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW",  band="20m", mode="CW",  freq_hz=14_025_000))
+        db.log_qso(QSO(call="K4ABC", band="40m", mode="SSB", freq_hz=7_200_000))
+        qsos_cw = [q for q in db.recent_qsos() if q.mode == "CW"]
+        out = tmp_path / "cw.cbr"
+        count = db.export_cabrillo(out, qsos=qsos_cw, my_call="W4XYZ")
+        assert count == 1
+        text = out.read_text(encoding="utf-8")
+        assert "W1AW" in text
+        assert "K4ABC" not in text
+
+    def test_returns_count(self, db, tmp_path):
+        for i in range(5):
+            db.log_qso(QSO(call=f"W{i}AW", band="20m", mode="CW",
+                           freq_hz=14_025_000))
+        out = tmp_path / "log.cbr"
+        assert db.export_cabrillo(out, my_call="W4XYZ") == 5
+
+
+class TestBandsWorked:
+    def test_empty_log_returns_zero(self, db):
+        assert db.bands_worked() == 0
+
+    def test_single_qso_single_band(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        assert db.bands_worked() == 1
+
+    def test_multiple_qsos_same_band_counts_once(self, db):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="FT8"))
+        db.log_qso(QSO(call="K1ABC", band="20m", mode="CW"))
+        assert db.bands_worked() == 1
+
+    def test_two_distinct_bands_counted(self, db):
+        db.log_qso(QSO(call="W1AW",  band="20m", mode="FT8"))
+        db.log_qso(QSO(call="K1ABC", band="40m", mode="CW"))
+        assert db.bands_worked() == 2
+
+    def test_empty_band_not_counted(self, db):
+        db.log_qso(QSO(call="W1AW", band="", mode="FT8"))
+        assert db.bands_worked() == 0
+
+    def test_contest_name_uppercased(self, db, tmp_path):
+        db.log_qso(QSO(call="W1AW", band="20m", mode="CW", freq_hz=14_025_000))
+        out = tmp_path / "log.cbr"
+        db.export_cabrillo(out, my_call="W4XYZ", contest="cq-ww-cw")
+        text = out.read_text(encoding="utf-8")
+        assert "CONTEST: CQ-WW-CW" in text

@@ -368,12 +368,20 @@ class LogDB:
                 "SELECT COUNT(DISTINCT cqz) FROM qso "
                 "WHERE cqz > 0").fetchone()[0]
 
+    def bands_worked(self) -> int:
+        """Distinct bands with at least one QSO."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT COUNT(DISTINCT band) FROM qso "
+                "WHERE band != '' AND band IS NOT NULL").fetchone()[0]
+
     def stats(self) -> dict:
         return {
             "total_qsos":   self.total_qsos(),
             "dxcc_worked":  self.dxcc_count(),
             "was_worked":   self.was_count(),
             "waz_worked":   self.waz_count(),
+            "bands_worked": self.bands_worked(),
             "grids_worked": self.grids_worked(),
         }
 

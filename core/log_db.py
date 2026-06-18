@@ -295,6 +295,26 @@ class LogDB:
             return self._conn.execute(
                 "SELECT COUNT(*) FROM qso").fetchone()[0]
 
+    def distinct_callsigns(self, prefix: str = "") -> list[str]:
+        """Return sorted unique callsigns from the log, optionally filtered by prefix."""
+        with self._lock:
+            if prefix:
+                rows = self._conn.execute(
+                    "SELECT DISTINCT call FROM qso WHERE call LIKE ? ORDER BY call",
+                    (f"{prefix.upper()}%",)).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT DISTINCT call FROM qso ORDER BY call").fetchall()
+            return [r[0] for r in rows]
+
+    def last_qso_with(self, call: str) -> "QSO | None":
+        """Return most recent QSO with this callsign, or None."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM qso WHERE call=? ORDER BY datetime_on DESC LIMIT 1",
+                (call.upper().strip(),)).fetchone()
+            return _row_to_qso(row) if row else None
+
     # ── Duplicate detection ───────────────────────────────────────────────
 
     def is_duplicate(self, call: str, band: str, mode: str,
@@ -462,6 +482,107 @@ class LogDB:
         log.info(f"ADIF export: {len(qsos)} records → {path}")
         return len(qsos)
 
+    def export_csv(self, path: Path, qsos: list[QSO] | None = None) -> int:
+        """Export QSOs to CSV. Returns number of records written."""
+        import csv
+        from core.sanitize import csv_safe
+        if qsos is None:
+            qsos = self.recent_qsos(limit=999999)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        headers = [
+            "Date", "Time", "Callsign", "Band", "Freq MHz", "Mode", "Submode",
+            "RST Sent", "RST Rcvd", "Name", "Grid", "DXCC", "Country",
+            "State", "CQ Zone", "ITU Zone", "TX Pwr W", "Dist km", "Bearing",
+            "LoTW", "Comment",
+        ]
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(headers)
+                for q in qsos:
+                    date = q.datetime_on[:10] if q.datetime_on else ""
+                    time = q.datetime_on[11:19] if len(q.datetime_on) > 10 else ""
+                    freq_mhz = f"{q.freq_hz / 1e6:.6g}" if q.freq_hz else ""
+                    dist = f"{q.dist_km:.1f}" if q.dist_km else ""
+                    bearing = f"{q.bearing_deg:.1f}" if q.bearing_deg else ""
+                    w.writerow([
+                        csv_safe(date),
+                        csv_safe(time),
+                        csv_safe(q.call),
+                        csv_safe(q.band),
+                        csv_safe(freq_mhz),
+                        csv_safe(q.mode),
+                        csv_safe(q.submode),
+                        csv_safe(q.rst_sent),
+                        csv_safe(q.rst_rcvd),
+                        csv_safe(q.name),
+                        csv_safe(q.grid),
+                        csv_safe(q.dxcc),
+                        csv_safe(q.country),
+                        csv_safe(q.state),
+                        str(q.cqz) if q.cqz else "",
+                        str(q.ituz) if q.ituz else "",
+                        f"{q.tx_pwr_w:.1f}" if q.tx_pwr_w else "",
+                        dist,
+                        bearing,
+                        csv_safe(q.lotw_status),
+                        csv_safe(q.comment),
+                    ])
+        except (OSError, PermissionError) as e:
+            log.error(f"CSV export failed: {e}")
+            raise
+        log.info(f"CSV export: {len(qsos)} records → {path}")
+        return len(qsos)
+
+    def export_cabrillo(
+        self,
+        path: Path,
+        qsos: list[QSO] | None = None,
+        my_call: str = "",
+        my_grid: str = "",
+        contest: str = "",
+        exchange: str = "",
+    ) -> int:
+        """Export QSOs in Cabrillo 3.0 format. Returns number of QSO lines."""
+        from core.constants import APP_VERSION
+        if qsos is None:
+            qsos = self.recent_qsos(limit=999999)
+        cs = my_call.upper() or "NOCALL"
+        lines = [
+            "START-OF-LOG: 3.0",
+            f"CALLSIGN: {cs}",
+            f"GRID-LOCATOR: {my_grid.upper()}",
+            f"CONTEST: {contest.upper()}",
+            f"OPERATORS: {cs}",
+            f"CREATED-BY: Squelch v{APP_VERSION}",
+            "",
+        ]
+        exch_sent = exchange.strip() or cs
+        for q in qsos:
+            freq_khz = int(q.freq_hz / 1000) if q.freq_hz else 14074
+            dt = (q.datetime_on[:16].replace("T", " ")
+                  if "T" in q.datetime_on else q.datetime_on[:16])
+            exch_rcvd = (q.comment.split()[0] if q.comment else "")
+            lines.append(
+                f"QSO: {freq_khz:>5} "
+                f"{q.mode:<2} "
+                f"{dt} "
+                f"{cs:<13} "
+                f"{q.rst_sent:<3} "
+                f"{exch_sent:<6}  "
+                f"{q.call:<13} "
+                f"{q.rst_rcvd:<3} "
+                f"{exch_rcvd:<6}")
+        lines.append("END-OF-LOG:")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.write_text("\n".join(lines), encoding="utf-8")
+        except (OSError, PermissionError) as e:
+            log.error(f"Cabrillo export failed: {e}")
+            raise
+        log.info("Cabrillo export: %d QSOs → %s", len(qsos), path)
+        return len(qsos)
+
     # ── LoTW / QRZ queue ─────────────────────────────────────────────────
 
     def lotw_pending(self) -> list[QSO]:
@@ -573,3 +694,16 @@ def get_log_db() -> LogDB:
     if _instance is None:
         _instance = LogDB()
     return _instance
+
+
+def first_contact_keys(qsos: list) -> frozenset:
+    """Return (datetime_on, call) tuples for the chronologically first QSO per
+    distinct DXCC entity in *qsos*.  QSOs with empty/None dxcc are skipped."""
+    seen: set = set()
+    result: set = set()
+    for q in sorted(qsos, key=lambda x: x.datetime_on):
+        entity = (q.dxcc or "").strip()
+        if entity and entity not in seen:
+            seen.add(entity)
+            result.add((q.datetime_on, q.call))
+    return frozenset(result)

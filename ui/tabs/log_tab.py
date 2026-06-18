@@ -43,7 +43,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate, QDateTime
 from PyQt6.QtGui import QColor, QBrush, QFont
 
-from core.log_db import LogDB, QSO, get_log_db
+from core.log_db import LogDB, QSO, get_log_db, first_contact_keys
 from core.validator import callsign_soft, grid_square_soft
 
 log = logging.getLogger(__name__)
@@ -96,6 +96,8 @@ STATUS_COLORS = {
     "error":     QColor("#550000"),
 }
 
+NEW_DXCC_COLOR = QColor("#5a4800")  # first contact with a DXCC entity
+
 STATUS_LABELS = {
     "none":      "—",
     "pending":   "⏳",
@@ -132,6 +134,7 @@ class LogTab(SquelchPanel, QWidget):
         self.cfg    = config
         self.log_db = get_log_db()
         self._all_qsos: list[QSO] = []
+        self._current_filtered: list[QSO] = []
         self._build()
         self._build_awards_panel()
         self._load_log()
@@ -159,6 +162,7 @@ class LogTab(SquelchPanel, QWidget):
         self._stat_widgets = {}
         for key, label in [
             ("total",  "Total QSOs"),
+            ("today",  "Today"),
             ("dxcc",   "DXCC"),
             ("was",    "WAS"),
             ("waz",    "WAZ"),
@@ -302,8 +306,14 @@ class LogTab(SquelchPanel, QWidget):
         btn_row.addWidget(add_btn)
 
         adif_exp = QPushButton(self.tr("Export ADIF"))
+        adif_exp.setToolTip("Export log as ADIF\nHonours active filter")
         adif_exp.clicked.connect(self._export_adif)
         btn_row.addWidget(adif_exp)
+
+        csv_exp = QPushButton(self.tr("Export CSV"))
+        csv_exp.setToolTip("Export log as CSV spreadsheet\nHonours active filter")
+        csv_exp.clicked.connect(self._export_csv)
+        btn_row.addWidget(csv_exp)
 
         adif_imp = QPushButton(self.tr("Import ADIF"))
         adif_imp.clicked.connect(self._import_adif)
@@ -519,11 +529,13 @@ class LogTab(SquelchPanel, QWidget):
                     continue
             filtered.append(q)
 
+        self._current_filtered = filtered
         self._populate_table(filtered)
 
     def _populate_table(self, qsos: list[QSO]):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
+        new_dxcc = first_contact_keys(getattr(self, "_all_qsos", []))
 
         for q in qsos:
             row = self._table.rowCount()
@@ -564,6 +576,10 @@ class LogTab(SquelchPanel, QWidget):
                     color = STATUS_COLORS.get(q.qrz_status,
                                               STATUS_COLORS["none"])
                     item.setBackground(QBrush(color))
+                elif col == C_DXCC:
+                    if (q.datetime_on, q.call) in new_dxcc:
+                        item.setBackground(QBrush(NEW_DXCC_COLOR))
+                        item.setToolTip("First contact with this DXCC entity")
 
                 # Store QSO id on column 0 for right-click/edit lookup
                 if col == 0:
@@ -608,6 +624,30 @@ class LogTab(SquelchPanel, QWidget):
                 1 for q in self._all_qsos
                 if q.datetime_on and q.datetime_on >= hour_ago)
             self._stat_widgets["rate"].setText(str(rate))
+
+            # Today's QSO count + optional daily goal
+            today_start = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT00:00:00Z")
+            today = sum(
+                1 for q in self._all_qsos
+                if q.datetime_on and q.datetime_on >= today_start)
+            goal = self.cfg.get("log.daily_goal", 0) if self.cfg else 0
+            w = self._stat_widgets["today"]
+            base_ss = ("font-size:14px;font-weight:bold;"
+                       "font-family:'Courier New';")
+            if goal:
+                pct = today / goal
+                if pct >= 1.0:
+                    color = "#3fbe6f"   # green — goal met
+                elif pct >= 0.5:
+                    color = "#ffcc00"   # amber — halfway there
+                else:
+                    color = "#cc4444"   # red — less than halfway
+                w.setText(f"{today}/{goal}")
+                w.setStyleSheet(base_ss + f"color:{color};")
+            else:
+                w.setText(str(today))
+                w.setStyleSheet(base_ss)
 
             # Queue counts
             lotw_q = len(self.log_db.lotw_pending())
@@ -750,6 +790,31 @@ class LogTab(SquelchPanel, QWidget):
         lay.addRow(btns)
         return dlg, fields
 
+    def _wire_callsign_autocomplete(self, f: dict) -> None:
+        """Attach QCompleter to cs_edit from local log; pre-fill name/grid on pick."""
+        from PyQt6.QtWidgets import QCompleter
+        from PyQt6.QtCore import QStringListModel, Qt
+
+        calls = self.log_db.distinct_callsigns()
+        model = QStringListModel(calls)
+        comp = QCompleter()
+        comp.setModel(model)
+        comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        comp.setCompletionMode(
+            QCompleter.CompletionMode.InlineCompletion)
+        f["cs_edit"].setCompleter(comp)
+
+        def _on_activated(text: str):
+            prior = self.log_db.last_qso_with(text)
+            if prior is None:
+                return
+            if not f["grid_edit"].text().strip():
+                f["grid_edit"].setText(prior.grid)
+            if not f["name_edit"].text().strip():
+                f["name_edit"].setText(prior.name)
+
+        comp.activated.connect(_on_activated)
+
     def _wire_callsign_lookup(self, dlg, f: dict) -> None:
         """Async callsign lookup: on cs_edit editingFinished, auto-fill name+grid."""
         from PyQt6.QtCore import QObject, pyqtSignal
@@ -837,6 +902,7 @@ class LogTab(SquelchPanel, QWidget):
     def _manual_entry(self):
         """Open the manual QSO entry dialog and log on accept."""
         dlg, f = self._build_manual_entry_dialog()
+        self._wire_callsign_autocomplete(f)
         self._wire_callsign_lookup(dlg, f)
         self._wire_dupe_check(f)
         if not dlg.exec():
@@ -905,76 +971,126 @@ class LogTab(SquelchPanel, QWidget):
         dlg = LogStatsDialog(self.log_db, self)
         dlg.exec()
 
-    # ── ADIF export ───────────────────────────────────────────────────────
+    # ── ADIF / CSV export ─────────────────────────────────────────────────
+
+    def _export_qsos(self) -> list[QSO]:
+        """Return QSOs to export: filtered set when a filter is active."""
+        filtered = getattr(self, "_current_filtered", [])
+        all_qs   = getattr(self, "_all_qsos", [])
+        if filtered and len(filtered) < len(all_qs):
+            return filtered
+        return all_qs or self.log_db.recent_qsos(limit=999999)
 
     def _export_adif(self):
+        qsos = self._export_qsos()
+        is_filtered = len(qsos) < len(self._all_qsos)
+        label = (f"Export ADIF — {len(qsos)} filtered QSOs"
+                 if is_filtered else "Export ADIF")
         path, _ = QFileDialog.getSaveFileName(
-            self, self.tr("Export ADIF"),
+            self, self.tr(label),
             f"squelch_log_{datetime.now().strftime('%Y%m%d')}.adi",
             "ADIF Files (*.adi *.adif)")
         if not path:
             return
         try:
-            count = self.log_db.export_adif(Path(path))
+            count = self.log_db.export_adif(Path(path), qsos=qsos)
             QMessageBox.information(
                 self, self.tr("Export Complete"),
-                f"Exported {count} QSOs to {path}")
+                f"Exported {count} QSOs to {Path(path).name}")
         except Exception as e:
-            QMessageBox.warning(
-                self, "Export Failed", str(e))
+            QMessageBox.warning(self, "Export Failed", str(e))
+
+    def _export_csv(self):
+        qsos = self._export_qsos()
+        is_filtered = len(qsos) < len(self._all_qsos)
+        label = (f"Export CSV — {len(qsos)} filtered QSOs"
+                 if is_filtered else "Export CSV")
+        path, _ = QFileDialog.getSaveFileName(
+            self, self.tr(label),
+            f"squelch_log_{datetime.now().strftime('%Y%m%d')}.csv",
+            "CSV Files (*.csv)")
+        if not path:
+            return
+        try:
+            count = self.log_db.export_csv(Path(path), qsos=qsos)
+            QMessageBox.information(
+                self, self.tr("Export Complete"),
+                f"Exported {count} QSOs to {Path(path).name}")
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", str(e))
 
     # ── ADIF import ───────────────────────────────────────────────────────
 
     def _export_cabrillo(self):
-        """Export log in Cabrillo format for contest submission."""
-        from PyQt6.QtWidgets import QFileDialog
+        """Export log in Cabrillo 3.0 format for contest submission."""
+        from PyQt6.QtWidgets import (QDialog, QFormLayout, QLineEdit,
+                                     QDialogButtonBox, QFileDialog, QLabel)
+        from core.guest_op import operating_callsign
+
+        # Pre-export dialog: let user confirm contest name and exchange.
+        dlg = QDialog(self)
+        dlg.setWindowTitle(self.tr("Cabrillo Export"))
+        dlg.setMinimumWidth(340)
+        fl = QFormLayout(dlg)
+        fl.setSpacing(10)
+        fl.setContentsMargins(16, 16, 16, 16)
+
+        contest_edit = QLineEdit()
+        contest_edit.setPlaceholderText("e.g. CQ-WW-SSB")
+        fl.addRow("Contest name:", contest_edit)
+
+        exchange_edit = QLineEdit()
+        exchange_edit.setText(
+            self.cfg.get("station.contest_exchange", "") or "")
+        exchange_edit.setPlaceholderText("e.g. 5NN OH")
+        fl.addRow("My exchange (sent):", exchange_edit)
+
+        note = QLabel(self.tr(
+            "Received exchange taken from QSO comment field.\n"
+            "Leave contest name blank to fill in manually."))
+        note.setStyleSheet("font-size:10px;color:#888888;")
+        fl.addRow(note)
+
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        fl.addRow(bb)
+
+        if not dlg.exec():
+            return
+
+        contest  = contest_edit.text().strip()
+        exchange = exchange_edit.text().strip()
+        if exchange:
+            self.cfg.set("station.contest_exchange", exchange)
+
+        cs   = operating_callsign(self.cfg) or "NOCALL"
+        grid = self.cfg.grid or ""
+        qsos = self._export_qsos()
+        is_filtered = len(qsos) < len(self._all_qsos)
+        label = (f"Export Cabrillo — {len(qsos)} filtered QSOs"
+                 if is_filtered else "Export Cabrillo")
+
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Cabrillo",
-            f"{self.cfg.callsign or 'log'}.cbr",
-            "Cabrillo (*.cbr *.log);All Files (*)")
+            self, self.tr(label),
+            f"{cs.lower()}.cbr",
+            "Cabrillo (*.cbr *.log);;All Files (*)")
         if not path:
             return
         try:
-            qsos    = self.log_db.recent_qsos(limit=9999)
-            from core.guest_op import operating_callsign
-            cs      = operating_callsign(self.cfg) or "NOCALL"
-            grid    = self.cfg.grid or ""
-            lines   = [
-                "START-OF-LOG: 3.0",
-                f"CALLSIGN: {cs}",
-                f"GRID-LOCATOR: {grid}",
-                "CONTEST: ",
-                f"OPERATORS: {cs}",
-                f"CREATED-BY: Squelch v{APP_VERSION}",
-                "",
-            ]
-            for q in qsos:
-                # Cabrillo QSO line format:
-                # QSO: freq mode date time my-call rst-sent exch
-                #      dx-call rst-rcvd exch
-                freq_khz = int(q.freq_hz / 1000)                            if hasattr(q, "freq_hz") and q.freq_hz                            else 14074
-                dt = q.datetime_on[:16].replace("T", " ")                      if "T" in q.datetime_on                      else q.datetime_on[:16]
-                lines.append(
-                    f"QSO: {freq_khz:>5} "
-                    f"{q.mode:<2} "
-                    f"{dt} "
-                    f"{cs:<13} "
-                    f"{q.rst_sent:<3} "
-                    f"{'':>6}  "
-                    f"{q.call:<13} "
-                    f"{q.rst_rcvd:<3} "
-                    f"{'':>6}")
-            lines.append("END-OF-LOG:")
-            Path(path).write_text(
-                "\n".join(lines), encoding="utf-8")
+            count = self.log_db.export_cabrillo(
+                Path(path), qsos=qsos,
+                my_call=cs, my_grid=grid,
+                contest=contest, exchange=exchange)
             QMessageBox.information(
-                self, "Cabrillo Exported",
-                f"Exported {len(qsos)} QSOs to:\n{path}\n\n"
-                "Fill in CONTEST: and exchange fields\n"
-                "before submitting to contest robot.")
+                self, self.tr("Cabrillo Exported"),
+                f"Exported {count} QSOs to {Path(path).name}\n\n"
+                "Review CONTEST: header before submitting\n"
+                "to the contest robot.")
         except Exception as e:
-            QMessageBox.warning(
-                self, "Export Failed", str(e))
+            QMessageBox.warning(self, "Export Failed", str(e))
 
     def _export_csv(self):
         """Export log as CSV spreadsheet."""

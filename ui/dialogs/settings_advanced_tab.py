@@ -84,10 +84,6 @@ class _SettingsAdvancedTab:
         self._share_spotting = QCheckBox(
             "Allow Squelch to appear in PSKReporter spots")
         f.addRow("", self._share_spotting)
-        self._anon_telemetry = QCheckBox(
-            "Send anonymous crash reports to help improve Squelch")
-        self._anon_telemetry.setChecked(False)
-        f.addRow("", self._anon_telemetry)
 
     def _tab_advanced(self) -> "QWidget":
         from PyQt6.QtWidgets import QScrollArea

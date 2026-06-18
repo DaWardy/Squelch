@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QSplitter, QFrame, QMessageBox,
     QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
     QProgressBar, QSpinBox, QProgressDialog, QDateEdit,
-    QDateTimeEdit
+    QDateTimeEdit, QCheckBox
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate, QDateTime
 from PyQt6.QtGui import QColor, QBrush, QFont
@@ -176,6 +176,7 @@ class LogTab(SquelchPanel, QWidget):
             ("dxcc",   "DXCC"),
             ("was",    "WAS"),
             ("waz",    "WAZ"),
+            ("bands",  "Bands"),
             ("grids",  "Grids"),
             ("lotw",   "LoTW ✅"),
             ("rate",   "QSOs / hr"),
@@ -239,6 +240,13 @@ class LogTab(SquelchPanel, QWidget):
         self._date_to.setMaximumWidth(105)
         self._date_to.dateChanged.connect(self._apply_filter)
         filter_row.addWidget(self._date_to)
+
+        self._firsts_filter = QCheckBox(self.tr("🏆 Firsts"))
+        self._firsts_filter.setToolTip(
+            "Show only first-contact QSOs\n"
+            "(new DXCC entity or new band slot for a DXCC entity)")
+        self._firsts_filter.stateChanged.connect(self._apply_filter)
+        filter_row.addWidget(self._firsts_filter)
 
         refresh_btn = QPushButton(self.tr("↺ Refresh"))
         refresh_btn.setFixedWidth(90)
@@ -541,6 +549,17 @@ class LogTab(SquelchPanel, QWidget):
                     continue
             filtered.append(q)
 
+        # "Firsts only" gate — reduce to first-contact / first-band-slot QSOs
+        firsts_cb = getattr(self, "_firsts_filter", None)
+        if firsts_cb and firsts_cb.isChecked():
+            dxcc_keys = first_contact_keys(self._all_qsos)
+            band_keys = frozenset(
+                (dt, c)
+                for dt, c, _b in first_contact_band_keys(self._all_qsos))
+            first_keys = dxcc_keys | band_keys
+            filtered = [q for q in filtered
+                        if (q.datetime_on, q.call) in first_keys]
+
         self._current_filtered = filtered
         self._populate_table(filtered)
 
@@ -620,6 +639,8 @@ class LogTab(SquelchPanel, QWidget):
                 str(stats["was_worked"]))
             self._stat_widgets["waz"].setText(
                 str(stats["waz_worked"]))
+            self._stat_widgets["bands"].setText(
+                str(stats["bands_worked"]))
             self._stat_widgets["grids"].setText(
                 str(stats["grids_worked"]))
 

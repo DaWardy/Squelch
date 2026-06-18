@@ -5,7 +5,7 @@ import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 import pytest
-from core.log_db import LogDB, QSO
+from core.log_db import LogDB, QSO, first_contact_keys, first_contact_band_keys
 
 
 @pytest.fixture()
@@ -124,6 +124,67 @@ class TestExtendedSearch:
     def test_search_by_comment(self):
         q = QSO(call="K5ABC", comment="FB DX first contact")
         assert _matches(q, search="FB DX")
+
+    def test_unrelated_term_not_matched(self):
+        q = QSO(call="W1AW", dxcc="United States",
+                country="United States", state="CT",
+                comment="nice signal")
+        assert not _matches(q, search="Japan")
+
+
+# ── Firsts-only filter logic ──────────────────────────────────────────────────
+
+def _apply_firsts(qsos_all, qsos_display):
+    """Mirror of the firsts-only gate in log_tab._apply_filter."""
+    dxcc_keys = first_contact_keys(qsos_all)
+    band_keys  = frozenset(
+        (dt, c) for dt, c, _b in first_contact_band_keys(qsos_all))
+    first_keys = dxcc_keys | band_keys
+    return [q for q in qsos_display if (q.datetime_on, q.call) in first_keys]
+
+
+def _q(call, dt, dxcc="", band="20m"):
+    return QSO(call=call, datetime_on=dt, dxcc=dxcc, band=band)
+
+
+class TestFirstsOnlyFilter:
+    def test_empty_log_returns_empty(self):
+        assert _apply_firsts([], []) == []
+
+    def test_single_new_entity_returned(self):
+        q = _q("W1AW", "2024-01-01T12:00:00Z", dxcc="United States")
+        assert _apply_firsts([q], [q]) == [q]
+
+    def test_repeat_contact_excluded(self):
+        q1 = _q("W1AW",  "2024-01-01T12:00:00Z", dxcc="United States")
+        q2 = _q("K1ABC", "2024-02-01T12:00:00Z", dxcc="United States")
+        assert _apply_firsts([q1, q2], [q1, q2]) == [q1]
+
+    def test_new_band_slot_returned(self):
+        q1 = _q("W1AW", "2024-01-01T12:00:00Z", dxcc="United States", band="20m")
+        q2 = _q("K1ABC","2024-02-01T12:00:00Z", dxcc="United States", band="40m")
+        result = _apply_firsts([q1, q2], [q1, q2])
+        assert q1 in result
+        assert q2 in result   # new band slot for same entity
+
+    def test_repeat_on_same_band_excluded(self):
+        q1 = _q("W1AW",  "2024-01-01T12:00:00Z", dxcc="United States", band="20m")
+        q2 = _q("K1ABC", "2024-02-01T12:00:00Z", dxcc="United States", band="20m")
+        q3 = _q("N1XYZ", "2024-03-01T12:00:00Z", dxcc="United States", band="20m")
+        result = _apply_firsts([q1, q2, q3], [q1, q2, q3])
+        assert result == [q1]
+
+    def test_no_dxcc_qso_excluded(self):
+        q = _q("W1AW", "2024-01-01T12:00:00Z", dxcc="")
+        assert _apply_firsts([q], [q]) == []
+
+    def test_combined_with_band_filter(self):
+        q1 = _q("W1AW",  "2024-01-01T12:00:00Z", dxcc="United States", band="20m")
+        q2 = _q("JA1XYZ","2024-02-01T12:00:00Z", dxcc="Japan",          band="40m")
+        # pre-filter to 20m only, then apply firsts
+        display = [q for q in [q1, q2] if q.band == "20m"]
+        result = _apply_firsts([q1, q2], display)
+        assert result == [q1]
 
     def test_unrelated_term_not_matched(self):
         q = QSO(call="W1AW", dxcc="United States",

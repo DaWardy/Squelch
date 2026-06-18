@@ -115,6 +115,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
     def _load_station(self, cfg):
         region_map = {"1": 1, "2": 0, "3": 2}
         lic_map    = {"technician": 0, "general": 1, "extra": 2, "other": 3}
+        self._daily_goal.setValue(cfg.get("log.daily_goal", 0))
         self._callsign.setText(cfg.callsign or "")
         self._op_name.setText(cfg.get("station.op_name", ""))
         self._grid.setText(cfg.grid or "")
@@ -144,6 +145,15 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             self._units.setCurrentIndex(ui_idx)
         self._layout_locked.setChecked(cfg.get("ui.layout_locked", False))
         self._clock_utc.setChecked(cfg.get("ui.clock_utc", True))
+        from ui.dialogs.settings_appearance_tab import _CUSTOM_COLORS
+        for key, _label, default in _CUSTOM_COLORS:
+            btn = getattr(self, "_color_btns", {}).get(key)
+            if btn:
+                h = cfg.get(f"theme.custom.{key}", default) or default
+                btn.setProperty("hex_color", h)
+                btn.setStyleSheet(
+                    f"background:{h};border:1px solid #555;"
+                    f"border-radius:2px;")
 
     def _load_advanced(self, cfg):
         level_map = {"INFO": 0, "DEBUG": 1, "WARNING": 2}
@@ -372,6 +382,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 self._station_call.text().strip().upper())
         cfg.set("station.contest_exchange",
                 self._contest_exchange.text().strip())
+        cfg.set("log.daily_goal", self._daily_goal.value())
 
     def _save_audio(self, cfg):
         cfg.set("audio.input",          self._audio_input.currentText())
@@ -393,6 +404,10 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         cfg.set("ui.units",          self._units.currentData() or "metric")
         cfg.set("ui.layout_locked",  self._layout_locked.isChecked())
         cfg.set("ui.clock_utc",      self._clock_utc.isChecked())
+        for key, btn in getattr(self, "_color_btns", {}).items():
+            h = btn.property("hex_color") or ""
+            if h:
+                cfg.set(f"theme.custom.{key}", h)
 
     def _save_advanced(self, cfg):
         levels = ["INFO", "DEBUG", "WARNING"]
@@ -584,11 +599,18 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                     combo.addItem(val)
                 combo.setCurrentText(val)
         if not detected:
-            self._refresh_audio_btn.setText(
-                "↺ Refresh (sounddevice not installed)")
+            self._refresh_audio_btn.setText("↺ Refresh Device List")
+            self._audio_status_lbl.setText(
+                "sounddevice not installed — dropdowns show common names only.\n"
+                "Install with: pip install sounddevice  (then restart Squelch)")
+            self._audio_status_lbl.setStyleSheet("color:#ffcc00;font-size:10px;")
         else:
-            total = len(in_devices) + len(out_devices)
-            self._refresh_audio_btn.setText(f"↺ Device list ({total} found)")
+            n_in  = len(in_devices)
+            n_out = len(out_devices)
+            self._refresh_audio_btn.setText("↺ Refresh Device List")
+            self._audio_status_lbl.setText(
+                f"{n_in} input device(s), {n_out} output device(s) found.")
+            self._audio_status_lbl.setStyleSheet("color:#888;font-size:10px;")
         self._refresh_audio_btn.setStyleSheet("")
 
     def _refresh_audio_devices(self):

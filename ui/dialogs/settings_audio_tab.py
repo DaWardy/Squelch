@@ -56,6 +56,11 @@ class _SettingsAudioTab:
         self._refresh_audio_btn.clicked.connect(
             self._refresh_audio_devices)
         f.addRow("", self._refresh_audio_btn)
+        self._audio_status_lbl = QLabel("")
+        self._audio_status_lbl.setStyleSheet(
+            "color:#888;font-size:10px;")
+        self._audio_status_lbl.setWordWrap(True)
+        f.addRow("", self._audio_status_lbl)
 
         self._audio_input = QComboBox()
         self._audio_input.setEditable(True)

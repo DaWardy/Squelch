@@ -51,7 +51,7 @@ class TestTabNames:
 
     def test_voice_digital_label(self):
         tabs = {k: lbl for k, lbl, _ in _tabs_constant()}
-        assert "Voice Digital" in tabs["digital"]
+        assert "Digital Voice" in tabs["digital"]
 
     def test_modes_not_bare_label(self):
         tabs = {k: lbl for k, lbl, _ in _tabs_constant()}
@@ -59,7 +59,7 @@ class TestTabNames:
 
     def test_digital_not_bare_label(self):
         tabs = {k: lbl for k, lbl, _ in _tabs_constant()}
-        assert "Voice Digital" in tabs["digital"]
+        assert "Digital Voice" in tabs["digital"]
 
     def test_rig_is_first(self):
         keys = [k for k, _, _ in _tabs_constant()]

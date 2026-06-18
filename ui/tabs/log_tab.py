@@ -98,6 +98,14 @@ STATUS_COLORS = {
 
 NEW_DXCC_COLOR = QColor("#5a4800")  # first contact with a DXCC entity
 
+QRZ_BASE_URL = "https://www.qrz.com/db/"
+
+
+def _qrz_url(call: str) -> str:
+    """Return the QRZ.com lookup URL for *call*."""
+    return QRZ_BASE_URL + call.upper().strip()
+
+
 STATUS_LABELS = {
     "none":      "—",
     "pending":   "⏳",
@@ -1092,51 +1100,6 @@ class LogTab(SquelchPanel, QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Export Failed", str(e))
 
-    def _export_csv(self):
-        """Export log as CSV spreadsheet."""
-        import csv
-        import io
-        from PyQt6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export CSV",
-            f"{self.cfg.callsign or 'log'}_qsos.csv",
-            "CSV (*.csv);All Files (*)")
-        if not path:
-            return
-        try:
-            qsos = self.log_db.recent_qsos(limit=9999)
-            output = io.StringIO()
-            writer = csv.writer(output)
-            # Header
-            writer.writerow([
-                "Date", "Time UTC", "Callsign",
-                "Band", "Mode", "Freq MHz",
-                "RST Sent", "RST Rcvd",
-                "Their Grid", "Name", "Country",
-                "My Callsign", "My Grid",
-                "LoTW Status", "Comment"])
-            for q in qsos:
-                dt  = q.datetime_on
-                date = dt[:10] if len(dt) >= 10 else dt
-                time = dt[11:16] if len(dt) >= 16 else ""
-                freq = f"{q.freq_hz/1e6:.6f}"                        if hasattr(q, "freq_hz") and q.freq_hz                        else ""
-                writer.writerow([csv_safe(x) for x in (
-                    date, time, q.call,
-                    q.band, q.mode, freq,
-                    q.rst_sent, q.rst_rcvd,
-                    q.grid, q.name,
-                    getattr(q, "country", ""),
-                    q.my_call, q.my_grid,
-                    q.lotw_status, q.comment)])
-            Path(path).write_text(
-                output.getvalue(), encoding="utf-8")
-            QMessageBox.information(
-                self, "CSV Exported",
-                f"Exported {len(qsos)} QSOs to:\n{path}")
-        except Exception as e:
-            QMessageBox.warning(
-                self, "Export Failed", str(e))
-
     def _import_adif(self):
         path, _ = QFileDialog.getOpenFileName(
             self, self.tr("Import ADIF"),
@@ -1230,23 +1193,34 @@ class LogTab(SquelchPanel, QWidget):
     def _log_context_menu(self, pos):
         """Right-click menu on log table rows."""
         from PyQt6.QtWidgets import QMenu
-        from PyQt6.QtGui import QGuiApplication
+        from PyQt6.QtGui import QGuiApplication, QDesktopServices
+        from PyQt6.QtCore import QUrl
         row = self._table.rowAt(pos.y())
         if row < 0:
             return
+        qso = self._get_row_qso(row)
+        call = qso.call if qso else ""
         menu = QMenu(self)
-        edit_act = menu.addAction("✏️  Edit QSO")
-        copy_act = menu.addAction("📋  Copy callsign")
+        edit_act   = menu.addAction("✏️  Edit QSO")
+        copy_act   = menu.addAction("📋  Copy callsign")
+        qrz_act    = menu.addAction(f"🔗  Open QRZ page")
+        filter_act = menu.addAction(
+            f"🔍  Show all QSOs with {call}" if call else "🔍  Show all QSOs with…")
         menu.addSeparator()
-        del_act  = menu.addAction("🗑  Delete QSO…")
-        action   = menu.exec(
-            self._table.mapToGlobal(pos))
+        del_act    = menu.addAction("🗑  Delete QSO…")
+        action = menu.exec(self._table.mapToGlobal(pos))
         if action == edit_act:
             self._edit_qso_row(row)
         elif action == copy_act:
-            qso = self._get_row_qso(row)
             if qso:
                 QGuiApplication.clipboard().setText(qso.call)
+        elif action == qrz_act:
+            if qso:
+                QDesktopServices.openUrl(QUrl(_qrz_url(qso.call)))
+        elif action == filter_act:
+            if qso:
+                self._search.setText(qso.call)
+                self._apply_filter()
         elif action == del_act:
             self._delete_qso_row(row)
 

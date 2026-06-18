@@ -58,14 +58,14 @@ log = logging.getLogger(__name__)
 # Tab definitions — key, label, default visible
 TABS = [
     ("rig",       "📻  Rig",            True),
-    ("modes",     "📡  Modes",          True),
-    ("log",       "📒  Log",            True),
-    ("bandcond",  "☀️  Band Cond.",     True),
     ("sdr",       "〰️  SDR",            True),
-    ("digital",   "🔊  Digital",        True),
+    ("modes",     "📡  Weak Signal",    True),
+    ("digital",   "🔊  Voice Digital",  True),
+    ("winlink",   "✉️  Winlink",        True),
+    ("log",       "📒  Log",            True),
     ("localrf",   "📋  Local RF",       True),
     ("map",       "🗺  Map",            True),
-    ("winlink",   "✉️  Winlink",        True),
+    ("bandcond",  "☀️  Band Cond.",     True),
     ("rf_lab",    "🔬  RF Lab",         False),
     ("help",      "❓  Help",           True),
 ]
@@ -678,6 +678,18 @@ class MainWindow(
         self._rflab_action = rflab_a
         vm.addAction(rflab_a)
         vm.addSeparator()
+        locked = self.cfg.get("ui.layout_locked", False)
+        lock_txt = "🔒 Lock UI Layout" if not locked else "🔓 Unlock UI Layout"
+        lock_a = QAction(self.tr(lock_txt), self)
+        lock_a.setCheckable(True)
+        lock_a.setChecked(locked)
+        lock_a.setToolTip(
+            "Lock tab order and splitter positions to prevent\n"
+            "accidental drags. Unlock to rearrange.")
+        lock_a.triggered.connect(lambda checked: self._toggle_ui_lock(checked))
+        self._lock_action = lock_a
+        vm.addAction(lock_a)
+        vm.addSeparator()
         # Demo Mode — disables ALL transmit (C-06 Elena classroom use)
         demo_a = QAction(self.tr("Demo Mode (disable transmit)"), self)
         demo_a.setCheckable(True)
@@ -754,10 +766,10 @@ class MainWindow(
             "Improves DXCC tracking accuracy for all logged QSOs.")
         update_cty.triggered.connect(self._update_cty_dat)
         hm.addAction(update_cty)
-        band_plan_a = QAction(self.tr("Band Plan Reference…"), self)
+        band_plan_a = QAction(self.tr("Frequency Reference…"), self)
         band_plan_a.setToolTip(
-            "FCC Part 97 amateur band plan — segment types, "
-            "license class privileges")
+            "FCC Part 97 amateur bands + CB, FRS/GMRS, MURS, ISM/unlicensed "
+            "frequency reference with category filter")
         band_plan_a.triggered.connect(self._show_band_plan)
         hm.addAction(band_plan_a)
         hm.addSeparator()

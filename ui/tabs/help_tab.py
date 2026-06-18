@@ -2080,6 +2080,46 @@ The "QSOs / hr" counter in the stats bar shows how many QSOs
 you've logged in the current UTC hour. Useful for pacing during
 contests or activations.
 """),
+    ("Privacy & Crash Logs", "Reference",
+     """# Privacy & Crash Logs
+
+## Where does Squelch store crash logs?
+
+All log output goes to **logs/squelch.log** inside Squelch's data
+directory. On Windows this is typically:
+
+  %APPDATA%\\Squelch\\logs\\squelch.log
+
+You can find the exact path under **Settings → Advanced → Data Directory**.
+
+## Does Squelch send anything anywhere?
+
+**No.** Squelch is fully offline-first. It never:
+- Sends crash reports to any server
+- Sends anonymous usage analytics
+- Phones home for any reason
+
+The only outbound connections Squelch makes are ones you initiate
+explicitly: QRZ lookups, logbook uploads, APRS-IS, PSKReporter,
+Winlink, etc. Every outbound call is listed under **Help → Network
+Activity**.
+
+## What gets logged locally?
+
+The log file captures startup messages, CAT rig connection status,
+SDR errors, APRS packets (INFO level), and any exception tracebacks.
+You can set the verbosity under **Settings → Advanced → Log Level**.
+
+Log files rotate automatically when they reach the configured max
+size (default 5 MB). Only one rotated backup is kept.
+
+## Sharing logs for support
+
+If you need to share a log excerpt when reporting a bug, open the
+file in any text editor and copy the relevant lines. Trim out any
+personal information such as your callsign or grid square before
+posting publicly.
+"""),
 ]
 
 # Build search index

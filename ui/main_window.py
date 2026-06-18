@@ -359,7 +359,7 @@ class MainWindow(
         menu.addSeparator()
         locked = self.cfg.get("ui.layout_locked", False)
         lock_act = menu.addAction(
-            "🔒 Lock layout" if not locked else "🔓 Unlock layout")
+            "🔒 Lock tab order" if not locked else "🔓 Unlock tab order")
         lock_act.triggered.connect(
             lambda: self._toggle_ui_lock(not locked))
 
@@ -684,8 +684,9 @@ class MainWindow(
         lock_a.setCheckable(True)
         lock_a.setChecked(locked)
         lock_a.setToolTip(
-            "Lock tab order and splitter positions to prevent\n"
-            "accidental drags. Unlock to rearrange.")
+            "Lock tab bar order to prevent accidental tab dragging.\n"
+            "Also locks splitter resize handles.\n"
+            "Does NOT affect section order within tabs.")
         lock_a.triggered.connect(lambda checked: self._toggle_ui_lock(checked))
         self._lock_action = lock_a
         vm.addAction(lock_a)
@@ -922,6 +923,7 @@ class MainWindow(
         self._panel_shell.resize(1400, 900)
         self._panel_shell.show()
         self._panel_shell.raise_()
+        self.hide()   # main window is empty while workspace is active
         self.statusBar().showMessage(
             "Workspace mode active — use Workspace menu to save layouts, "
             "View → Back to tab mode to return", 6000)

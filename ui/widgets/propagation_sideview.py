@@ -354,13 +354,14 @@ class PropagationSideView(QWidget):
                 p.setPen(QColor("#99aabb"))
                 p.setFont(QFont("", 7))
                 total_loss = fspl + extra
-                p.drawText(x0 + bar_w + 4, sig_y + 7,
-                           f"Prx≈{prx_dbm:.0f} dBm")
-                p.drawText(x0 + 2, sig_y + 7,
+                # EIRP summary above bar, Prx label below — no horizontal collision
+                p.drawText(x0 + 2, sig_y - 2,
                            f"EIRP {self._eirp_dbw:.0f} dBW  "
                            f"FSPL {fspl:.0f} dB  "
                            f"+{extra:.0f} dB  "
                            f"= {total_loss:.0f} dB loss")
+                p.drawText(x0 + bar_w + 4, sig_y + 8,
+                           f"Prx≈{prx_dbm:.0f} dBm")
         if self._terrain_label:
             ground = int(self.height() * 0.82)
             p.setPen(QColor("#778899"))
@@ -382,7 +383,10 @@ class PropagationSideView(QWidget):
         p.drawLine(x0, (f_top + f_bot) // 2, x1, (f_top + f_bot) // 2)
         p.setPen(QColor("#b48eea"))
         p.setFont(QFont("", 8))
-        p.drawText(x0 + 4, f_top - 2, f"F-layer  ~{F_LAYER_KM:.0f} km")
+        band_h = f_bot - f_top
+        label_y = f_top + band_h // 2 + 4  # centred inside the band
+        if band_h >= 12:
+            p.drawText(x0 + 4, label_y, f"F-layer  ~{F_LAYER_KM:.0f} km")
         return f_top, f_bot
 
     def _draw_station_markers(self, p: "QPainter",

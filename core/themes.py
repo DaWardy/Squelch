@@ -158,7 +158,43 @@ THEMES: dict[str, Theme] = {
     "Light":         LIGHT,
     "High Contrast": HIGH_CONTRAST,
     "Night":         NIGHT,
+    "Custom":        DARK,  # resolved at runtime by custom_theme_from_config()
 }
+
+
+def custom_theme_from_config(cfg) -> Theme:
+    """Build a Theme from user-picked colors stored in config."""
+    def _c(key: str, default: str) -> str:
+        return cfg.get(f"theme.custom.{key}", default) or default
+
+    bg1 = _c("bg_primary",   "#0f0f0f")
+    bg2 = _c("bg_secondary", "#1a1a1a")
+    fg1 = _c("fg_primary",   "#cccccc")
+    acc = _c("accent",       "#3fbe6f")
+    tx  = _c("tx_color",     "#ff4444")
+    brd = _c("border",       "#2a2a2a")
+    return Theme(
+        name            = "Custom",
+        bg_primary      = bg1,
+        bg_secondary    = bg2,
+        bg_tertiary     = bg2,
+        bg_alt          = bg1,
+        fg_primary      = fg1,
+        fg_secondary    = "#888888",
+        fg_muted        = "#555555",
+        accent          = acc,
+        accent_alt      = "#44aaff",
+        border          = brd,
+        border_focus    = acc,
+        tx_color        = tx,
+        warn_color      = "#eeaa22",
+        error_color     = "#cc4444",
+        tab_bg          = bg2,
+        tab_selected_bg = bg1,
+        header_bg       = bg2,
+        meter_bg        = "#0a0a0a",
+        tooltip_bg      = "#1a2a1a",
+    )
 
 
 def build_stylesheet(t: Theme, font_size: int = 11) -> str:
@@ -273,6 +309,14 @@ QAbstractItemView {{
     selection-color: {t.bg_primary};
     font-size: {fs}px;
 }}
+QComboBox QAbstractItemView {{
+    background: {t.bg_secondary};
+    color: {t.fg_primary};
+    selection-background-color: {t.accent};
+    selection-color: {t.bg_primary};
+    border: 1px solid {t.border};
+    outline: 0;
+}}
 QCheckBox {{
     color: {t.fg_primary};
     font-size: {fs}px;
@@ -299,13 +343,22 @@ QTextEdit, QPlainTextEdit {{
     color: {t.fg_primary};
     font-size: {fs}px;
 }}
-QSpinBox, QDoubleSpinBox {{
+QSpinBox, QDoubleSpinBox,
+QDateEdit, QTimeEdit, QDateTimeEdit {{
     background: {t.bg_secondary};
     border: 1px solid {t.border};
     border-radius: 4px;
     padding: 3px 6px;
     color: {t.fg_primary};
     font-size: {fs}px;
+}}
+QDateEdit::drop-down, QTimeEdit::drop-down,
+QDateTimeEdit::drop-down {{
+    border: none;
+    width: 20px;
+}}
+QDateEdit:focus, QTimeEdit:focus, QDateTimeEdit:focus {{
+    border-color: {t.border_focus};
 }}
 QProgressBar {{
     background: {t.bg_alt};
@@ -466,12 +519,14 @@ QTabBar::tab:selected {{
     color: {t.accent};
     background: {t.bg_primary};
 }}
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox,
+QDateEdit, QTimeEdit, QDateTimeEdit {{
     border: 2px solid {t.border};
     color: {t.fg_primary};
 }}
 QLineEdit:focus, QComboBox:focus,
-QSpinBox:focus, QDoubleSpinBox:focus {{
+QSpinBox:focus, QDoubleSpinBox:focus,
+QDateEdit:focus, QTimeEdit:focus, QDateTimeEdit:focus {{
     border: 2px solid {t.accent};
 }}
 QLabel {{

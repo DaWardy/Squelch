@@ -603,14 +603,14 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             self._audio_status_lbl.setText(
                 "sounddevice not installed — dropdowns show common names only.\n"
                 "Install with: pip install sounddevice  (then restart Squelch)")
-            self._audio_status_lbl.setStyleSheet("color:#ffcc00;font-size:10px;")
+            self._audio_status_lbl.setStyleSheet("color:#ffcc00;")
         else:
             n_in  = len(in_devices)
             n_out = len(out_devices)
             self._refresh_audio_btn.setText("↺ Refresh Device List")
             self._audio_status_lbl.setText(
                 f"{n_in} input device(s), {n_out} output device(s) found.")
-            self._audio_status_lbl.setStyleSheet("color:#888;font-size:10px;")
+            self._audio_status_lbl.setStyleSheet("color:#888;")
         self._refresh_audio_btn.setStyleSheet("")
 
     def _refresh_audio_devices(self):

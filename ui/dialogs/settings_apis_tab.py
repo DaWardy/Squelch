@@ -124,7 +124,7 @@ class _SettingsApisTab:
             "SMS alerts: requires a TextAnywhere (Clockwork) API token.")
         ha_note.setWordWrap(True)
         _t = _api_get_theme(self.cfg.get("ui.theme", "Dark"))
-        ha_note.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;")
+        ha_note.setStyleSheet(f"color:{_t.fg_secondary};")
         f.addRow("", ha_note)
         self._hamalert_user = QLineEdit()
         self._hamalert_user.setPlaceholderText("HamAlert callsign/username")

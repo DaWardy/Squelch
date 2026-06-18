@@ -83,6 +83,20 @@ class _SettingsStationTab:
         self._contest_exchange.setPlaceholderText("e.g. CO or 003 or 5NN001")
         f.addRow("Contest Exchange:", self._contest_exchange)
 
+    def _build_station_goals_section(self, f: "QFormLayout") -> None:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        f.addRow(sep)
+        self._daily_goal = QSpinBox()
+        self._daily_goal.setRange(0, 9999)
+        self._daily_goal.setSpecialValueText("No goal")
+        self._daily_goal.setSuffix(" QSOs")
+        self._daily_goal.setToolTip(
+            "Daily QSO goal shown in the log stats bar.\n"
+            "Set to 0 to disable.")
+        self._daily_goal.lineEdit().setReadOnly(False)
+        f.addRow("Daily QSO goal:", self._daily_goal)
+
     def _tab_station(self) -> "QWidget":
         w = _scrolled()
         f = QFormLayout(w)
@@ -90,5 +104,6 @@ class _SettingsStationTab:
         f.setContentsMargins(16, 16, 16, 16)
         self._build_station_identity_section(f)
         self._build_station_contest_section(f)
+        self._build_station_goals_section(f)
         return w
 

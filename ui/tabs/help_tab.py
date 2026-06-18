@@ -203,7 +203,7 @@ WSJT-X handles the waterfall and decode engine.
 Squelch handles logging, callsign lookup, and band data.
 
 ## Workflow
-1. Select FT8 in the Modes tab
+1. Select FT8 in the Weak Signal tab
    → WSJT-X launches automatically
 2. In WSJT-X: pick your TX frequency on the waterfall
    (find a clear spot — avoid occupied signals)
@@ -1190,7 +1190,7 @@ Enter the number in Squelch → Rig tab → Model (manual)
   F1         Open Help (this tab)
   Ctrl+,     Open Settings
   Ctrl+L     Jump to Log tab
-  Ctrl+M     Jump to Modes tab
+  Ctrl+M     Jump to Weak Signal tab
   Ctrl+R     Jump to Rig tab
   Ctrl+B     Jump to Band Conditions
   Ctrl+D     Jump to Digital Monitor
@@ -1308,7 +1308,7 @@ No points per contact — 10 QSOs = activation.
 Over 30,000 parks across 100+ programs worldwide.
 
 ## Finding Active Spots in Squelch
-  Modes tab → SOTA/POTA Spots panel
+  Weak Signal tab → SOTA/POTA Spots panel
   Click ▶ Start to begin fetching spots
   Updates every 5 minutes automatically
   Double-click a spot to tune the rig
@@ -1426,14 +1426,14 @@ your file, your own software. Perfectly clean.
      """# TX Macros — F1 through F8
 
 ## Overview
-The Digital tab has a row of eight macro buttons (F1–F8) that let
+The Voice Digital tab has a row of eight macro buttons (F1–F8) that let
 you send pre-written messages with a single click or keypress.
 Macros are useful for contest exchanges, standard calling sequences,
 and any repetitive text.
 
 ## Sending a Macro
 Click any F-button, or press the matching function key while the
-Digital tab is active. The macro text is expanded and sent
+Voice Digital tab is active. The macro text is expanded and sent
 immediately via the active TX bridge (Fldigi or JS8Call).
 
 ## Editing Macros
@@ -1827,6 +1827,229 @@ Same callsign + same band + same mode worked within the last 24 hours.
 Different band or different mode on the same day is NOT a duplicate —
 mixed-mode and multi-band contacts are intentional and tracked
 separately in DXCC/WAS/WAZ awards.
+"""),
+
+    ("Frequency Reference", "Reference",
+     """# Frequency Reference
+
+Open from **Help → Band Plan Reference…** or press **Ctrl+Shift+B** (if assigned).
+
+Shows frequency allocations for amateur radio (FCC Part 97) and common
+non-amateur services side-by-side, with a category filter at the top-left.
+
+## Category Filter
+Select a category to show only those bands in the list:
+
+  • **All bands** — every allocation
+  • **Amateur (Part 97)** — ham bands only; dimmed rows need a higher license
+  • **CB (Citizens Band)** — 11m (26.965–27.405 MHz), 40 channels, no license
+  • **FRS / GMRS** — 462/467 MHz; FRS needs no license, GMRS requires a fee license
+  • **MURS** — 5 VHF channels (151/154 MHz), 2W max, no license
+  • **ISM / Unlicensed** — ISM 27 MHz, 433 MHz, 900 MHz, 2.4 GHz, 5 GHz, 6 GHz
+
+## Amateur Bands (FCC Part 97)
+All nine traditional HF bands (160m–10m), plus 6m, 2m, 1.25m, 70cm,
+33cm, 23cm, and 13cm.  Segment rows are dimmed when they require a
+higher license class than selected in Settings → Station → License.
+
+### Privilege Levels
+  Extra     — full access to all segments
+  General   — most segments; Extra-only sub-bands dimmed
+  Technician — VHF/UHF full; HF very limited (10m phone only)
+
+## Citizens Band (CB)
+11-meter band (26.965–27.405 MHz).  40 AM channels (+ USB on 36-40).
+No license required since 1984.
+
+  Channel 9  (27.065 MHz)  — Emergency / motorist assistance
+  Channel 19 (27.185 MHz)  — Highway truckers calling frequency
+  Channels 36-40           — SSB (upper sideband) long-range
+
+Note: CB overlaps with the ISM 27 MHz band and is near the 10m amateur band.
+
+## FRS (Family Radio Service)
+22 channels on 462/467 MHz.  No license required.
+
+  Channels 1-7, 15-22  (462 MHz)  — FRS/GMRS shared, 2W max
+  Channels 8-14        (467 MHz)  — FRS only, 0.5W max
+
+## GMRS (General Mobile Radio Service)
+Shares channels with FRS at 462/467 MHz but allows higher power (up to 50W
+on base/repeater) and uses GMRS-only repeater inputs at 467 MHz.
+An FCC GMRS license is required (no exam, $35 fee covers family for 10 years).
+
+## MURS (Multi-Use Radio Service)
+5 VHF channels, 2W max, no license required.
+
+  Ch.1: 151.820 MHz
+  Ch.2: 151.880 MHz
+  Ch.3: 151.940 MHz
+  Ch.4: 154.570 MHz
+  Ch.5: 154.600 MHz
+
+## ISM / Unlicensed Bands
+Industrial, Scientific, and Medical bands plus UNII/Wi-Fi allocations.
+Part 15 devices operate here without a license at limited power.
+
+  ISM 27 MHz     — RC models, garage door openers, baby monitors
+  ISM 433 MHz    — EU keyfobs, LoRa 433; NOT an ISM band in USA
+  ISM 900 MHz    — LoRa/LoRaWAN, Zigbee, Wi-Fi HaLow (overlaps ham 33cm)
+  ISM 2.4 GHz    — Wi-Fi (802.11b/g/n/ax), Bluetooth, BLE, Zigbee
+  UNII 5 GHz     — Wi-Fi 5 GHz (802.11a/n/ac/ax); UNII-1 to UNII-4
+  Wi-Fi 6 GHz    — Wi-Fi 6E/7 (802.11be); USA unlicensed since 2020
+
+## Overlap Notes
+  • 33cm amateur band (902–928 MHz) overlaps ISM 900 MHz
+  • 13cm amateur band (2390–2450 MHz) overlaps ISM 2.4 GHz
+  • 70cm amateur band (420–450 MHz) overlaps ISM 433 MHz (EU)
+  When operating near ISM bands, expect Part 15 interference —
+  amateurs have primary or secondary status but must accept it.
+"""),
+
+    ("DXCC & Award Tracking", "Logging",
+     """# DXCC & Award Tracking
+
+Squelch tracks your progress toward four major awards automatically
+as you log QSOs.
+
+## What Is Tracked
+  DXCC    340 recognised entities from the ITU/ARRL CTY database.
+          Requires the dxcc field to be populated on the QSO.
+  WAS     50 US states (requires country = United States or USA).
+  WAZ     40 CQ zones.
+  Bands   Distinct amateur bands with at least one QSO.
+
+All four counters are displayed in the stats bar at the top of the
+Log tab and updated after every QSO.
+
+## Log Table Visual Indicators
+Gold DXCC cell — this QSO is your first-ever contact with that
+  DXCC entity. First contact is determined chronologically across
+  ALL QSOs, so the gold cell never moves when you apply filters.
+
+Teal Band cell — first contact with this entity on this specific
+  band. Example: you worked Japan on 20m five years ago. Today's
+  first Japan on 40m gets a teal Band cell.
+
+Both highlights use all_qsos as the reference, so filtering the
+table to show only recent QSOs will not promote a second contact
+to "first" status.
+
+## Firsts Filter
+Check the Firsts checkbox in the filter bar to show only:
+  - First-ever contacts per DXCC entity (gold DXCC cells)
+  - First band-slot contacts per entity (teal Band cells)
+This collapses your log to the award-relevant QSOs for quick review.
+Combine it with the band or mode filter to audit a single band.
+
+## Awards Progress Bar
+The Awards Progress section at the bottom shows three bars:
+  DXCC (0-340), WAS (0-50), Grids (0-488+).
+
+## Updating the DXCC Entity List
+Help > Update DXCC Data downloads the latest CTY.DAT. Run this
+quarterly to stay current with entity additions and deletions.
+"""),
+
+    ("Contest Logging", "Logging",
+     """# Contest Logging
+
+Squelch supports contest-style logging with exchange tracking
+and Cabrillo 3.0 export for submission to contest robots.
+
+## Entering Contest QSOs
+1. Click + Manual Entry in the Log tab.
+2. Fill in Callsign, Band, Mode, Frequency, and RST fields.
+3. Enter the received exchange in the Comment field.
+   The first whitespace-separated token of the comment is
+   used as the received exchange in Cabrillo output.
+4. Click Save QSO.
+
+The QSO rate counter (QSOs / hr) in the stats bar shows your
+current hour rate — useful for pacing.
+
+## Cabrillo Export
+Click Export Cabrillo in the action row:
+  - Enter the contest name (e.g. CQ-WW-SSB, ARRL-DX-CW).
+  - Enter your sent exchange (e.g. 5NN OH, or your grid square).
+    The exchange is saved to Settings for the next export.
+  - A file dialog opens to choose where to save the .cbr file.
+
+The Cabrillo header contains your callsign, grid, contest name,
+and sent exchange. QSO lines follow Cabrillo 3.0 format.
+
+## Filter-Aware Export
+When a band, mode, or date filter is active, Cabrillo and CSV
+exports include only the visible (filtered) QSOs. This lets you
+export a single band from a multi-band contest log.
+
+## TX Macros (F1-F8)
+The Voice Digital tab has an F1-F8 macro toolbar for contest
+exchanges. Right-click any button to edit.
+Variables: {mycall} {theircall} {freq} {mode} {serial}
+See Help > TX Macros for the full variable reference.
+
+## Duplicate Detection
+The inline dupe indicator in the manual entry form warns when
+you have already worked the same callsign on the same band and
+mode within the contest window. A grey indicator shows prior
+contacts outside the window.
+"""),
+
+    ("Log Export Guide", "Logging",
+     """# Log Export Guide
+
+Squelch supports four export formats from the Log tab action row.
+
+## ADIF (.adi)
+Industry-standard interchange format. Use for:
+  - Submitting to LoTW, ClubLog, eQSL, or HRDLog
+  - Importing into Ham Radio Deluxe, Log4OM, or other loggers
+  - Long-term archiving
+
+Export ADIF respects the active filter. When a filter is active
+the dialog title shows the count of QSOs being exported.
+
+## CSV Spreadsheet (.csv)
+21-column spreadsheet for analysis in Excel, LibreOffice, or Python.
+Columns: Date | Time | Callsign | Band | Freq MHz | Mode | Submode
+  | RST Sent | RST Rcvd | Name | Grid | DXCC | Country | State
+  | CQ Zone | ITU Zone | TX Pwr W | Dist km | Bearing deg
+  | LoTW Status | Comment
+
+CSV export respects the active filter. All text fields are
+sanitised against CSV injection: leading = + - @ tab CR/LF
+characters are prefixed with a single quote so they render
+as text in spreadsheet applications.
+
+## Cabrillo (.cbr)
+Contest submission format. See Help > Contest Logging for details.
+
+## One-Click Upload Services
+Five services are accessible from the action row buttons:
+
+  Upload LoTW queue
+      ARRL Logbook of the World. Requires TQSL installed and
+      your station certificate. Settings > APIs for TQSL path.
+
+  Upload QRZ queue
+      QRZ.com Logbook API. Requires an API key from your QRZ
+      account under Logbook > API. Settings > APIs > QRZ Key.
+
+  Upload ClubLog
+      ClubLog.org. Requires your registered email and password.
+      Settings > APIs > ClubLog section.
+
+  Upload eQSL
+      eQSL.cc. Requires username and password.
+      Settings > APIs > eQSL section.
+
+  Upload HRDLog
+      HRDLog.net. Requires your callsign and API key.
+      Settings > APIs > HRDLog section.
+
+LoTW queue and QRZ queue counts are shown at the right of the
+action row so you can see how many QSOs are pending upload.
 """),
 
     ("Log Analytics", "Logging",

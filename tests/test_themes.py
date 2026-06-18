@@ -57,3 +57,81 @@ class TestThemes:
             assert isinstance(css, str)
             # Should contain some style rules
             assert len(css) > 10
+
+
+# ── Date/time widget dark-mode coverage ──────────────────────────────────────
+
+class TestDateWidgetStyling:
+    def test_qdate_edit_in_qss(self):
+        css = get_stylesheet("Dark")
+        assert "QDateEdit" in css
+
+    def test_qtime_edit_in_qss(self):
+        css = get_stylesheet("Dark")
+        assert "QTimeEdit" in css
+
+    def test_qdatetime_edit_in_qss(self):
+        css = get_stylesheet("Dark")
+        assert "QDateTimeEdit" in css
+
+    def test_date_edit_in_light_theme(self):
+        css = get_stylesheet("Light")
+        assert "QDateEdit" in css
+
+    def test_date_edit_in_high_contrast(self):
+        css = get_stylesheet("High Contrast")
+        assert "QDateEdit" in css
+
+
+# ── ComboBox dropdown popup coverage ─────────────────────────────────────────
+
+class TestComboDropdownStyling:
+    def test_combo_abstract_item_view_present(self):
+        css = get_stylesheet("Dark")
+        assert "QComboBox QAbstractItemView" in css
+
+    def test_combo_dropdown_has_explicit_bg(self):
+        from core.themes import DARK, build_stylesheet
+        css = build_stylesheet(DARK, 11)
+        start = css.find("QComboBox QAbstractItemView")
+        snippet = css[start:start + 300]
+        assert DARK.bg_secondary in snippet
+
+    def test_combo_dropdown_all_themes(self):
+        for name in ("Dark", "Light", "Night", "High Contrast"):
+            css = get_stylesheet(name)
+            assert "QComboBox QAbstractItemView" in css, (
+                f"{name} theme missing QComboBox QAbstractItemView block")
+
+
+# ── Help article presence ─────────────────────────────────────────────────────
+
+import re as _re
+
+
+def _help_titles():
+    from pathlib import Path as _Path
+    src = _Path(__file__).parent.parent / "ui" / "tabs" / "help_tab.py"
+    text = src.read_bytes().decode("utf-8", errors="replace")
+    return {t: c for t, c in _re.findall(
+        r'^\s*\("([^"]+)",\s*"([^"]+)"', text, _re.MULTILINE)}
+
+
+class TestHelpArticles:
+    def test_dxcc_tracking_article_exists(self):
+        assert "DXCC & Award Tracking" in _help_titles()
+
+    def test_contest_logging_article_exists(self):
+        assert "Contest Logging" in _help_titles()
+
+    def test_log_export_article_exists(self):
+        assert "Log Export Guide" in _help_titles()
+
+    def test_dxcc_article_in_logging_category(self):
+        assert _help_titles().get("DXCC & Award Tracking") == "Logging"
+
+    def test_contest_article_in_logging_category(self):
+        assert _help_titles().get("Contest Logging") == "Logging"
+
+    def test_log_export_in_logging_category(self):
+        assert _help_titles().get("Log Export Guide") == "Logging"

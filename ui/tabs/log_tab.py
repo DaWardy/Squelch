@@ -43,7 +43,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate, QDateTime
 from PyQt6.QtGui import QColor, QBrush, QFont
 
-from core.log_db import LogDB, QSO, get_log_db, first_contact_keys
+from core.log_db import (LogDB, QSO, get_log_db,
+                         first_contact_keys, first_contact_band_keys)
 from core.validator import callsign_soft, grid_square_soft
 
 log = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ STATUS_COLORS = {
 }
 
 NEW_DXCC_COLOR = QColor("#5a4800")  # first contact with a DXCC entity
+NEW_BAND_COLOR = QColor("#003d5a")  # first QSO with this DXCC entity on this band
 
 QRZ_BASE_URL = "https://www.qrz.com/db/"
 
@@ -196,7 +198,7 @@ class LogTab(SquelchPanel, QWidget):
         filter_row = QHBoxLayout()
         self._search = QLineEdit()
         self._search.setPlaceholderText(
-            self.tr("Search callsign, name, grid…"))
+            self.tr("Search callsign, name, grid, DXCC, country, state, comment…"))
         self._search.textChanged.connect(self._apply_filter)
         self._search.setMaxLength(20)
         filter_row.addWidget(self._search, 2)
@@ -523,9 +525,11 @@ class LogTab(SquelchPanel, QWidget):
         for q in self._all_qsos:
             if call_filter:
                 term = call_filter
-                if (term not in q.call.upper()
-                        and term not in q.name.upper()
-                        and term not in (q.grid or "").upper()):
+                if not any(
+                    term in (v or "").upper()
+                    for v in (q.call, q.name, q.grid,
+                              q.dxcc, q.country, q.state, q.comment)
+                ):
                     continue
             if band_filter != self.tr("All bands") and q.band != band_filter:
                 continue
@@ -543,7 +547,9 @@ class LogTab(SquelchPanel, QWidget):
     def _populate_table(self, qsos: list[QSO]):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
-        new_dxcc = first_contact_keys(getattr(self, "_all_qsos", []))
+        _all = getattr(self, "_all_qsos", [])
+        new_dxcc = first_contact_keys(_all)
+        new_band = first_contact_band_keys(_all)
 
         for q in qsos:
             row = self._table.rowCount()
@@ -584,6 +590,11 @@ class LogTab(SquelchPanel, QWidget):
                     color = STATUS_COLORS.get(q.qrz_status,
                                               STATUS_COLORS["none"])
                     item.setBackground(QBrush(color))
+                elif col == C_BAND:
+                    if (q.datetime_on, q.call, q.band) in new_band:
+                        item.setBackground(QBrush(NEW_BAND_COLOR))
+                        item.setToolTip(
+                            "New band slot for this DXCC entity")
                 elif col == C_DXCC:
                     if (q.datetime_on, q.call) in new_dxcc:
                         item.setBackground(QBrush(NEW_DXCC_COLOR))

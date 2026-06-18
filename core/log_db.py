@@ -707,3 +707,20 @@ def first_contact_keys(qsos: list) -> frozenset:
             seen.add(entity)
             result.add((q.datetime_on, q.call))
     return frozenset(result)
+
+
+def first_contact_band_keys(qsos: list) -> frozenset:
+    """Return (datetime_on, call, band) tuples for the first QSO per
+    (DXCC entity, band) combination.  QSOs with empty/None dxcc or band
+    are skipped."""
+    seen: set = set()
+    result: set = set()
+    for q in sorted(qsos, key=lambda x: x.datetime_on):
+        entity = (q.dxcc or "").strip()
+        band   = (q.band or "").strip()
+        if entity and band:
+            slot = (entity, band)
+            if slot not in seen:
+                seen.add(slot)
+                result.add((q.datetime_on, q.call, q.band))
+    return frozenset(result)

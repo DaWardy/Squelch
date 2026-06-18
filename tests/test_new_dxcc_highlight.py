@@ -6,15 +6,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.log_db import first_contact_keys
+from core.log_db import first_contact_keys, first_contact_band_keys
 
 
 @dataclass
 class _Q:
-    """Minimal QSO stub — only the fields first_contact_keys() accesses."""
+    """Minimal QSO stub — only the fields first_contact_*keys() accesses."""
     call: str
     datetime_on: str
     dxcc: str = ""
+    band: str = "20m"
 
 
 class TestFirstContactKeys:
@@ -86,3 +87,58 @@ class TestFirstContactKeys:
         result = first_contact_keys([q])
         key = next(iter(result))
         assert key == ("2024-06-15T08:30:00Z", "JA1XYZ")
+
+
+class TestFirstContactBandKeys:
+    def test_empty_returns_empty(self):
+        assert first_contact_band_keys([]) == frozenset()
+
+    def test_returns_frozenset(self):
+        assert isinstance(first_contact_band_keys([]), frozenset)
+
+    def test_single_qso_returned(self):
+        q = _Q("W1AW", "2024-01-01T12:00:00Z", "United States", "20m")
+        result = first_contact_band_keys([q])
+        assert ("2024-01-01T12:00:00Z", "W1AW", "20m") in result
+
+    def test_two_qsos_same_entity_same_band_only_first(self):
+        q1 = _Q("W1AW", "2024-01-01T12:00:00Z", "United States", "20m")
+        q2 = _Q("K1ABC", "2024-02-01T12:00:00Z", "United States", "20m")
+        result = first_contact_band_keys([q1, q2])
+        assert len(result) == 1
+        assert ("2024-01-01T12:00:00Z", "W1AW", "20m") in result
+
+    def test_same_entity_different_bands_both_returned(self):
+        q1 = _Q("W1AW", "2024-01-01T12:00:00Z", "United States", "20m")
+        q2 = _Q("K1ABC", "2024-02-01T12:00:00Z", "United States", "40m")
+        result = first_contact_band_keys([q1, q2])
+        assert len(result) == 2
+        assert ("2024-01-01T12:00:00Z", "W1AW", "20m") in result
+        assert ("2024-02-01T12:00:00Z", "K1ABC", "40m") in result
+
+    def test_different_entities_same_band_both_returned(self):
+        q1 = _Q("W1AW",  "2024-01-01T12:00:00Z", "United States", "20m")
+        q2 = _Q("JA1XYZ", "2024-02-01T12:00:00Z", "Japan", "20m")
+        result = first_contact_band_keys([q1, q2])
+        assert len(result) == 2
+
+    def test_empty_band_ignored(self):
+        q = _Q("W1AW", "2024-01-01T12:00:00Z", "United States", "")
+        assert first_contact_band_keys([q]) == frozenset()
+
+    def test_empty_dxcc_ignored(self):
+        q = _Q("W1AW", "2024-01-01T12:00:00Z", "", "20m")
+        assert first_contact_band_keys([q]) == frozenset()
+
+    def test_key_structure_is_datetime_call_band_tuple(self):
+        q = _Q("JA1XYZ", "2024-06-15T08:30:00Z", "Japan", "15m")
+        result = first_contact_band_keys([q])
+        key = next(iter(result))
+        assert key == ("2024-06-15T08:30:00Z", "JA1XYZ", "15m")
+
+    def test_chronological_order_determines_first_band_slot(self):
+        q1 = _Q("K1ABC", "2024-03-01T00:00:00Z", "United States", "20m")
+        q2 = _Q("W1AW",  "2024-01-01T00:00:00Z", "United States", "20m")
+        result = first_contact_band_keys([q1, q2])
+        assert len(result) == 1
+        assert ("2024-01-01T00:00:00Z", "W1AW", "20m") in result

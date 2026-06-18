@@ -5,6 +5,16 @@ from PyQt6.QtWidgets import (QWidget, QFormLayout, QScrollArea, QFrame,
     QVBoxLayout, QPushButton, QGroupBox, QDoubleSpinBox)
 from PyQt6.QtCore import Qt
 
+# (key, display label, Dark default)
+_CUSTOM_COLORS = [
+    ("bg_primary",   "Background",   "#0f0f0f"),
+    ("bg_secondary", "Panels",       "#1a1a1a"),
+    ("fg_primary",   "Text",         "#cccccc"),
+    ("accent",       "Accent",       "#3fbe6f"),
+    ("tx_color",     "TX / Alert",   "#ff4444"),
+    ("border",       "Borders",      "#2a2a2a"),
+]
+
 def _scrolled() -> QWidget:
     """Return a plain widget (most tabs don't need scrolling)."""
     return QWidget()
@@ -55,7 +65,7 @@ class _SettingsAppearanceTab:
         f.addRow("Font Size:", self._font_size)
         _section(f, "Theme")
         theme_note = QLabel("Use View → Theme to change the colour theme.")
-        theme_note.setStyleSheet("color:#3fbe6f;font-size:11px;")
+        theme_note.setStyleSheet("color:#3fbe6f;")
         f.addRow("", theme_note)
         self._units = QComboBox()
         self._units.addItem("Metric (km, meters)", "metric")
@@ -64,6 +74,38 @@ class _SettingsAppearanceTab:
             "Units for distances and altitudes shown across the app "
             "(Local RF, log, satellites, map).")
         f.addRow("Units:", self._units)
+        self._build_custom_colors_section(f)
+
+    def _build_custom_colors_section(self, f: "QFormLayout") -> None:
+        _section(f, "Custom Theme Colors")
+        hint = QLabel(
+            "Select View → Theme → Custom to apply these colors.")
+        hint.setStyleSheet("color:#888;")
+        f.addRow("", hint)
+        self._color_btns: dict = {}
+        for key, label, _default in _CUSTOM_COLORS:
+            btn = QPushButton()
+            btn.setFixedSize(64, 22)
+            btn.setToolTip(f"Click to pick {label} color")
+            btn.clicked.connect(
+                lambda _, k=key: self._pick_custom_color(k))
+            self._color_btns[key] = btn
+            f.addRow(f"{label}:", btn)
+
+    def _pick_custom_color(self, key: str) -> None:
+        from PyQt6.QtWidgets import QColorDialog
+        from PyQt6.QtGui import QColor
+        btn = self._color_btns.get(key)
+        if not btn:
+            return
+        stored = btn.property("hex_color") or "#888888"
+        col = QColorDialog.getColor(QColor(stored), self, "Choose color")
+        if col.isValid():
+            h = col.name()
+            btn.setProperty("hex_color", h)
+            btn.setStyleSheet(
+                f"background:{h};border:1px solid #555;"
+                f"border-radius:2px;")
 
     def _build_appearance_layout_section(self, f: "QFormLayout") -> None:
         _section(f, "Layout")

@@ -227,8 +227,9 @@ class PathsDialog(QDialog):
         self._scroll_to = scroll_to
         self.setWindowTitle(
             self.tr("Paths & Executables"))
-        self.setMinimumWidth(720)
+        self.setMinimumWidth(760)
         self.setMinimumHeight(560)
+        self.resize(860, 680)
         self._build()
 
     def _build(self):
@@ -271,6 +272,8 @@ class PathsDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         inner = QWidget()
         grid  = QGridLayout(inner)
         grid.setSpacing(6)

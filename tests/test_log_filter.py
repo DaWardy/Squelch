@@ -26,9 +26,11 @@ def _matches(q: QSO, search: str = "", band: str = "",
     """Mirror of the core filter predicate in log_tab._apply_filter."""
     term = search.strip().upper()
     if term:
-        if (term not in q.call.upper()
-                and term not in q.name.upper()
-                and term not in (q.grid or "").upper()):
+        if not any(
+            term in (v or "").upper()
+            for v in (q.call, q.name, q.grid,
+                      q.dxcc, q.country, q.state, q.comment)
+        ):
             return False
     if band and q.band != band:
         return False
@@ -102,3 +104,29 @@ class TestBandModeFilter:
         assert not _matches(
             _make("W1AW", band="40m", mode="FT8"),
             search="W1", band="20m", mode="FT8")
+
+
+class TestExtendedSearch:
+    """Search now covers DXCC entity, country, state, and comment fields."""
+
+    def test_search_by_dxcc_entity(self):
+        q = QSO(call="JA1XYZ", dxcc="Japan")
+        assert _matches(q, search="Japan")
+
+    def test_search_by_country(self):
+        q = QSO(call="W1AW", country="United States")
+        assert _matches(q, search="united states")
+
+    def test_search_by_state(self):
+        q = QSO(call="K5ABC", state="TX")
+        assert _matches(q, search="TX")
+
+    def test_search_by_comment(self):
+        q = QSO(call="K5ABC", comment="FB DX first contact")
+        assert _matches(q, search="FB DX")
+
+    def test_unrelated_term_not_matched(self):
+        q = QSO(call="W1AW", dxcc="United States",
+                country="United States", state="CT",
+                comment="nice signal")
+        assert not _matches(q, search="Japan")

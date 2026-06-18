@@ -60,7 +60,7 @@ TABS = [
     ("rig",       "📻  Rig",            True),
     ("sdr",       "〰️  SDR",            True),
     ("modes",     "📡  Weak Signal",    True),
-    ("digital",   "🔊  Voice Digital",  True),
+    ("digital",   "🔊  Digital Voice",  True),
     ("winlink",   "✉️  Winlink",        True),
     ("log",       "📒  Log",            True),
     ("localrf",   "📋  Local RF",       True),

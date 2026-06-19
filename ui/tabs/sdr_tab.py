@@ -789,6 +789,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         scan_btns.addWidget(self._scan_start)
         scan_btns.addWidget(self._scan_stop)
         scl.addLayout(scan_btns, 1, 3, 1, 3)
+        self._scan_squelch_cb = QCheckBox(self.tr("Squelch advance"))
+        self._scan_squelch_cb.setToolTip(self.tr(
+            "When checked: scanner pauses on channels with active signal\n"
+            "(squelch open) and advances when the channel goes quiet.\n"
+            "Requires Squelch to be enabled in the Demodulator group."))
+        scl.addWidget(self._scan_squelch_cb, 2, 0, 1, 6)
         return scan_grp
 
     def _build_recordings_group(self) -> QGroupBox:

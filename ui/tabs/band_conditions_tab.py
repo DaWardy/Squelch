@@ -36,12 +36,73 @@ from PyQt6.QtWidgets import (
     QCheckBox,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QRectF
-from PyQt6.QtGui import QColor, QBrush, QFont
+from PyQt6.QtGui import QColor, QBrush, QFont, QPainter, QPen, QLinearGradient
 
 from network.propagation import PropagationFeed, get_prop_feed, SolarData, BandCondition
 from network.grayline import gray_line_info, format_gray_line_status
+from core.band_reliability import band_reliability as _band_reliability, CHART_BANDS as _CHART_BANDS
 
 log = logging.getLogger(__name__)
+
+
+
+class BandReliabilityChart(QWidget):
+    """Paints a colour-coded reliability bar for each HF band on a given path."""
+
+    ROW_H = 17
+    LABEL_W = 34
+    VALUE_W = 38
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._muf    = 0.0
+        self._luf    = 3.0
+        self._path   = 0.0
+        h = len(_CHART_BANDS) * self.ROW_H + 6
+        self.setMinimumHeight(h)
+        self.setMaximumHeight(h)
+
+    def update_path(self, muf_mhz: float, luf_mhz: float, path_km: float):
+        self._muf  = muf_mhz
+        self._luf  = luf_mhz
+        self._path = path_km
+        self.update()
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        W = self.width()
+        bar_x  = self.LABEL_W
+        bar_w  = max(40, W - self.LABEL_W - self.VALUE_W - 6)
+
+        p.setFont(QFont("Courier New", 7))
+        for row, (band, freq) in enumerate(_CHART_BANDS):
+            y = row * self.ROW_H + 2
+            rel, status = _band_reliability(freq, self._muf, self._luf, self._path)
+
+            # Band label
+            p.setPen(QColor("#aabbcc"))
+            p.drawText(2, y + self.ROW_H - 4, band)
+
+            # Colour bar
+            filled = int(bar_w * rel)
+            track_col = QColor(30, 40, 55)
+            p.fillRect(bar_x, y + 3, bar_w, self.ROW_H - 6, QBrush(track_col))
+            if filled > 2:
+                r = int(255 * (1.0 - rel))
+                g = int(220 * rel)
+                bar_col = QColor(max(0, min(255, r)), max(0, min(220, g)), 30)
+                lg = QLinearGradient(bar_x, 0, bar_x + filled, 0)
+                lg.setColorAt(0.0, bar_col.lighter(120))
+                lg.setColorAt(1.0, bar_col)
+                p.fillRect(bar_x, y + 3, filled, self.ROW_H - 6, QBrush(lg))
+
+            # Status text
+            pct = f"{int(rel*100)}%" if rel > 0 else "—"
+            p.setPen(QColor("#778899") if rel < 0.05
+                     else QColor("#ffcc66") if rel < 0.60
+                     else QColor("#88dd88"))
+            p.drawText(bar_x + bar_w + 4, y + self.ROW_H - 4, pct)
 
 
 class BandConditionsTab(SquelchPanel, QWidget):
@@ -263,11 +324,31 @@ class BandConditionsTab(SquelchPanel, QWidget):
         rl2.setContentsMargins(4, 0, 0, 0)
         rl2.setSpacing(4)
         rl2.addWidget(self._build_bands_group())
+        rl2.addWidget(self._build_path_reliability_group())
         rl2.addWidget(self._build_muf_chart_group())
         rl2.addWidget(self._build_sideview_group())
         rl2.addWidget(self._build_pskreporter_group())
         rl2.addStretch()
         return right
+
+    def _build_path_reliability_group(self) -> QGroupBox:
+        """Band-by-band reliability chart for the entered TX→RX path."""
+        grp = QGroupBox(self.tr("Path Band Reliability"))
+        grp.setToolTip(
+            "Estimated reliability for each HF band on the entered path.\n"
+            "Green = likely open, amber = marginal, — = not viable.\n"
+            "Adjusts for NVIS (<400 km) and multi-hop (>5000 km) paths.\n"
+            "Enter a Path-to target in the side-view controls below to activate.")
+        lay = QVBoxLayout(grp)
+        lay.setContentsMargins(6, 4, 6, 4)
+        self._reliability_chart = BandReliabilityChart()
+        lay.addWidget(self._reliability_chart)
+        self._reliability_note = QLabel(
+            "Enter a Path-to target below to see path-specific band reliability.")
+        self._reliability_note.setStyleSheet("color:#667788;font-size:9px;")
+        self._reliability_note.setWordWrap(True)
+        lay.addWidget(self._reliability_note)
+        return grp
 
     def _build_bands_group(self) -> QGroupBox:
         bands_grp = QGroupBox(self.tr("Band Conditions"))
@@ -866,7 +947,7 @@ class BandConditionsTab(SquelchPanel, QWidget):
             pass
 
     def _update_path_sideview(self, km: float, target: str, feed):
-        """Update propagation_sideview with resolved path + operating frequency."""
+        """Update sideview and path reliability chart for the entered path."""
         try:
             band    = self._band_filter.currentText() \
                 if hasattr(self, "_band_filter") else "Auto"
@@ -874,9 +955,10 @@ class BandConditionsTab(SquelchPanel, QWidget):
                        if band != "Auto" and band in self._BAND_CTR_MHZ
                        else float(self.cfg.get("rig.last_freq_hz", 0)) / 1e6)
             luf = getattr(feed._solar, "luf_estimate_mhz", 3.0)
+            muf = feed._solar.muf_estimate_mhz
             self._prop_sideview.update_state(
                 path_km  = km,
-                muf_mhz  = feed._solar.muf_estimate_mhz,
+                muf_mhz  = muf,
                 luf_mhz  = luf,
                 freq_mhz = op_freq,
                 target   = target,
@@ -884,6 +966,12 @@ class BandConditionsTab(SquelchPanel, QWidget):
                 tx_lon   = getattr(self, "_BandConditionsTab__terrain_tx_lon", 0.0),
                 rx_lat   = getattr(self, "_BandConditionsTab__terrain_rx_lat", 0.0),
                 rx_lon   = getattr(self, "_BandConditionsTab__terrain_rx_lon", 0.0))
+            # Update path reliability chart
+            if hasattr(self, "_reliability_chart"):
+                self._reliability_chart.update_path(muf, luf, km)
+                self._reliability_note.setText(
+                    f"Showing reliability for {target or 'path'}  •  {km:,.0f} km  "
+                    f"•  MUF {muf:.1f} MHz  •  LUF {luf:.1f} MHz")
         except Exception:
             pass
 

@@ -94,7 +94,7 @@ def _qso_path_data(log_db, show: bool) -> list[dict]:
         return []
     paths = []
     try:
-        for q in log_db.recent_qsos(limit=200):
+        for q in log_db.recent_qsos(limit=1000):
             my_pt, their_pt = qso_to_map_points(q)
             if my_pt and their_pt:
                 paths.append({
@@ -103,10 +103,34 @@ def _qso_path_data(log_db, show: bool) -> list[dict]:
                     "call":    q.call,   "band": q.band,
                     "mode":    q.mode,   "time": q.datetime_on[:16],
                     "my_grid": q.my_grid, "grid": q.grid,
+                    "dist_km": round(
+                        getattr(q, "dist_km", 0.0) or 0.0),
+                    "lotw":    getattr(q, "lotw_status", "") or "",
                 })
     except Exception as e:
         log.debug(f"QSO paths: {e}")
     return paths
+
+
+def _worked_grids_data(log_db) -> list[dict]:
+    """Return all distinct 4-char grid squares worked, with coords."""
+    if not log_db:
+        return []
+    grids: dict[str, dict] = {}
+    try:
+        for q in log_db.recent_qsos(limit=99999):
+            g = (q.grid or "").strip()
+            if len(g) >= 4:
+                g4 = g[:4].upper()
+                if g4 not in grids:
+                    try:
+                        lat, lon = _grid_to_latlon(g4)
+                        grids[g4] = {"grid": g4, "lat": lat, "lon": lon}
+                    except Exception:
+                        pass
+    except Exception as e:
+        log.debug(f"Worked grids: {e}")
+    return list(grids.values())
 
 
 def _repeater_marker_data(repeaters) -> list[dict]:
@@ -177,6 +201,7 @@ def build_map_html(config,
         aircraft            = _fetch_adsb() if show_adsb else [],
         repeaters           = _repeater_marker_data(repeaters),
         grid_squares        = _grid_square_data(grid, my_lat, my_lon),
+        worked_grids        = _worked_grids_data(log_db),
         utc_str             = now_utc.strftime("%H:%M UTC"),
         heard_stations      = _resolve_station_coords(heard_stations or {}),
         hearing_me          = _resolve_station_coords(hearing_me or {}),
@@ -250,7 +275,7 @@ def _fetch_adsb() -> list[dict]:
 
 
 def _render_html(**ctx) -> str:
-    """Render the Leaflet map HTML."""
+    """Render the Leaflet map HTML with layer groups and layer control."""
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -273,14 +298,28 @@ def _render_html(**ctx) -> str:
   }}
   .qso-popup {{
     font-family:'Courier New',monospace;
-    font-size:11px; color:#aaa;
+    font-size:11px; color:#aaa; min-width:130px;
   }}
   .qso-popup b {{ color:#3fbe6f; }}
+  .qso-popup .lotw {{ color:#3fbe6f; }}
   .grid-label {{
     background:transparent; border:none;
     color:#3fbe6f; font-size:10px;
     font-family:'Courier New',monospace;
     text-shadow: 1px 1px 2px #000;
+  }}
+  .leaflet-control-layers {{
+    background:rgba(15,15,15,0.92) !important;
+    border:1px solid #333 !important;
+    color:#ccc !important;
+    font-family:'Courier New',monospace;
+    font-size:11px;
+  }}
+  .leaflet-control-layers label {{ color:#ccc !important; }}
+  .leaflet-control-layers-base,
+  .leaflet-control-layers-overlays {{ color:#aaa !important; }}
+  .leaflet-control-layers-separator {{
+    border-top-color:#333 !important;
   }}
   .map-legend {{
     background:rgba(10,10,10,0.85);
@@ -314,17 +353,18 @@ def _render_html(**ctx) -> str:
 <script src="{LEAFLET_JS}"></script>
 <script>
 // ── Data ────────────────────────────────────────────────────
-var MY_LAT     = {ctx['my_lat']};
-var MY_LON     = {ctx['my_lon']};
-var MY_CALL    = {json.dumps(ctx['my_call'])};
-var MY_GRID    = {json.dumps(ctx['my_grid'])};
-var UTC_STR    = {json.dumps(ctx['utc_str'])};
-var QSO_PATHS  = {json.dumps(ctx['qso_paths'])};
-var APRS       = {json.dumps(ctx['aprs_stations'])};
-var AIRCRAFT   = {json.dumps(ctx['aircraft'])};
-var REPEATERS  = {json.dumps(ctx['repeaters'])};
-var GRIDS      = {json.dumps(ctx['grid_squares'])};
-var GRAYLINE   = {ctx['grayline_json']};
+var MY_LAT       = {ctx['my_lat']};
+var MY_LON       = {ctx['my_lon']};
+var MY_CALL      = {json.dumps(ctx['my_call'])};
+var MY_GRID      = {json.dumps(ctx['my_grid'])};
+var UTC_STR      = {json.dumps(ctx['utc_str'])};
+var QSO_PATHS    = {json.dumps(ctx['qso_paths'])};
+var APRS         = {json.dumps(ctx['aprs_stations'])};
+var AIRCRAFT     = {json.dumps(ctx['aircraft'])};
+var REPEATERS    = {json.dumps(ctx['repeaters'])};
+var GRIDS        = {json.dumps(ctx['grid_squares'])};
+var WORKED_GRIDS = {json.dumps(ctx['worked_grids'])};
+var GRAYLINE     = {ctx['grayline_json']};
 var HEARD        = {json.dumps(ctx['heard_stations'])};
 var HEARING_ME   = {json.dumps(ctx['hearing_me'])};
 var WINLINK_GW   = {json.dumps(ctx['winlink_gateways'])};
@@ -336,24 +376,35 @@ var map = L.map('map', {{
   zoomControl: true,
 }});
 
-// Dark tile layer
-L.tileLayer(
+// Base layers
+var darkTiles = L.tileLayer(
   'https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png',
-  {{attribution: '© OpenStreetMap © CARTO',
-    maxZoom: 19, subdomains:'abcd'}}
-).addTo(map);
+  {{attribution:'© OpenStreetMap © CARTO', maxZoom:19, subdomains:'abcd'}}
+);
+var streetTiles = L.tileLayer(
+  'https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',
+  {{attribution:'© OpenStreetMap contributors', maxZoom:19}}
+);
+darkTiles.addTo(map);
+
+// ── Layer groups ─────────────────────────────────────────────
+var lyrGrayline    = L.layerGroup().addTo(map);
+var lyrWorkedGrids = L.layerGroup().addTo(map);
+var lyrMyGrid      = L.layerGroup().addTo(map);
+var lyrQsoPaths    = L.layerGroup().addTo(map);
+var lyrRepeaters   = L.layerGroup().addTo(map);
+var lyrAprs        = L.layerGroup().addTo(map);
+var lyrAircraft    = L.layerGroup().addTo(map);
+var lyrHeard       = L.layerGroup().addTo(map);
+var lyrHearingMe   = L.layerGroup().addTo(map);
+var lyrWinlink     = L.layerGroup().addTo(map);
 
 // ── Gray line ─────────────────────────────────────────────────
 if (GRAYLINE) {{
   L.geoJSON(GRAYLINE, {{
-    style: {{
-      fillColor: '#000033',
-      fillOpacity: 0.45,
-      color: '#3355aa',
-      weight: 1.5,
-      opacity: 0.8,
-    }}
-  }}).addTo(map);
+    style: {{fillColor:'#000033', fillOpacity:0.45,
+             color:'#3355aa', weight:1.5, opacity:0.8}}
+  }}).addTo(lyrGrayline);
 }}
 
 // ── Station marker ────────────────────────────────────────────
@@ -362,15 +413,15 @@ if (MY_LAT || MY_LON) {{
     html: '<div style="background:#3fbe6f;width:12px;height:12px;'
          +'border-radius:50%;border:2px solid #fff;'
          +'box-shadow:0 0 8px #3fbe6f;"></div>',
-    className: '', iconSize:[12,12], iconAnchor:[6,6]
+    className:'', iconSize:[12,12], iconAnchor:[6,6]
   }});
   L.marker([MY_LAT, MY_LON], {{icon:stIcon}})
     .bindPopup('<b style="color:#3fbe6f">' + MY_CALL + '</b><br>'
                + MY_GRID + '<br>' + UTC_STR)
-    .addTo(map);
+    .addTo(lyrMyGrid);
 }}
 
-// ── Grid square overlays ──────────────────────────────────────
+// ── Station grid square overlays ─────────────────────────────
 GRIDS.forEach(function(g) {{
   var color = g.size === '4char' ? '#3fbe6f' : '#44aaff';
   var opacity = g.size === '4char' ? 0.3 : 0.5;
@@ -379,15 +430,29 @@ GRIDS.forEach(function(g) {{
     [g.lat + g.dlat/2, g.lon + g.dlon/2]
   ];
   L.rectangle(bounds, {{
-    color: color, weight: 1,
-    fillOpacity: 0.05, opacity: opacity
-  }}).addTo(map);
+    color:color, weight:1, fillOpacity:0.05, opacity:opacity
+  }}).addTo(lyrMyGrid);
   L.marker([g.lat, g.lon], {{
     icon: L.divIcon({{
-      html: '<span class="grid-label">' + g.label + '</span>',
+      html:'<span class="grid-label">'+g.label+'</span>',
       className:'', iconSize:[60,16], iconAnchor:[30,8]
     }})
-  }}).addTo(map);
+  }}).addTo(lyrMyGrid);
+}});
+
+// ── Worked grids (all log contacts with a grid) ───────────────
+WORKED_GRIDS.forEach(function(g) {{
+  var bounds = [
+    [g.lat - 0.5, g.lon - 1.0],
+    [g.lat + 0.5, g.lon + 1.0]
+  ];
+  L.rectangle(bounds, {{
+    color:'#44aaff', weight:0.5,
+    fillColor:'#44aaff', fillOpacity:0.10, opacity:0.4
+  }}).bindPopup(
+    '<div class="qso-popup"><b style="color:#44aaff">'
+    +g.grid+'</b> worked</div>'
+  ).addTo(lyrWorkedGrids);
 }});
 
 // ── QSO paths ─────────────────────────────────────────────────
@@ -398,48 +463,43 @@ var modeColors = {{
 }};
 QSO_PATHS.forEach(function(q) {{
   var col = modeColors[q.mode] || modeColors.DEFAULT;
-  var line = L.polyline([q.from, q.to], {{
-    color: col, weight: 1, opacity: 0.5,
-    dashArray: '4 4'
-  }}).addTo(map);
-  line.bindPopup(
+  var dist_str = q.dist_km > 0
+    ? '<br>' + q.dist_km.toLocaleString() + ' km' : '';
+  var lotw_str = q.lotw === 'confirmed'
+    ? '<span class="lotw"> ✓ LoTW</span>' : '';
+  var popup =
     '<div class="qso-popup">'
-    +'<b>'+q.call+'</b> via '+q.mode+'<br>'
-    +q.band+'  '+q.grid+'<br>'
-    +q.time
-    +'</div>');
-  // DX marker
-  var dxIcon = L.divIcon({{
-    html: '<div style="background:' + col
-         +';width:6px;height:6px;border-radius:50%;'
-         +'border:1px solid #fff;opacity:0.8;"></div>',
-    className:'', iconSize:[6,6], iconAnchor:[3,3]
-  }});
-  L.marker(q.to, {{icon:dxIcon}})
-    .bindPopup('<div class="qso-popup"><b>'+q.call+'</b><br>'
-              +q.grid+'<br>'+q.mode+'  '+q.band+'</div>')
-    .addTo(map);
+    +'<b>'+q.call+'</b>'+lotw_str+' via '+q.mode+'<br>'
+    +q.band+'  '+(q.grid||'')
+    +dist_str+'<br>'+q.time
+    +'</div>';
+  L.polyline([q.from, q.to], {{
+    color:col, weight:1, opacity:0.5, dashArray:'4 4'
+  }}).bindPopup(popup).addTo(lyrQsoPaths);
+  L.marker(q.to, {{
+    icon: L.divIcon({{
+      html: '<div style="background:'+col+';width:6px;height:6px;'
+           +'border-radius:50%;border:1px solid #fff;opacity:0.8;"></div>',
+      className:'', iconSize:[6,6], iconAnchor:[3,3]
+    }})
+  }}).bindPopup(popup).addTo(lyrQsoPaths);
 }});
 
 // ── Repeaters ─────────────────────────────────────────────────
 REPEATERS.forEach(function(r) {{
-  var modeColor = r.mode==='DMR'?'#44aaff':
-                  r.mode==='P25'?'#ffaa22':'#3fbe6f';
-  var repIcon = L.divIcon({{
-    html: '<div style="background:' + modeColor
-         +';width:8px;height:8px;'
-         +'border:1px solid #fff;opacity:0.9;'
-         +'transform:rotate(45deg);"></div>',
-    className:'', iconSize:[8,8], iconAnchor:[4,4]
-  }});
-  L.marker([r.lat, r.lon], {{icon:repIcon}})
-    .bindPopup('<div class="qso-popup">'
-      +'<b>'+r.call+'</b><br>'
-      +r.freq+' MHz  '+r.mode+'<br>'
-      +(r.tone?r.tone+'<br>':'')
-      +r.city+'  ('+r.dist_km.toFixed(1)+' km)'
-      +'</div>')
-    .addTo(map);
+  var mc = r.mode==='DMR'?'#44aaff': r.mode==='P25'?'#ffaa22':'#3fbe6f';
+  L.marker([r.lat, r.lon], {{
+    icon: L.divIcon({{
+      html: '<div style="background:'+mc+';width:8px;height:8px;'
+           +'border:1px solid #fff;opacity:0.9;transform:rotate(45deg);"></div>',
+      className:'', iconSize:[8,8], iconAnchor:[4,4]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup"><b>'+r.call+'</b><br>'
+    +r.freq+' MHz  '+r.mode+'<br>'
+    +(r.tone?r.tone+'<br>':'')
+    +r.city+'  ('+r.dist_km.toFixed(1)+' km)</div>'
+  ).addTo(lyrRepeaters);
 }});
 
 // ── APRS stations ─────────────────────────────────────────────
@@ -447,28 +507,27 @@ APRS.forEach(function(a) {{
   L.circleMarker([a.lat, a.lon], {{
     radius:5, color:'#ff8844', fillColor:'#ff8844',
     fillOpacity:0.7, weight:1
-  }}).bindPopup('<div class="qso-popup"><b>'+a.call+'</b><br>'
-    +a.comment+'</div>').addTo(map);
+  }}).bindPopup(
+    '<div class="qso-popup"><b>'+a.call+'</b><br>'+a.comment+'</div>'
+  ).addTo(lyrAprs);
 }});
 
 // ── ADS-B aircraft ────────────────────────────────────────────
 AIRCRAFT.forEach(function(a) {{
-  var icon = L.divIcon({{
-    html: '<div style="color:#aaaaff;font-size:16px;'
-         +'transform:rotate('+a.track+'deg);'
-         +'text-shadow:0 0 3px #000;">✈</div>',
-    className:'', iconSize:[16,16], iconAnchor:[8,8]
-  }});
-  L.marker([a.lat, a.lon], {{icon:icon}})
-    .bindPopup('<div class="qso-popup">'
-      +(a.flight||a.icao)+'<br>'
-      +'Alt: '+a.alt.toLocaleString()+' ft<br>'
-      +'Speed: '+a.speed+' kts'
-      +'</div>')
-    .addTo(map);
+  L.marker([a.lat, a.lon], {{
+    icon: L.divIcon({{
+      html: '<div style="color:#aaaaff;font-size:16px;'
+           +'transform:rotate('+a.track+'deg);text-shadow:0 0 3px #000;">✈</div>',
+      className:'', iconSize:[16,16], iconAnchor:[8,8]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup">'+(a.flight||a.icao)+'<br>'
+    +'Alt: '+a.alt.toLocaleString()+' ft<br>'
+    +'Speed: '+a.speed+' kts</div>'
+  ).addTo(lyrAircraft);
 }});
 
-// ── Heard station mode colours ────────────────────────────────
+// ── Heard stations (FT8/FT4/decode) — mode-coloured dots ─────
 var MCOLORS = {{
   'FT8':'#00aaff', 'FT4':'#0066cc', 'WSPR':'#ffcc00',
   'CW':'#ff8800', 'SSB':'#44cc44', 'AM':'#44cc44',
@@ -476,65 +535,81 @@ var MCOLORS = {{
   'JS8':'#22dddd', 'SSTV':'#ff9933'
 }};
 var MC_DEFAULT = '#aaaaaa';
-
-// ── Heard stations (FT8/FT4/decode) — mode-coloured dots ─────
 HEARD.forEach(function(s) {{
   var col = MCOLORS[s.source] || MC_DEFAULT;
-  var icon = L.divIcon({{
-    html: '<div style="background:'+col+';width:8px;height:8px;'
-         +'border-radius:50%;border:1px solid #fff;opacity:0.85;"></div>',
-    className:'', iconSize:[8,8], iconAnchor:[4,4]
-  }});
-  L.marker([s.lat, s.lon], {{icon:icon}})
-    .bindPopup('<div class="qso-popup">'
-      +'<b style="color:'+col+'">'+s.callsign+'</b><br>'
-      +(s.grid||'')+'<br>'
-      +(s.freq_mhz?(s.freq_mhz.toFixed(4)+' MHz  '):'')
-      +(s.source||'decode')
-      +(s.snr_db?'<br>SNR '+s.snr_db+' dB':'')
-      +'</div>')
-    .addTo(map);
+  L.marker([s.lat, s.lon], {{
+    icon: L.divIcon({{
+      html: '<div style="background:'+col+';width:8px;height:8px;'
+           +'border-radius:50%;border:1px solid #fff;opacity:0.85;"></div>',
+      className:'', iconSize:[8,8], iconAnchor:[4,4]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup">'
+    +'<b style="color:'+col+'">'+s.callsign+'</b><br>'
+    +(s.grid||'')+'<br>'
+    +(s.freq_mhz?(s.freq_mhz.toFixed(4)+' MHz  '):'')
+    +(s.source||'decode')
+    +(s.snr_db?'<br>SNR '+s.snr_db+' dB':'')
+    +'</div>'
+  ).addTo(lyrHeard);
 }});
 
 // ── Winlink RMS gateways — purple upward triangles ────────────
 WINLINK_GW.forEach(function(g) {{
-  var icon = L.divIcon({{
-    html: '<div style="width:0;height:0;'
-         +'border-left:7px solid transparent;'
-         +'border-right:7px solid transparent;'
-         +'border-bottom:13px solid #cc66ff;'
-         +'opacity:0.9;"></div>',
-    className:'', iconSize:[14,13], iconAnchor:[7,13]
-  }});
-  L.marker([g.lat, g.lon], {{icon:icon}})
-    .bindPopup('<div class="qso-popup">'
-      +'<b style="color:#cc66ff">'+g.callsign+'</b> Winlink RMS<br>'
-      +(g.grid||'')+(g.dist?' • '+g.dist:'')+'<br>'
-      +g.freq+'  '+(g.mode||'')
-      +'</div>')
-    .addTo(map);
+  L.marker([g.lat, g.lon], {{
+    icon: L.divIcon({{
+      html: '<div style="width:0;height:0;'
+           +'border-left:7px solid transparent;'
+           +'border-right:7px solid transparent;'
+           +'border-bottom:13px solid #cc66ff;opacity:0.9;"></div>',
+      className:'', iconSize:[14,13], iconAnchor:[7,13]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup">'
+    +'<b style="color:#cc66ff">'+g.callsign+'</b> Winlink RMS<br>'
+    +(g.grid||'')+(g.dist?' • '+g.dist:'')+'<br>'
+    +g.freq+'  '+(g.mode||'')+'</div>'
+  ).addTo(lyrWinlink);
 }});
 
 // ── PSKReporter — stations that heard us — orange triangles ───
 HEARING_ME.forEach(function(s) {{
-  var icon = L.divIcon({{
-    html: '<div style="width:0;height:0;'
-         +'border-left:6px solid transparent;'
-         +'border-right:6px solid transparent;'
-         +'border-bottom:11px solid #ff8800;'
-         +'opacity:0.9;"></div>',
-    className:'', iconSize:[12,11], iconAnchor:[6,11]
-  }});
   var freq_mhz = s.freq_hz ? (s.freq_hz/1e6).toFixed(4)+' MHz' : '';
-  L.marker([s.lat, s.lon], {{icon:icon}})
-    .bindPopup('<div class="qso-popup">'
-      +'<b style="color:#ff8800">'+s.callsign+'</b> heard us<br>'
-      +(s.grid||'')+'<br>'
-      +(freq_mhz?freq_mhz+'  ':'')+(s.mode||'')
-      +(s.snr?'<br>SNR '+s.snr+' dB':'')
-      +'</div>')
-    .addTo(map);
+  L.marker([s.lat, s.lon], {{
+    icon: L.divIcon({{
+      html: '<div style="width:0;height:0;'
+           +'border-left:6px solid transparent;'
+           +'border-right:6px solid transparent;'
+           +'border-bottom:11px solid #ff8800;opacity:0.9;"></div>',
+      className:'', iconSize:[12,11], iconAnchor:[6,11]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup">'
+    +'<b style="color:#ff8800">'+s.callsign+'</b> heard us<br>'
+    +(s.grid||'')+'<br>'
+    +(freq_mhz?freq_mhz+'  ':'')+(s.mode||'')
+    +(s.snr?'<br>SNR '+s.snr+' dB':'')
+    +'</div>'
+  ).addTo(lyrHearingMe);
 }});
+
+// ── Layer control (top-right) — toggle overlays ───────────────
+L.control.layers(
+  {{"Dark": darkTiles, "Street Map": streetTiles}},
+  {{
+    "Gray Line":      lyrGrayline,
+    "My Grid":        lyrMyGrid,
+    "Worked Grids":   lyrWorkedGrids,
+    "QSO Paths":      lyrQsoPaths,
+    "Heard (decode)": lyrHeard,
+    "PSKReporter":    lyrHearingMe,
+    "APRS":           lyrAprs,
+    "Winlink RMS":    lyrWinlink,
+    "Repeaters":      lyrRepeaters,
+    "Aircraft":       lyrAircraft
+  }},
+  {{position:'topright', collapsed:true}}
+).addTo(map);
 
 // ── Legend control (bottom-right) ────────────────────────────
 var legend = L.control({{position:'bottomright'}});
@@ -543,14 +618,13 @@ legend.onAdd = function() {{
   d.innerHTML =
     '<b>LEGEND</b><br>'
     +'<span class="leg-dot" style="background:#3fbe6f;"></span>My Station<br>'
+    +'<span class="leg-sq" style="background:#44aaff;transform:none;width:10px;height:7px;border-radius:0;"></span>Worked Grid<br>'
     +'<span class="leg-dot" style="background:#00aaff;"></span>FT8 heard<br>'
     +'<span class="leg-dot" style="background:#ffcc00;"></span>WSPR heard<br>'
     +'<span class="leg-dot" style="background:#ff8800;"></span>CW heard<br>'
     +'<span class="leg-dot" style="background:#44cc44;"></span>SSB heard<br>'
-    +'<span class="leg-dot" style="background:#cc66ff;"></span>PSK31 heard<br>'
-    +'<span class="leg-dot" style="background:#aaaaaa;"></span>Other heard<br>'
     +'<span class="leg-tri-up" style="border-bottom:11px solid #ff8800;"></span>PSKReporter<br>'
-    +'<span class="leg-dot" style="background:#ff8844;border-radius:50%;"></span>APRS<br>'
+    +'<span class="leg-dot" style="background:#ff8844;"></span>APRS<br>'
     +'<span class="leg-sq" style="background:#3fbe6f;"></span>Repeater<br>'
     +'<span class="leg-tri-up" style="border-bottom:13px solid #cc66ff;"></span>Winlink RMS<br>'
     +'<span style="color:#aaaaff;font-size:13px;vertical-align:middle;margin-right:4px;">✈</span>ADS-B';

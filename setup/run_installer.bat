@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Squelch Installer
 cd /d "%~dp0"
 
@@ -10,8 +10,8 @@ echo.
 :: Try to find the right Python - prefer venv, then miniforge, then PATH
 set PYEXE=
 
-if exist venv\Scripts\python.exe (
-    set PYEXE=venv\Scripts\python.exe
+if exist ..\venv\Scripts\python.exe (
+    set PYEXE=..\venv\Scripts\python.exe
     echo  Using: venv Python
     goto :run
 )

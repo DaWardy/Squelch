@@ -57,6 +57,7 @@ class LocalRFTab(SquelchPanel, QWidget):
         self.cfg      = config
         self.rig      = rig
         self._repeaters: list[Repeater] = []
+        self._sdr_tune_cb = None   # optional callback(freq_hz: int)
         self._build()
 
     # ── Build ─────────────────────────────────────────────────────────────
@@ -75,6 +76,18 @@ class LocalRFTab(SquelchPanel, QWidget):
         # Search bar
         root.addWidget(self._build_search_bar())
 
+        # Credential banner — shown when RepeaterBook token is not configured
+        self._cred_banner = QLabel(
+            "⚠  No RepeaterBook API token configured — "
+            "search results limited to digital modes (RadioID.net).\n"
+            "Apply for a free token at repeaterbook.com, then add it in Settings → APIs.")
+        self._cred_banner.setWordWrap(True)
+        self._cred_banner.setContentsMargins(10, 4, 10, 4)
+        self._cred_banner.setStyleSheet(
+            "background:#2a1a00;color:#ffcc00;"
+            "border-bottom:1px solid #3a2a00;font-size:11px;padding:4px 10px;")
+        root.addWidget(self._cred_banner)
+
         # Main splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setStyleSheet(
@@ -91,6 +104,8 @@ class LocalRFTab(SquelchPanel, QWidget):
 
         splitter.setSizes([680, 320])
         root.addWidget(splitter, 1)
+        # Initial banner state (updated again on showEvent)
+        QTimer.singleShot(0, self._refresh_cred_banner)
 
     def _build_search_bar(self) -> QFrame:
         bar = QFrame()
@@ -591,8 +606,14 @@ class LocalRFTab(SquelchPanel, QWidget):
                 f"Repeater output: {rep.output_str} MHz\n"
                 f"Tone: {rep.tone_str or 'None'}")
             return
+        hz = int(rep.output_mhz * 1_000_000)
+        # Auto-tune SDR if callback registered
+        if self._sdr_tune_cb:
+            try:
+                self._sdr_tune_cb(hz)
+            except Exception:
+                pass
         try:
-            hz = int(rep.output_mhz * 1_000_000)
             self.rig.set_freq(hz)
             # Set mode
             mode = "FM"
@@ -868,9 +889,20 @@ class LocalRFTab(SquelchPanel, QWidget):
     def _rescan(self):
         self._launch_bar.refresh()
 
+    def set_sdr_tune_cb(self, cb) -> None:
+        """Register a callback(freq_hz: int) called when user tunes to a repeater."""
+        self._sdr_tune_cb = cb
+
+    def _refresh_cred_banner(self) -> None:
+        from network.repeaterbook import _rb_token
+        has_token = bool(_rb_token())
+        self._cred_banner.setVisible(not has_token)
+        self._search_btn.setEnabled(True)   # always enabled; banner explains limitation
+
     def showEvent(self, event):
-        """Update location label when tab is shown."""
+        """Update location label and credential banner when tab is shown."""
         super().showEvent(event)
+        self._refresh_cred_banner()
         grid = self.cfg.get("location.grid_square", "") or \
                self.cfg.grid or ""
         if grid:

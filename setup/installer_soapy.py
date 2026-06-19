@@ -38,7 +38,7 @@ from pathlib import Path
 
 VERBOSE: bool = False          # set by installer.main() after arg parse
 
-_BASE_DIR    = Path(__file__).parent.resolve()
+_BASE_DIR    = Path(__file__).parent.parent.resolve()
 _VENV_DIR    = _BASE_DIR / "venv"
 _IS_WINDOWS  = sys.platform == "win32"
 _VENV_PYTHON = (_VENV_DIR / "Scripts" / "python.exe"

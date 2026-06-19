@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox, QMenu, QSizePolicy,
     QCheckBox, QScrollArea, QComboBox, QTextEdit,
     QInputDialog, QSpinBox, QGroupBox, QSplitter,
-    QDockWidget, QApplication, QAbstractItemView
+    QDockWidget, QApplication, QAbstractItemView, QToolButton,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSettings, pyqtSlot
 from PyQt6.QtGui import QAction, QActionGroup, QFont, QCursor
@@ -74,6 +74,17 @@ TABS = [
 _RF_LAB_HIDDEN = {"rig", "modes", "log", "digital", "winlink", "localrf"}
 # Tabs shown in RF Lab mode (rest inherit their saved visibility)
 _RF_LAB_SHOWN  = {"sdr", "rf_lab", "bandcond", "map", "help"}
+
+# Built-in tab visibility presets; None means "show all"
+TAB_PRESETS: dict = {
+    "HF Ops":             ["rig", "modes", "bandcond", "log"],
+    "Digital Monitoring": ["sdr", "digital", "map", "modes"],
+    "Winlink":            ["winlink", "bandcond", "localrf", "rig"],
+    "Full Station":       None,
+}
+
+from ui.tab_utils import tab_insert_position as _tab_insert_position
+
 
 class ClickableLabel(QLabel):
     """
@@ -290,8 +301,30 @@ class MainWindow(
         self.tabs.tabBar().customContextMenuRequested.connect(
             self._tab_context_menu)
 
-        self.tabs.currentChanged.connect(self._update_spectrum_action)
+        self.tabs.currentChanged.connect(self._on_tab_switched)
         vbox.addWidget(self.tabs)
+
+        # Custom tab tracking
+        self._custom_tabs: dict = {}   # tab_id → CustomLayoutTab
+        self._active_custom_tab: str = ""  # tab_id of the currently-active custom tab
+        self._borrowed_panels: dict[str, str] = {}   # panel_key → custom_tab_id
+        self._borrowed_info: dict[str, tuple] = {}   # panel_key → (orig_idx, label)
+
+        # "+" corner button — styled like a browser new-tab button
+        _add_tab_btn = QToolButton()
+        _add_tab_btn.setText("＋ New Tab")
+        _add_tab_btn.setToolTip(
+            "Add a custom tab — view multiple panels side by side\n"
+            "Panels stay accessible from their own tabs too")
+        _add_tab_btn.setStyleSheet(
+            "QToolButton{background:#1e5c8a;color:#fff;border:none;"
+            "font-size:12px;font-weight:bold;padding:2px 10px;"
+            "border-radius:3px;margin:2px;}"
+            "QToolButton:hover{background:#2a7ab8;}"
+            "QToolButton:pressed{background:#144066;}")
+        _add_tab_btn.clicked.connect(self._add_custom_tab)
+        self.tabs.setCornerWidget(
+            _add_tab_btn, Qt.Corner.TopRightCorner)
 
         self._tab_map: dict[str, QWidget] = {}
         self._tab_visibility: dict[str, bool] = {}
@@ -312,6 +345,8 @@ class MainWindow(
                 except Exception:
                     pass
 
+        self._restore_custom_tabs()
+
         # Restore the last-used tab (C-09, Marcus)
         try:
             last = self._settings.value("window/last_tab")
@@ -325,32 +360,48 @@ class MainWindow(
 
     def _tab_context_menu(self, pos):
         """Right-click on a tab bar item → pop-out / move / hide / lock."""
-        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtWidgets import QMenu, QInputDialog
         bar = self.tabs.tabBar()
         idx = bar.tabAt(pos)
         menu = QMenu(self)
 
         if idx >= 0:
             label = self.tabs.tabText(idx)
-            popout_act = menu.addAction(
-                f"⧉  Pop out  '{label}'  (or double-click tab)")
-            popout_act.triggered.connect(
-                lambda: self._undock_tab(idx))
+            widget = self.tabs.widget(idx)
+            custom_id = next(
+                (tid for tid, ct in self._custom_tabs.items()
+                 if ct is widget), None)
 
-            menu.addSeparator()
-            if idx > 0:
-                ml = menu.addAction("← Move left")
-                ml.triggered.connect(
-                    lambda: self.tabs.tabBar().moveTab(idx, idx - 1))
-            if idx < self.tabs.count() - 1:
-                mr = menu.addAction("→ Move right")
-                mr.triggered.connect(
-                    lambda: self.tabs.tabBar().moveTab(idx, idx + 1))
+            if custom_id:
+                # Custom tab context menu
+                rename_act = menu.addAction(f"✏  Rename  '{label}'")
+                rename_act.triggered.connect(
+                    lambda: self._rename_custom_tab(custom_id, idx))
+                menu.addSeparator()
+                remove_act = menu.addAction(
+                    f"🗑  Remove tab  '{label}'  (panels return to tab bar)")
+                remove_act.triggered.connect(
+                    lambda: self._remove_custom_tab(custom_id))
+            else:
+                popout_act = menu.addAction(
+                    f"⧉  Pop out  '{label}'  (or double-click tab)")
+                popout_act.triggered.connect(
+                    lambda: self._undock_tab(idx))
 
-            menu.addSeparator()
-            hide_act = menu.addAction(f"✕  Hide  '{label}'")
-            hide_act.triggered.connect(
-                lambda: self._hide_tab(idx))
+                menu.addSeparator()
+                if idx > 0:
+                    ml = menu.addAction("← Move left")
+                    ml.triggered.connect(
+                        lambda: self.tabs.tabBar().moveTab(idx, idx - 1))
+                if idx < self.tabs.count() - 1:
+                    mr = menu.addAction("→ Move right")
+                    mr.triggered.connect(
+                        lambda: self.tabs.tabBar().moveTab(idx, idx + 1))
+
+                menu.addSeparator()
+                hide_act = menu.addAction(f"✕  Hide  '{label}'")
+                hide_act.triggered.connect(
+                    lambda: self._hide_tab(idx))
 
         menu.addSeparator()
         show_all = menu.addAction("Show all tabs")
@@ -485,6 +536,14 @@ class MainWindow(
                     tab.set_map_tab(map_tab)
             except Exception:
                 pass
+        # Wire SDR auto-tune: LocalRF → SDR tab
+        try:
+            localrf = self._tab_map.get("localrf")
+            sdr     = self._tab_map.get("sdr")
+            if localrf and sdr and hasattr(localrf, "set_sdr_tune_cb"):
+                localrf.set_sdr_tune_cb(sdr._set_freq)
+        except Exception:
+            pass
 
     def _build_tab(self, key: str, label: str, ldb) -> "QWidget":
         """Instantiate one tab widget. Imports are lazy (local)."""
@@ -640,14 +699,7 @@ class MainWindow(
 
     def _build_view_menu(self, mb) -> None:
         vm = mb.addMenu(self.tr("&View"))
-        ws_act = QAction(self.tr("🖥  Workspace Mode"), self)
-        ws_act.setToolTip(
-            "Switch to free-form workspace layout.\n"
-            "Each panel becomes a dockable, resizable window.\n"
-            "Drag panels anywhere, save custom layouts.")
-        ws_act.setShortcut("Ctrl+Shift+W")
-        ws_act.triggered.connect(self._enter_workspace_mode)
-        vm.addAction(ws_act)
+        self._build_presets_submenu(vm)
         vm.addSeparator()
         self._build_theme_submenu(vm)
         self._build_font_submenu(vm)
@@ -703,6 +755,59 @@ class MainWindow(
         guest_a.triggered.connect(self._open_guest_operator)
         vm.addAction(guest_a)
 
+    def _build_presets_submenu(self, vm) -> None:
+        pm = vm.addMenu(self.tr("Tab Presets"))
+        for name, keys in TAB_PRESETS.items():
+            a = pm.addAction(name)
+            a.triggered.connect(lambda _, k=keys: self._apply_tab_preset(k))
+        pm.addSeparator()
+        pm.addAction(self.tr("Show all tabs")).triggered.connect(self._show_all_tabs)
+        pm.addSeparator()
+        pm.addAction(self.tr("Save current layout…")).triggered.connect(
+            self._save_tab_layout)
+        self._saved_layouts_menu = pm.addMenu(self.tr("Saved layouts"))
+        self._refresh_saved_layouts_menu()
+
+    def _apply_tab_preset(self, visible_keys) -> None:
+        """Show only the specified tabs; None means show all."""
+        for key in self._tab_map:
+            show = visible_keys is None or key in visible_keys
+            self._set_tab_visible(key, show)
+            if key in getattr(self, "_tab_actions", {}):
+                self._tab_actions[key].setChecked(show)
+        name = next(
+            (n for n, k in TAB_PRESETS.items() if k == visible_keys), "custom")
+        self.statusBar().showMessage(f"Tab preset applied: {name}", 3000)
+
+    def _save_tab_layout(self) -> None:
+        from PyQt6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, self.tr("Save tab layout"), self.tr("Layout name:"))
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        visible = [k for k in self._tab_map
+                   if self._tab_visibility.get(k, True)]
+        layouts = dict(self.cfg.get("ui.saved_tab_layouts", {}) or {})
+        layouts[name] = visible
+        self.cfg.set("ui.saved_tab_layouts", layouts)
+        self.cfg.save()
+        self._refresh_saved_layouts_menu()
+        self.statusBar().showMessage(f"Layout '{name}' saved", 3000)
+
+    def _refresh_saved_layouts_menu(self) -> None:
+        menu = getattr(self, "_saved_layouts_menu", None)
+        if menu is None:
+            return
+        menu.clear()
+        layouts = self.cfg.get("ui.saved_tab_layouts", {}) or {}
+        if not layouts:
+            menu.addAction(self.tr("(none saved yet)")).setEnabled(False)
+            return
+        for name, keys in layouts.items():
+            a = menu.addAction(name)
+            a.triggered.connect(lambda _, k=keys: self._apply_tab_preset(k))
+
     def _build_theme_submenu(self, vm) -> None:
         theme_menu = vm.addMenu(self.tr("Theme"))
         theme_group = QActionGroup(self)
@@ -750,7 +855,7 @@ class MainWindow(
         hm.addAction(open_help)
         open_logs = QAction(self.tr("Open Diagnostic Logs"), self)
         open_logs.setToolTip(
-            "Open the folder containing the software diagnostic log "
+            "Open the folder containing the software diagnostic log\n"
             "(not the QSO logbook)")
         open_logs.triggered.connect(self._open_log_folder)
         hm.addAction(open_logs)
@@ -769,8 +874,8 @@ class MainWindow(
         hm.addAction(update_cty)
         band_plan_a = QAction(self.tr("Frequency Reference…"), self)
         band_plan_a.setToolTip(
-            "FCC Part 97 amateur bands + CB, FRS/GMRS, MURS, ISM/unlicensed "
-            "frequency reference with category filter")
+            "FCC Part 97 amateur bands + CB, FRS/GMRS, MURS,\n"
+            "ISM/unlicensed frequency reference with category filter")
         band_plan_a.triggered.connect(self._show_band_plan)
         hm.addAction(band_plan_a)
         hm.addSeparator()
@@ -895,54 +1000,175 @@ class MainWindow(
             if key in self._tab_actions:
                 self._tab_actions[key].setChecked(True)
 
-    # ── Workspace mode ────────────────────────────────────────────────────
+    # ── Tab switch handler — drives custom-tab auto-swap ─────────────────
 
-    def _enter_workspace_mode(self):
-        """Hand panels to PanelShell and show the workspace window."""
-        from ui.panel_shell import PanelShell
-        from ui.panel import SquelchPanel
-        # Collect all SquelchPanel instances from the tab map
-        panels = {
-            pid: tab
-            for pid, tab in self._tab_map.items()
-            if isinstance(tab, SquelchPanel) and
-               getattr(tab, "panel_id", "")
-        }
-        if not panels:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(
-                self, "Workspace mode",
-                "No panels found. This build may need updating.")
-            return
-        # Temporarily remove panels from the tab widget
-        for pid, panel in panels.items():
-            idx = self.tabs.indexOf(panel)
-            if idx >= 0:
-                self.tabs.removeTab(idx)
-        self._panel_shell = PanelShell(panels, self.cfg, parent=self)
-        self._panel_shell.resize(1400, 900)
-        self._panel_shell.show()
-        self._panel_shell.raise_()
-        self.hide()   # main window is empty while workspace is active
-        self.statusBar().showMessage(
-            "Workspace mode active — use Workspace menu to save layouts, "
-            "View → Back to tab mode to return", 6000)
+    def _on_tab_switched(self, idx: int) -> None:
+        """Called on every tab change. Swaps panels in/out for custom tabs."""
+        widget = self.tabs.widget(idx)
 
-    def exit_workspace_mode(self):
-        """Re-adopt panels from PanelShell back into the tab bar."""
-        if not hasattr(self, "_panel_shell"):
+        # If we were on a custom tab, return its panels to the tab bar
+        if self._active_custom_tab:
+            prev_ct = self._custom_tabs.get(self._active_custom_tab)
+            if prev_ct and prev_ct is not widget:
+                for key in list(prev_ct.slot_keys):
+                    self._do_release_panel(self._active_custom_tab, key)
+                self._active_custom_tab = ""
+
+        # If we are now on a custom tab, borrow its assigned panels
+        new_ct = next(
+            (ct for ct in self._custom_tabs.values() if ct is widget), None)
+        if new_ct:
+            self._active_custom_tab = new_ct.panel_id
+            for key in new_ct.assigned_keys:
+                if key not in self._borrowed_panels:
+                    self._do_embed_panel(new_ct.panel_id, key)
+
+        self._update_spectrum_action(idx)
+
+    # ── Custom tabs ───────────────────────────────────────────────────────
+
+    def _add_custom_tab(self, title: str = "") -> None:
+        from PyQt6.QtWidgets import QInputDialog
+        from ui.tabs.custom_tab import CustomLayoutTab
+        if not title:
+            n = len(self._custom_tabs) + 1
+            default = f"Custom {n}"
+            title, ok = QInputDialog.getText(
+                self, "New custom tab", "Tab name:", text=default)
+            if not ok or not title.strip():
+                return
+            title = title.strip()
+        tab_id = f"_custom_{len(self._custom_tabs)}_{title[:20]}"
+        ct = CustomLayoutTab(tab_id, title, self.cfg, self)
+        ct.panel_unassign_requested.connect(self._unassign_panel_from_custom_tab)
+        self._custom_tabs[tab_id] = ct
+        ct.set_add_menu(self._make_add_panel_menu(ct))
+        self.tabs.addTab(ct, title)
+        self.tabs.setCurrentWidget(ct)
+        self._save_custom_tabs_state()
+
+    def _remove_custom_tab(self, tab_id: str) -> None:
+        ct = self._custom_tabs.pop(tab_id, None)
+        if ct is None:
             return
-        for pid, panel in self._panel_shell._panels.items():
-            # Find original tab label from TABS list
-            label = next(
-                (lbl for k, lbl, _ in TABS if k == pid), pid)
-            if self.tabs.indexOf(panel) < 0:
-                self.tabs.addTab(panel, label)
-                self._tab_map[pid] = panel
-        self._panel_shell = None
-        self.show(); self.raise_()
-        self.statusBar().showMessage(
-            "Returned to tab mode", 3000)
+        # Return any currently-embedded panels first
+        for key in list(ct.slot_keys):
+            self._do_release_panel(tab_id, key)
+        if self._active_custom_tab == tab_id:
+            self._active_custom_tab = ""
+        idx = self.tabs.indexOf(ct)
+        if idx >= 0:
+            self.tabs.removeTab(idx)
+        ct.deleteLater()
+        self._save_custom_tabs_state()
+
+    def _rename_custom_tab(self, tab_id: str, idx: int) -> None:
+        from PyQt6.QtWidgets import QInputDialog
+        ct = self._custom_tabs.get(tab_id)
+        if ct is None:
+            return
+        name, ok = QInputDialog.getText(
+            self, "Rename tab", "New name:", text=ct.panel_title)
+        if ok and name.strip():
+            ct.panel_title = name.strip()
+            self.tabs.setTabText(idx, name.strip())
+            self._save_custom_tabs_state()
+
+    def _assign_panel_to_custom_tab(self, tab_id: str, panel_key: str) -> None:
+        """Assign a panel to a custom tab and embed it immediately (tab is active)."""
+        ct = self._custom_tabs.get(tab_id)
+        if ct is None or panel_key in self._borrowed_panels:
+            return
+        ct.assign_panel(panel_key)
+        self._do_embed_panel(tab_id, panel_key)
+        self._save_custom_tabs_state()
+
+    def _unassign_panel_from_custom_tab(self, tab_id: str,
+                                         panel_key: str) -> None:
+        """Unassign a panel — remove from splitter and release to tab bar."""
+        ct = self._custom_tabs.get(tab_id)
+        if ct is None:
+            return
+        ct.unassign_panel(panel_key)
+        self._do_release_panel(tab_id, panel_key)
+        self._save_custom_tabs_state()
+
+    def _do_embed_panel(self, tab_id: str, panel_key: str) -> None:
+        """Move a panel widget into a custom tab's splitter."""
+        ct = self._custom_tabs.get(tab_id)
+        panel = self._tab_map.get(panel_key)
+        if ct is None or panel is None or panel_key in self._borrowed_panels:
+            return
+        label = next((lbl for k, lbl, _ in TABS if k == panel_key), panel_key)
+        panel_title = label.split("  ", 1)[-1] if "  " in label else label
+        orig_idx = self.tabs.indexOf(panel)
+        self._borrowed_info[panel_key] = (orig_idx, label)
+        self._borrowed_panels[panel_key] = tab_id
+        self.tabs.removeTab(orig_idx)
+        ct.embed_panel(panel, panel_key, panel_title)
+
+    def _do_release_panel(self, tab_id: str, panel_key: str) -> None:
+        """Return a panel widget from a custom tab back to the tab bar."""
+        ct = self._custom_tabs.get(tab_id)
+        if ct is None:
+            return
+        panel = ct.release_panel(panel_key)
+        if panel is None:
+            return
+        self._borrowed_panels.pop(panel_key, None)
+        orig_idx, label = self._borrowed_info.pop(
+            panel_key, (self.tabs.count(), panel_key))
+        insert_at = _tab_insert_position(panel_key, self.tabs, TABS)
+        self.tabs.insertTab(insert_at, panel, label)
+
+    def _make_add_panel_menu(self, ct) -> "QMenu":
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+
+        def _rebuild():
+            menu.clear()
+            assigned = set(ct.assigned_keys)
+            for key, label, _ in TABS:
+                if key in assigned:
+                    continue  # already in this tab
+                clean = label.split("  ", 1)[-1] if "  " in label else label
+                taken = key in self._borrowed_panels
+                a = menu.addAction(clean)
+                if taken:
+                    other = self._borrowed_panels[key]
+                    other_title = self._custom_tabs[other].panel_title
+                    a.setEnabled(False)
+                    a.setText(f"{clean}  (in '{other_title}')")
+                else:
+                    a.triggered.connect(
+                        lambda _, k=key: self._assign_panel_to_custom_tab(
+                            ct.panel_id, k))
+
+        menu.aboutToShow.connect(_rebuild)
+        return menu
+
+    def _save_custom_tabs_state(self) -> None:
+        state = []
+        for tab_id, ct in self._custom_tabs.items():
+            state.append({**ct.save_state(), "tab_id": tab_id})
+        self.cfg.set("ui.custom_tabs", state)
+        self.cfg.save()
+
+    def _restore_custom_tabs(self) -> None:
+        from ui.tabs.custom_tab import CustomLayoutTab
+        saved = self.cfg.get("ui.custom_tabs", []) or []
+        for entry in saved:
+            tab_id = entry.get("tab_id", "")
+            title  = entry.get("title", "Custom")
+            if not tab_id:
+                continue
+            ct = CustomLayoutTab(tab_id, title, self.cfg, self)
+            ct.panel_unassign_requested.connect(
+                self._unassign_panel_from_custom_tab)
+            self._custom_tabs[tab_id] = ct
+            ct.set_add_menu(self._make_add_panel_menu(ct))
+            self.tabs.addTab(ct, title)
+            ct.restore_state(entry)
 
     def _open_log_folder(self):
         """Open the folder containing squelch.log in the system file manager."""
@@ -1225,6 +1451,7 @@ class MainWindow(
         except Exception:
             pass
 
+        self._save_custom_tabs_state()
         self.rig.disconnect()
         for key, w in self._tab_map.items():
             try:

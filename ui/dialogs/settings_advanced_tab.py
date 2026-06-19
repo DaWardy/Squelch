@@ -13,16 +13,14 @@ def _scrolled() -> QWidget:
 def _sep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet(
-        "color:#1a1a1a;margin:4px 0;")
+    f.setStyleSheet("margin:4px 0;")
     return f
 
 
 def _section(form: QFormLayout, title: str):
     lbl = QLabel(title)
-    lbl.setStyleSheet(
-        "color:#3fbe6f;"
-        "font-weight:bold;margin-top:8px;")
+    lbl.setObjectName("SettingsAdvancedSectionHeader")
+    lbl.setStyleSheet("font-weight:bold;margin-top:8px;")
     form.addRow(lbl)
 
 

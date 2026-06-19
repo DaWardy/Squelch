@@ -93,7 +93,7 @@ _ipkg._warn = warn
 _ipkg._err  = err
 _ipkg._info = info
 
-BASE_DIR     = Path(__file__).parent.resolve()
+BASE_DIR     = Path(__file__).parent.parent.resolve()
 VENV_DIR     = BASE_DIR / "venv"
 OFFLINE_DIR  = BASE_DIR / "offline_packages"
 REQ_FILE     = BASE_DIR / "requirements.txt"

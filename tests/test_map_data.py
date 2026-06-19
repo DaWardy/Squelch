@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
+from unittest.mock import MagicMock
 from core.config import Config
 
 
@@ -144,3 +145,131 @@ class TestMapHtmlStructure:
 def build_map_html_direct(cfg):
     from network.map_data import build_map_html
     return build_map_html(cfg)
+
+
+# ── Layer controls ────────────────────────────────────────────────────────────
+
+class TestLayerControls:
+    def test_layer_control_present(self):
+        html = _html()
+        assert "L.control.layers" in html
+
+    def test_base_layers_dark_and_street(self):
+        html = _html()
+        assert "Dark" in html
+        assert "Street Map" in html
+
+    def test_overlay_qso_paths(self):
+        html = _html()
+        assert "QSO Paths" in html
+
+    def test_overlay_worked_grids(self):
+        html = _html()
+        assert "Worked Grids" in html
+
+    def test_overlay_gray_line(self):
+        html = _html()
+        assert "Gray Line" in html
+
+    def test_overlay_pskreporter(self):
+        html = _html()
+        assert "PSKReporter" in html
+
+    def test_layer_groups_defined(self):
+        html = _html()
+        assert "lyrQsoPaths" in html
+        assert "lyrWorkedGrids" in html
+        assert "lyrHeard" in html
+
+
+# ── Worked grids ──────────────────────────────────────────────────────────────
+
+class TestWorkedGridsData:
+    def _make_db_with_qsos(self, grids):
+        from unittest.mock import MagicMock
+        q_list = []
+        for g in grids:
+            q = MagicMock()
+            q.grid = g
+            q.my_grid = "FN31"
+            q.my_lat = 41.7
+            q.my_lon = -72.7
+            q.lat = 0.0
+            q.lon = 0.0
+            q.dist_km = 0.0
+            q.lotw_status = ""
+            q.datetime_on = "2026-01-01T12:00:00Z"
+            q.call = "W1AW"
+            q.band = "20m"
+            q.mode = "FT8"
+            q_list.append(q)
+        db = MagicMock()
+        db.recent_qsos.return_value = q_list
+        return db
+
+    def test_empty_db_returns_empty(self):
+        from network.map_data import _worked_grids_data
+        db = MagicMock()
+        db.recent_qsos.return_value = []
+        assert _worked_grids_data(db) == []
+
+    def test_none_db_returns_empty(self):
+        from network.map_data import _worked_grids_data
+        assert _worked_grids_data(None) == []
+
+    def test_single_grid(self):
+        from network.map_data import _worked_grids_data
+        db = self._make_db_with_qsos(["DM79rr"])
+        result = _worked_grids_data(db)
+        assert len(result) == 1
+        assert result[0]["grid"] == "DM79"
+
+    def test_deduplicates_same_grid(self):
+        from network.map_data import _worked_grids_data
+        db = self._make_db_with_qsos(["DM79", "DM79", "FN31"])
+        result = _worked_grids_data(db)
+        grids = [r["grid"] for r in result]
+        assert len(grids) == len(set(grids))
+
+    def test_uses_4char_grid(self):
+        from network.map_data import _worked_grids_data
+        db = self._make_db_with_qsos(["DM79rr"])
+        result = _worked_grids_data(db)
+        assert result[0]["grid"] == "DM79"
+
+    def test_has_lat_lon(self):
+        from network.map_data import _worked_grids_data
+        db = self._make_db_with_qsos(["FN31"])
+        result = _worked_grids_data(db)
+        assert "lat" in result[0]
+        assert "lon" in result[0]
+
+    def test_worked_grids_var_in_html(self):
+        html = _html()
+        assert "WORKED_GRIDS" in html
+
+    def test_empty_grid_skipped(self):
+        from network.map_data import _worked_grids_data
+        db = self._make_db_with_qsos(["", "  ", "DM79"])
+        result = _worked_grids_data(db)
+        assert len(result) == 1
+
+
+# ── QSO popup enrichment ──────────────────────────────────────────────────────
+
+class TestQsoPopupEnrichment:
+    def test_dist_km_in_js(self):
+        html = _html()
+        assert "dist_km" in html
+
+    def test_lotw_confirmed_in_js(self):
+        html = _html()
+        assert "lotw" in html
+        assert "confirmed" in html
+
+    def test_qso_limit_1000_in_js_comment_or_code(self):
+        """Verify the limit was bumped from 200 to 1000."""
+        from network.map_data import _qso_path_data
+        import inspect
+        src = inspect.getsource(_qso_path_data)
+        assert "1000" in src

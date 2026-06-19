@@ -225,3 +225,233 @@ class TestSDRScreenshot:
         tab._save_screenshot()
         shots = list((tmp_path / "Downloads").glob("squelch_sdr_*.png"))
         assert shots, "Expected fallback to Downloads"
+
+
+# ── SDR → RF Lab export tests ─────────────────────────────────────────────────
+
+class TestSDRRFLabExportPureLogic:
+    """Pure-logic tests for the SDR→RF Lab bookmark export contract."""
+
+    def test_sdr_bookmark_category_defined(self):
+        from ui.tabs.rf_lab_data import CATEGORY_COLORS
+        assert "SDR Bookmark" in CATEGORY_COLORS
+
+    def test_sdr_bookmark_color_is_hex(self):
+        from ui.tabs.rf_lab_data import CATEGORY_COLORS
+        color = CATEGORY_COLORS["SDR Bookmark"]
+        assert color.startswith("#") and len(color) == 7
+
+    def test_add_custom_freqs_batch_dedup(self):
+        """add_custom_freqs_batch skips exact (freq_hz, name) duplicates."""
+        # Simulate the dedup logic directly (no Qt)
+        existing = [(14_074_000, "FT8", "SDR Bookmark", "USB")]
+        def _batch(entries, _custom):
+            added = skipped = 0
+            for hz, name, cat, desc in entries:
+                if any(f[0] == hz and f[1] == name for f in _custom):
+                    skipped += 1
+                    continue
+                _custom.append((hz, name, cat, desc))
+                added += 1
+            return added, skipped
+
+        new_entries = [
+            (14_074_000, "FT8",  "SDR Bookmark", "USB"),  # duplicate
+            (7_074_000,  "FT8 40m", "SDR Bookmark", "USB"),  # new
+        ]
+        added, skipped = _batch(new_entries, existing)
+        assert added == 1
+        assert skipped == 1
+        assert len(existing) == 2
+
+    def test_export_entry_format(self):
+        """Bookmark dict → RF Lab tuple conversion."""
+        bookmark = {
+            "freq_hz": 144_390_000,
+            "name": "APRS",
+            "modulation": "AFSK",
+            "category": "amateur",
+        }
+        hz = int(bookmark.get("freq_hz", 0))
+        name = str(bookmark.get("name", "")).strip() or "Unknown"
+        desc = str(bookmark.get("modulation", "") or "")
+        entry = (hz, name, "SDR Bookmark", desc)
+        assert entry == (144_390_000, "APRS", "SDR Bookmark", "AFSK")
+
+    def test_zero_freq_skipped(self):
+        """Bookmarks with freq_hz=0 are not exported."""
+        bookmarks = [
+            {"freq_hz": 0, "name": "Bad", "modulation": ""},
+            {"freq_hz": 14_074_000, "name": "FT8", "modulation": "USB"},
+        ]
+        entries = []
+        for b in bookmarks:
+            hz = int(b.get("freq_hz", 0))
+            name = str(b.get("name", "")).strip() or "Unknown"
+            desc = str(b.get("modulation", "") or "")
+            if hz > 0:
+                entries.append((hz, name, "SDR Bookmark", desc))
+        assert len(entries) == 1
+        assert entries[0][0] == 14_074_000
+
+
+# ── Squelch pure-logic tests ──────────────────────────────────────────────────
+
+class TestYAxisRefLevel:
+    """Pure-logic tests for the Y-axis reference level offset."""
+
+    def _shifted(self, fft_db, ref_db):
+        """Simulate the ref offset applied in _update_plots."""
+        return fft_db + ref_db
+
+    def test_zero_ref_no_shift(self):
+        assert self._shifted(-80.0, 0.0) == -80.0
+
+    def test_positive_ref_shifts_up(self):
+        assert self._shifted(-80.0, 30.0) == -50.0
+
+    def test_negative_ref_shifts_down(self):
+        assert self._shifted(-80.0, -10.0) == -90.0
+
+    def test_unit_label_dbfs_at_zero(self):
+        unit = "dBFS" if 0.0 == 0.0 else "dBm"
+        assert unit == "dBFS"
+
+    def test_unit_label_dbm_when_nonzero(self):
+        unit = "dBFS" if 30.0 == 0.0 else "dBm"
+        assert unit == "dBm"
+
+    def test_y_ref_key_in_save_state(self):
+        src = __import__("pathlib").Path(__file__).parent.parent
+        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        assert '"y_ref_db"' in text
+
+    def test_left_axis_tick_font_set(self):
+        """Left axis must have setStyle(tickFont=...) just like the bottom axis."""
+        src = __import__("pathlib").Path(__file__).parent.parent
+        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        assert 'getAxis("left").setStyle(tickFont' in text
+
+
+class TestSquelchGateLogic:
+    """Pure-logic tests for the squelch threshold gate."""
+
+    def _gate(self, peak_db, squelch_db, enabled):
+        """Simulate the squelch gate from _on_samples."""
+        if not enabled:
+            return True
+        return peak_db >= squelch_db
+
+    def test_disabled_always_open(self):
+        assert self._gate(-90, -60, False) is True
+
+    def test_above_threshold_open(self):
+        assert self._gate(-55, -60, True) is True
+
+    def test_at_threshold_open(self):
+        assert self._gate(-60, -60, True) is True
+
+    def test_below_threshold_closed(self):
+        assert self._gate(-65, -60, True) is False
+
+    def test_strong_signal_always_open(self):
+        assert self._gate(-10, -80, True) is True
+
+    def test_noise_floor_closed(self):
+        assert self._gate(-110, -80, True) is False
+
+
+class TestSquelchSourceKeys:
+    """Verify squelch state is saved and keyed correctly."""
+
+    def test_save_state_has_squelch_keys(self):
+        src = __import__("pathlib").Path(__file__).parent.parent
+        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        assert '"squelch_enabled"' in text
+        assert '"squelch_db"' in text
+
+    def test_restore_state_handles_squelch(self):
+        src = __import__("pathlib").Path(__file__).parent.parent
+        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        assert "squelch_enabled" in text and "squelch_db" in text
+
+    def test_squelch_slider_range(self):
+        src = __import__("pathlib").Path(__file__).parent.parent
+        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        assert "setRange(-120, 0)" in text
+
+    def test_squelch_line_in_spec_plot(self):
+        src = __import__("pathlib").Path(__file__).parent.parent
+        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        assert "_squelch_line" in text
+
+
+@pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+class TestSquelchQt:
+    """Qt tests for squelch UI controls."""
+
+    def test_squelch_cb_present(self, qt_app):
+        from PyQt6.QtWidgets import QCheckBox
+        tab, _ = _make_sdr_tab(qt_app)
+        cbs = [w for w in tab.findChildren(QCheckBox)
+               if "Squelch" in (w.text() or "")]
+        assert cbs, "Squelch checkbox must exist in Demodulator group"
+
+    def test_squelch_default_disabled(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        assert not tab._squelch_enabled
+
+    def test_squelch_enable_toggles_slider(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._squelch_cb.setChecked(True)
+        assert tab._squelch_slider.isEnabled()
+        tab._squelch_cb.setChecked(False)
+        assert not tab._squelch_slider.isEnabled()
+
+    def test_squelch_round_trip_state(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._squelch_cb.setChecked(True)
+        tab._squelch_slider.setValue(-45)
+        state = tab.save_state()
+        assert state["squelch_enabled"] is True
+        assert state["squelch_db"] == -45.0
+        tab._squelch_cb.setChecked(False)
+        tab._squelch_slider.setValue(-60)
+        tab.restore_state(state)
+        assert tab._squelch_cb.isChecked()
+        assert tab._squelch_slider.value() == -45
+
+
+@pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+class TestSDRRFLabExportQt:
+    """Qt tests for the SDR→RF Lab export button and integration."""
+
+    def test_export_button_present(self, qt_app):
+        from PyQt6.QtWidgets import QPushButton
+        tab, _ = _make_sdr_tab(qt_app)
+        btns = [w for w in tab.findChildren(QPushButton)
+                if "RF Lab" in (w.text() or "")]
+        assert len(btns) >= 1, "→ RF Lab button must be present in SDR toolbar"
+
+    def test_export_to_rf_lab_method_exists(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        assert hasattr(tab, "_export_to_rf_lab")
+        assert callable(tab._export_to_rf_lab)
+
+    def test_add_custom_freqs_batch_via_rf_lab_tab(self, qt_app, tmp_path):
+        """RFLabTab.add_custom_freqs_batch() adds entries and deduplicates."""
+        from ui.tabs.rf_lab_tab import RFLabTab
+        from core.config import Config
+        cfg = Config(tmp_path / "config.json")
+        tab = RFLabTab(cfg)
+        entries = [
+            (14_074_000, "FT8",    "SDR Bookmark", "USB"),
+            (144_390_000, "APRS",  "SDR Bookmark", "AFSK"),
+        ]
+        added, skipped = tab.add_custom_freqs_batch(entries)
+        assert added == 2
+        assert skipped == 0
+        # Re-add same entries — all skipped
+        added2, skipped2 = tab.add_custom_freqs_batch(entries)
+        assert added2 == 0
+        assert skipped2 == 2

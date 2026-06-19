@@ -13,9 +13,14 @@ class _MainWindowViewMixin:
     cfg: "Config"
 
     def _set_theme(self, name: str):
-        from core.themes import get_stylesheet
+        from core.themes import get_stylesheet, build_stylesheet
         fs = max(8, min(20, self.cfg.get("ui.font_size", 11)))
-        self.setStyleSheet(get_stylesheet(name, fs))
+        if name == "Custom":
+            from core.themes import custom_theme_from_config
+            self.setStyleSheet(
+                build_stylesheet(custom_theme_from_config(self.cfg), fs))
+        else:
+            self.setStyleSheet(get_stylesheet(name, fs))
         self.cfg.set("ui.theme", name)
         self.cfg.save()
         # Re-patch inline dark QSS strings for Light/HC themes.
@@ -137,5 +142,7 @@ class _MainWindowViewMixin:
         except Exception:
             pass
         icon = "🔒" if locked else "🔓"
-        self._lock_action.setText(
-            f"{icon} {'Lock' if not locked else 'Unlock'} UI Layout")
+        act = getattr(self, "_lock_action", None)
+        if act:
+            act.setText(f"{icon} {'Unlock' if locked else 'Lock'} UI Layout")
+            act.setChecked(locked)

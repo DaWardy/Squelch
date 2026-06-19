@@ -237,6 +237,51 @@ class _SDRSignalIDMixin:
         if panel is not None:
             panel.add_bookmark_entry(match, freq_hz)
 
+    # ── Export to RF Lab ──────────────────────────────────────────────────
+
+    def _export_to_rf_lab(self) -> None:
+        """Export signal bookmarks from JSON to RF Lab frequency watchlist."""
+        from PyQt6.QtWidgets import QMessageBox
+        entries = []
+        if _BOOKMARK_FILE.exists():
+            try:
+                bookmarks = json.loads(
+                    _BOOKMARK_FILE.read_text(encoding="utf-8"))
+                for b in bookmarks:
+                    hz = int(b.get("freq_hz", 0))
+                    name = str(b.get("name", "")).strip() or "Unknown"
+                    desc = str(b.get("modulation", "") or "")
+                    if hz > 0:
+                        entries.append((hz, name, "SDR Bookmark", desc))
+            except Exception as exc:
+                log.warning("Bookmark read failed: %s", exc)
+        if not entries:
+            QMessageBox.information(
+                self, self.tr("Export to RF Lab"),
+                self.tr(
+                    "No signal bookmarks found.\n\n"
+                    "Right-click the spectrum or waterfall and choose\n"
+                    "\"Identify Signal…\" to create bookmarks first."))
+            return
+        try:
+            mw = self.window()
+            if not (mw and hasattr(mw, "_tab_map")):
+                raise RuntimeError("Main window not accessible")
+            rf_lab = mw._tab_map.get("rf_lab")
+            if not (rf_lab and hasattr(rf_lab, "add_custom_freqs_batch")):
+                raise RuntimeError("RF Lab tab not available")
+            added, skipped = rf_lab.add_custom_freqs_batch(entries)
+            sb = getattr(mw, "statusBar", None)
+            if callable(sb):
+                msg = f"→ RF Lab: {added} bookmark(s) exported"
+                if skipped:
+                    msg += f", {skipped} skipped (already present)"
+                sb().showMessage(msg, 5000)
+        except Exception as exc:
+            QMessageBox.warning(
+                self, self.tr("Export to RF Lab"),
+                self.tr(f"Could not export to RF Lab:\n{exc}"))
+
     # ── ADS-B ─────────────────────────────────────────────────────────────
 
     def _open_adsb_map(self):

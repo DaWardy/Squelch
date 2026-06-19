@@ -1,20 +1,22 @@
 """Squelch — ui/dialogs/band_plan_dialog.py
-Band Plan Reference dialog — shows FCC Part 97 amateur band segments
-color-coded by type, with license class privilege indicators.
+Frequency Reference dialog — FCC Part 97 amateur bands + service allocations
+(CB, FRS/GMRS, MURS, ISM/unlicensed).  Color-coded by mode type; amateur
+bands dim segments that require a higher license class.
 """
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QScrollArea,
-    QWidget, QGridLayout, QFrame, QDialogButtonBox
+    QWidget, QGridLayout, QFrame, QDialogButtonBox,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
-from core.band_plan import BANDS, SegType, SEG_COLORS, License
+from core.band_plan import ALL_BANDS, BANDS, SERVICE_BANDS, SegType, SEG_COLORS, License
 
-# License hierarchy for privilege check
+# License hierarchy for amateur privilege check
 _LICENSE_RANK = {"Technician": 0, "General": 1, "Extra": 2, "Other / Non-US": 2}
 _SEG_TYPE_LABELS = {
     SegType.CW:         "CW",
@@ -31,6 +33,12 @@ _SEG_TYPE_LABELS = {
     SegType.GUARD:      "Guard",
     SegType.MIXED:      "Mixed",
     SegType.NOVICE:     "Novice",
+    SegType.FRS:        "FRS",
+    SegType.GMRS_CHAN:  "GMRS",
+    SegType.CB:         "CB",
+    SegType.MURS:       "MURS",
+    SegType.ISM:        "ISM/Unlicensed",
+    SegType.WIFI:       "Wi-Fi / BT",
 }
 _LICENSE_LABELS = {
     License.ALL:        "All classes",
@@ -38,10 +46,24 @@ _LICENSE_LABELS = {
     License.EXTRA:      "Extra only",
     License.NOVICE:     "Novice / Tech",
     License.TECHNICIAN: "Technician",
+    License.NONE:       "No license required",
+    License.GMRS_LIC:   "GMRS license required",
 }
+
+# Category filter entries — (display label, category value or None for all)
+_CATEGORIES = [
+    ("All bands",           None),
+    ("Amateur (Part 97)",   "Amateur"),
+    ("CB (Citizens Band)",  "CB"),
+    ("FRS / GMRS",          "FRS/GMRS"),
+    ("MURS",                "MURS"),
+    ("ISM / Unlicensed",    "ISM/Unlicensed"),
+]
 
 
 def _freq_label(hz: int) -> str:
+    if hz >= 1_000_000_000:
+        return f"{hz / 1_000_000_000:.3f}".rstrip("0").rstrip(".") + " GHz"
     if hz >= 1_000_000:
         mhz = hz / 1_000_000
         return f"{mhz:.3f}".rstrip("0").rstrip(".") + " MHz"
@@ -51,8 +73,8 @@ def _freq_label(hz: int) -> str:
 class BandPlanDialog(QDialog):
     def __init__(self, license_class: str = "Extra", parent=None):
         super().__init__(parent)
-        self.setWindowTitle(self.tr("Band Plan Reference (FCC Part 97)"))
-        self.resize(680, 520)
+        self.setWindowTitle(self.tr("Frequency Reference — FCC Part 97 + Service Bands"))
+        self.resize(740, 540)
         self._license_rank = _LICENSE_RANK.get(license_class, 2)
         self._license_class = license_class
         self._build()
@@ -62,23 +84,28 @@ class BandPlanDialog(QDialog):
     def _build(self):
         lay = QHBoxLayout(self)
 
-        # Left: band list
-        self._band_list = QListWidget()
-        self._band_list.setFixedWidth(90)
-        for band in BANDS:
-            item = QListWidgetItem(band.name)
-            item.setData(Qt.ItemDataRole.UserRole, band)
-            self._band_list.addItem(item)
-        self._band_list.currentRowChanged.connect(self._on_band_selected)
-        lay.addWidget(self._band_list)
+        # Left: category filter + band list
+        left = QVBoxLayout()
 
-        # Right: segment detail
+        cat_combo = QComboBox()
+        for label, _ in _CATEGORIES:
+            cat_combo.addItem(label)
+        cat_combo.setCurrentIndex(0)
+        cat_combo.currentIndexChanged.connect(self._on_category_changed)
+        left.addWidget(cat_combo)
+        self._cat_combo = cat_combo
+
+        self._band_list = QListWidget()
+        self._band_list.setFixedWidth(130)
+        self._band_list.currentRowChanged.connect(self._on_band_selected)
+        left.addWidget(self._band_list)
+        lay.addLayout(left)
+
+        # Right: info label + segment detail
         right = QVBoxLayout()
-        lic_info = QLabel(
-            self.tr(f"License class: <b>{self._license_class}</b>  "
-                    "— dimmed segments require a higher class."))
-        lic_info.setWordWrap(True)
-        right.addWidget(lic_info)
+        self._lic_info = QLabel()
+        self._lic_info.setWordWrap(True)
+        right.addWidget(self._lic_info)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -89,16 +116,42 @@ class BandPlanDialog(QDialog):
         right.addWidget(btns)
         lay.addLayout(right)
 
+        self._populate_band_list(None)
+
+    # ── category + band list ───────────────────────────────────────────────
+
+    def _populate_band_list(self, category: str | None):
+        self._band_list.clear()
+        if category is None:
+            bands = ALL_BANDS
+        else:
+            bands = [b for b in ALL_BANDS if b.category == category]
+        for band in bands:
+            item = QListWidgetItem(band.name)
+            item.setData(Qt.ItemDataRole.UserRole, band)
+            self._band_list.addItem(item)
         if self._band_list.count():
             self._band_list.setCurrentRow(0)
+
+    def _on_category_changed(self, index: int):
+        _, category = _CATEGORIES[index] if index < len(_CATEGORIES) else (None, None)
+        self._populate_band_list(category)
 
     # ── segment panel ──────────────────────────────────────────────────────
 
     def _on_band_selected(self, row: int):
         item = self._band_list.item(row)
         if not item:
+            self._lic_info.setText("")
             return
         band = item.data(Qt.ItemDataRole.UserRole)
+        if band.category == "Amateur":
+            self._lic_info.setText(
+                self.tr(f"License class: <b>{self._license_class}</b>"
+                        " — dimmed segments require a higher class."))
+        else:
+            self._lic_info.setText(
+                self.tr(f"<b>{band.category}</b> — {band.notes}"))
         self._scroll.setWidget(self._build_band_panel(band))
 
     def _build_band_panel(self, band) -> QWidget:
@@ -119,7 +172,7 @@ class BandPlanDialog(QDialog):
         grid.addWidget(sep, 1, 0, 1, 5)
 
         for row_idx, seg in enumerate(band.segments, start=2):
-            accessible = self._is_accessible(seg.license)
+            accessible = self._is_accessible(band, seg.license)
             alpha = "ff" if accessible else "40"
             hex_color = seg.color[:7]
             swatch = QLabel("  ")
@@ -147,7 +200,12 @@ class BandPlanDialog(QDialog):
 
     # ── helpers ────────────────────────────────────────────────────────────
 
-    def _is_accessible(self, seg_license: str) -> bool:
+    def _is_accessible(self, band, seg_license: str) -> bool:
+        # Service bands are always "accessible" — privilege dimming is amateur-only
+        if band.category != "Amateur":
+            return True
+        if seg_license in (License.NONE, License.GMRS_LIC):
+            return True
         seg_rank = {
             License.ALL:        0,
             License.TECHNICIAN: 0,

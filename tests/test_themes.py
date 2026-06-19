@@ -91,8 +91,8 @@ class TestComboDropdownStyling:
         assert "QComboBox QAbstractItemView" in css
 
     def test_combo_dropdown_has_explicit_bg(self):
-        from core.themes import DARK, build_stylesheet
-        css = build_stylesheet(DARK, 11)
+        from core.themes import DARK
+        css = get_stylesheet("Dark", 11)
         start = css.find("QComboBox QAbstractItemView")
         snippet = css[start:start + 300]
         assert DARK.bg_secondary in snippet

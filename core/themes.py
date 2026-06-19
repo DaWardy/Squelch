@@ -247,6 +247,17 @@ QGroupBox {{
     font-size: {fs}px;
     color: {t.fg_secondary};
 }}
+QGroupBox QCheckBox {{
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
+QGroupBox QLabel {{
+    color: {t.fg_primary};
+}}
+QGroupBox QRadioButton {{
+    color: {t.fg_primary};
+    font-size: {fs}px;
+}}
 QGroupBox::title {{
     subcontrol-origin: margin;
     left: 8px;
@@ -502,6 +513,15 @@ QGroupBox {{
     margin-top: 8px;
     font-weight: bold;
     color: {t.fg_secondary};
+}}
+QGroupBox QCheckBox {{
+    color: {t.fg_primary};
+}}
+QGroupBox QLabel {{
+    color: {t.fg_primary};
+}}
+QGroupBox QRadioButton {{
+    color: {t.fg_primary};
 }}
 QGroupBox::title {{
     color: {t.fg_secondary};

@@ -346,10 +346,11 @@ class PropagationSideView(QWidget):
     def _draw_propagation_zones(self, p: "QPainter",
                                 x0: int, x1: int, ground: int,
                                 f_top: int, plot_w: int) -> None:
-        """Draw semi-transparent groundwave / NVIS / skywave zone overlays.
+        """Draw propagation zone overlays.
 
-        These are educational shading bands showing WHERE each propagation
-        mode can reach, independent of which mode currently dominates.
+        Zones render as surface-hugging bands (not full-sky fills) so they
+        don't obscure the ionosphere layers.  Labels appear near the ground
+        at staggered Y offsets to avoid collision.
         """
         if not (self._show_gw_zone or self._show_nvis_zone or self._show_sw_zone):
             return
@@ -359,51 +360,67 @@ class PropagationSideView(QWidget):
         freq = self._freq_mhz
         muf  = self._muf_mhz
         px_per_km = plot_w / path
-        sky_h = ground - f_top          # pixel height of "sky" region
+        # Band height = 20% of sky height, capped so it never fills to F-layer
+        band_h = min(max(16, int((ground - f_top) * 0.18)), 55)
+        band_y = ground - band_h
 
         p.setFont(QFont("", 7))
 
-        # ── Groundwave zone ───────────────────────────────────────────────
-        # Surface wave range: roughly 300 / freq_mhz km at HF; tapers to ~5 km at 100 MHz
+        # ── Groundwave zone — amber band hugging the surface ──────────────
         if self._show_gw_zone and freq > 0:
             gw_km = min(300.0 / max(freq, 0.1), path)
             x_gw  = int(x0 + gw_km * px_per_km)
-            zone_h = max(18, int((ground - f_top) * 0.12))
-            p.fillRect(x0, ground - zone_h, x_gw - x0, zone_h,
-                       QBrush(QColor(255, 204, 0, 55)))
-            p.setPen(QColor(255, 200, 0, 200))
-            p.drawText(x0 + 3, ground - 3, f"GW ~{gw_km:.0f} km")
+            gw_grad = QLinearGradient(x0, band_y, x_gw, band_y)
+            gw_grad.setColorAt(0.0, QColor(255, 200, 0, 70))
+            gw_grad.setColorAt(1.0, QColor(255, 200, 0, 5))
+            p.fillRect(x0, band_y, x_gw - x0, band_h, QBrush(gw_grad))
+            # Right-edge boundary line
+            p.setPen(QPen(QColor(255, 200, 0, 160), 1, Qt.PenStyle.DashLine))
+            p.drawLine(x_gw, band_y, x_gw, ground)
+            # Label near ground, left-anchored
+            p.setPen(QColor(255, 210, 60, 220))
+            p.drawText(x0 + 3, ground - band_h - 2, f"GW ~{gw_km:.0f} km")
 
-        # ── NVIS zone ────────────────────────────────────────────────────
-        # Near-Vertical Incidence Skywave: typically 2–10 MHz, path < ~500 km
+        # ── NVIS zone — cyan band, 0–500 km ──────────────────────────────
         if self._show_nvis_zone:
             nvis_km  = min(500.0, path)
             x_nv     = int(x0 + nvis_km * px_per_km)
             in_band  = freq > 0 and 2.0 <= freq <= 10.0
-            alpha    = 45 if in_band else 15
-            p.fillRect(x0, f_top, x_nv - x0, sky_h,
-                       QBrush(QColor(68, 200, 255, alpha)))
-            if x_nv - x0 > 25:
-                p.setPen(QColor(68, 200, 255, 190 if in_band else 90))
-                suffix = "" if in_band else " (out of band)"
-                p.drawText(x0 + 3, f_top + 11, f"NVIS{suffix}")
+            alpha    = 50 if in_band else 18
+            nv_grad  = QLinearGradient(x0, band_y, x_nv, band_y)
+            nv_grad.setColorAt(0.0, QColor(50, 190, 255, alpha))
+            nv_grad.setColorAt(1.0, QColor(50, 190, 255, 4))
+            p.fillRect(x0, band_y, x_nv - x0, band_h, QBrush(nv_grad))
+            # Boundary line
+            line_col = QColor(50, 190, 255, 150 if in_band else 60)
+            p.setPen(QPen(line_col, 1, Qt.PenStyle.DashLine))
+            p.drawLine(x_nv, band_y, x_nv, ground)
+            if x_nv - x0 > 35:
+                p.setPen(QColor(50, 200, 255, 200 if in_band else 80))
+                lbl = "NVIS" + ("" if in_band else " (off-band)")
+                # Stagger below the GW label to avoid overlap
+                p.drawText(x0 + 3, ground - band_h - 12, lbl)
 
-        # ── Skywave zones — skip zone + illuminated zone ──────────────────
+        # ── Skywave zones — skip zone (purple) + illuminated (blue) ──────
         if self._show_sw_zone and freq > 0 and muf > freq > 0:
-            # Skip distance: 2·h·f / √(MUF²−f²), capped at 80% of path
-            denom    = math.sqrt(max(muf ** 2 - freq ** 2, 0.01))
-            skip_km  = min(2.0 * F_LAYER_KM * freq / denom, path * 0.8)
-            x_skip   = int(x0 + skip_km * px_per_km)
-            # Dead zone (skip) — deep purple tint
+            denom   = math.sqrt(max(muf ** 2 - freq ** 2, 0.01))
+            skip_km = min(2.0 * F_LAYER_KM * freq / denom, path * 0.8)
+            x_skip  = int(x0 + skip_km * px_per_km)
+            # Skip (dead) zone — upper sky only (thin band near F-layer)
+            skip_band_y = f_top
+            skip_band_h = max(8, int((ground - f_top) * 0.10))
             if x_skip > x0 + 4:
-                p.fillRect(x0, f_top, x_skip - x0, sky_h,
-                           QBrush(QColor(60, 0, 90, 55)))
-                p.setPen(QColor(160, 100, 220, 180))
-                p.drawText(x0 + 3, f_top + 23, f"Skip ~{skip_km:.0f} km")
-            # Illuminated zone — soft blue
+                p.fillRect(x0, skip_band_y, x_skip - x0, skip_band_h,
+                           QBrush(QColor(120, 50, 180, 40)))
+                p.setPen(QPen(QColor(160, 100, 220, 140), 1, Qt.PenStyle.DotLine))
+                p.drawLine(x_skip, f_top, x_skip, ground)
+                p.setPen(QColor(170, 110, 230, 200))
+                p.drawText(x0 + 3, f_top + skip_band_h + 9,
+                           f"Skip ~{skip_km:.0f} km")
+            # Illuminated zone — thin blue band in upper sky
             if x_skip < x1 - 4:
-                p.fillRect(x_skip, f_top, x1 - x_skip, sky_h,
-                           QBrush(QColor(51, 102, 255, 22)))
+                p.fillRect(x_skip, skip_band_y, x1 - x_skip, skip_band_h,
+                           QBrush(QColor(51, 102, 255, 30)))
 
     def _draw_path_loss_bar(self, p: "QPainter", x0: int, plot_w: int,
                             top: int, H: int):

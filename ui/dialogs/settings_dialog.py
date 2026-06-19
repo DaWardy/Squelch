@@ -144,6 +144,10 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         ui_idx = self._units.findData(cfg.get("ui.units", "metric"))
         if ui_idx >= 0:
             self._units.setCurrentIndex(ui_idx)
+        fu_idx = self._freq_units.findData(
+            cfg.get("display.freq_units", "MHz"))
+        if fu_idx >= 0:
+            self._freq_units.setCurrentIndex(fu_idx)
         self._layout_locked.setChecked(cfg.get("ui.layout_locked", False))
         self._clock_utc.setChecked(cfg.get("ui.clock_utc", True))
         from ui.dialogs.settings_appearance_tab import _CUSTOM_COLORS
@@ -420,6 +424,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
     def _save_appearance(self, cfg):
         cfg.set("ui.font_size",      self._font_size.currentData())
         cfg.set("ui.units",          self._units.currentData() or "metric")
+        cfg.set("display.freq_units",
+                self._freq_units.currentData() or "MHz")
         cfg.set("ui.layout_locked",  self._layout_locked.isChecked())
         cfg.set("ui.clock_utc",      self._clock_utc.isChecked())
         for key, btn in getattr(self, "_color_btns", {}).items():

@@ -73,6 +73,15 @@ class _SettingsAppearanceTab:
             "Units for distances and altitudes shown across the app "
             "(Local RF, log, satellites, map).")
         f.addRow("Units:", self._units)
+        self._freq_units = QComboBox()
+        self._freq_units.addItem("MHz (megahertz) — default", "MHz")
+        self._freq_units.addItem("kHz (kilohertz)", "kHz")
+        self._freq_units.addItem("Hz (hertz)", "Hz")
+        self._freq_units.setToolTip(
+            "Display unit for frequencies across the app.\n"
+            "Affects the RF Lab watchlist, log entry form, and other panels.\n"
+            "The VFO display always uses MHz.")
+        f.addRow("Frequency Units:", self._freq_units)
         self._build_custom_colors_section(f)
 
     def _build_custom_colors_section(self, f: "QFormLayout") -> None:

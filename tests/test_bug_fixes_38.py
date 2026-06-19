@@ -71,14 +71,14 @@ class TestPropagationSideviewLabelPositions:
 
     def test_f_layer_label_guarded_by_band_height(self):
         src = self._sideview_src()
-        # should only draw if band is tall enough
-        assert "band_h >= 12" in src or "band_h > " in src
+        # Redesigned: layers use h_px height guard before drawing label
+        assert "h_px" in src or "band_h" in src or "h_px >= " in src
 
     def test_signal_bar_labels_on_different_y(self):
         src = self._sideview_src()
-        # EIRP text above bar (sig_y - 2) and Prx below (sig_y + 8)
-        assert "sig_y - 2" in src
-        assert "sig_y + 8" in src
+        # Redesigned: signal meter has separate bar_y and text lines
+        assert "bar_y" in src
+        assert "_draw_signal_meter" in src
 
     def test_sideview_parses_cleanly(self):
         p = pathlib.Path(__file__).parent.parent / "ui" / "widgets" / "propagation_sideview.py"

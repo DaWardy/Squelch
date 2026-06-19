@@ -53,6 +53,30 @@ class _SettingsAdvancedTab:
         self._log_max_size.setValue(5)
         self._log_max_size.setSuffix(" MB")
         f.addRow("Max Log Size:", self._log_max_size)
+        log_dir_w = QWidget()
+        log_dir_lay = QHBoxLayout(log_dir_w)
+        log_dir_lay.setContentsMargins(0, 0, 0, 0)
+        log_dir_lay.setSpacing(4)
+        self._log_dir_edit = QLineEdit()
+        self._log_dir_edit.setPlaceholderText("Default: <app dir>/logs/")
+        self._log_dir_edit.setToolTip(
+            "Custom directory for squelch.log.\n"
+            "Leave blank to use the default logs/ folder next to main.py.\n"
+            "Takes effect on next application start.")
+        log_browse = QPushButton("Browse…")
+        log_browse.setFixedWidth(70)
+        log_browse.clicked.connect(self._browse_log_dir)
+        log_dir_lay.addWidget(self._log_dir_edit, 1)
+        log_dir_lay.addWidget(log_browse)
+        f.addRow("Log Directory:", log_dir_w)
+
+    def _browse_log_dir(self) -> None:
+        from PyQt6.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Log Directory",
+            self._log_dir_edit.text() or "")
+        if path:
+            self._log_dir_edit.setText(path)
 
     def _build_advanced_network_section(self, f: "QFormLayout") -> None:
         _section(f, "Network")

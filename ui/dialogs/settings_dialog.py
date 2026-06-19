@@ -123,6 +123,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             region_map.get(str(cfg.get("station.itu_region", "2")), 0))
         self._license.setCurrentIndex(
             lic_map.get(cfg.get("station.license", "").lower(), 1))
+        self._event_callsign.setText(cfg.get("station.event_callsign", ""))
         self._station_call.setText(cfg.get("station.station_callsign", ""))
         self._contest_exchange.setText(cfg.get("station.contest_exchange", ""))
 
@@ -159,6 +160,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         level_map = {"INFO": 0, "DEBUG": 1, "WARNING": 2}
         self._log_level.setCurrentIndex(
             level_map.get(cfg.get("advanced.log_level", "INFO"), 0))
+        self._log_max_size.setValue(cfg.get("advanced.log_max_size_mb", 5))
+        self._log_dir_edit.setText(cfg.get("advanced.log_dir", ""))
         self._api_timeout.setValue(cfg.get("advanced.api_timeout_s", 10))
         self._grayline_interval.setValue(cfg.get("advanced.grayline_interval_s", 60))
 
@@ -259,11 +262,10 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 lines.append("  [installed]  " + hw + " - " + found[0].name)
                 if pkg in self._sdr_checks:
                     self._sdr_checks[pkg].setChecked(False)
-                    self._sdr_checks[pkg].setEnabled(False)
                 if pkg in status_labels:
-                    status_labels[pkg].setText("✓ Installed")
+                    status_labels[pkg].setText("✓ Installed — check to reinstall")
                     status_labels[pkg].setStyleSheet(
-                        "color:#3fbe6f;font-size:11px;font-weight:bold;")
+                        "color:#3fbe6f;font-size:11px;")
             else:
                 lines.append("  [ missing ]  " + hw)
                 if pkg in self._sdr_checks:
@@ -392,6 +394,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 region_map.get(self._itu_region.currentIndex(), "2"))
         lic_labels = ["technician", "general", "extra", "other"]
         cfg.set("station.license", lic_labels[self._license.currentIndex()])
+        cfg.set("station.event_callsign",
+                self._event_callsign.text().strip().upper())
         cfg.set("station.station_callsign",
                 self._station_call.text().strip().upper())
         cfg.set("station.contest_exchange",
@@ -427,6 +431,8 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         levels = ["INFO", "DEBUG", "WARNING"]
         cfg.set("advanced.log_level",
                 levels[self._log_level.currentIndex()])
+        cfg.set("advanced.log_max_size_mb",    self._log_max_size.value())
+        cfg.set("advanced.log_dir",            self._log_dir_edit.text().strip())
         cfg.set("advanced.api_timeout_s",      self._api_timeout.value())
         cfg.set("advanced.grayline_interval_s", self._grayline_interval.value())
 

@@ -68,6 +68,26 @@ class _SettingsStationTab:
         self._license.setToolTip("Shows privilege overlays on the band plan.")
         f.addRow("License Class:", self._license)
 
+    def _build_station_event_callsign_section(self, f: "QFormLayout") -> None:
+        f.addRow(_sep())
+        _section(f, "Portable / Event Operation")
+        self._event_callsign = QLineEdit()
+        self._event_callsign.setMaxLength(15)
+        self._event_callsign.setPlaceholderText(
+            "e.g. W1AW/5  or  W100AW  — leave blank for normal operation")
+        self._event_callsign.setToolTip(
+            "Portable, mobile, or special-event callsign.\n"
+            "Overrides your station callsign for ALL TX modes\n"
+            "(FT8, FT4, WSPR, CW, PSK, Winlink …).\n"
+            "Clear this field to return to your normal callsign.")
+        f.addRow("Event/Portable Call:", self._event_callsign)
+        hint = QLabel(
+            "Examples: /P portable  /M mobile  /5 different district  "
+            "W100AW centennial event")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("font-size:10px;")
+        f.addRow("", hint)
+
     def _build_station_contest_section(self, f: "QFormLayout") -> None:
         f.addRow(_sep())
         self._station_call = QLineEdit()
@@ -102,6 +122,7 @@ class _SettingsStationTab:
         f.setSpacing(10)
         f.setContentsMargins(16, 16, 16, 16)
         self._build_station_identity_section(f)
+        self._build_station_event_callsign_section(f)
         self._build_station_contest_section(f)
         self._build_station_goals_section(f)
         return w

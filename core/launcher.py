@@ -406,7 +406,128 @@ APPS: list[AppDef] = [
             "/usr/local/bin/tqsl",
         ],
         download_url  = "https://lotw.arrl.org/lotw-user-guide/",
-        tab           = "log",
+        tab          = "log",
+    ),
+
+    AppDef(
+        key          = "paths.n1mm",
+        name         = "N1MM Logger+",
+        description  = "Most popular Windows contest logger — CW/SSB/RTTY/Digital",
+        category     = "log",
+        exe_name     = "N1MMLogger",
+        args         = None,
+        common_paths = [
+            r"C:\Program Files (x86)\N1MM Logger+\N1MMLogger.exe",
+            r"C:\Program Files\N1MM Logger+\N1MMLogger.exe",
+            r"C:\N1MM Logger+\N1MMLogger.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://n1mmplus.hamdocs.com/",
+        tab          = "log",
+    ),
+
+    AppDef(
+        key          = "paths.log4om",
+        name         = "Log4OM",
+        description  = "Full-featured logging software with DX cluster and awards tracking",
+        category     = "log",
+        exe_name     = "Log4OM2",
+        args         = None,
+        common_paths = [
+            r"C:\Program Files (x86)\Log4OM2\Log4OM2.exe",
+            r"C:\Program Files\Log4OM2\Log4OM2.exe",
+            r"C:\Log4OM2\Log4OM2.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.log4om.com/",
+        tab          = "log",
+    ),
+
+    AppDef(
+        key          = "paths.hrd",
+        name         = "Ham Radio Deluxe (HRD)",
+        description  = "Commercial suite: rig control, logging, digital modes, satellite",
+        category     = "log",
+        exe_name     = "HRD",
+        args         = None,
+        common_paths = [
+            r"C:\Program Files (x86)\Ham Radio Deluxe\Ham Radio Deluxe.exe",
+            r"C:\Program Files\Ham Radio Deluxe\Ham Radio Deluxe.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.hamradiodeluxe.com/",
+        tab          = "log",
+    ),
+
+    AppDef(
+        key          = "paths.sdrsharp",
+        name         = "SDR# (SDRSharp)",
+        description  = "Popular Windows SDR receiver — RTL-SDR, Airspy, HackRF",
+        category     = "sdr",
+        exe_name     = "SDRSharp",
+        args         = None,
+        common_paths = [
+            r"C:\SDRSharp\SDRSharp.exe",
+            r"C:\Program Files\SDRSharp\SDRSharp.exe",
+            r"C:\airspy\SDRSharp.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://airspy.com/download/",
+        tab          = "sdr",
+    ),
+
+    AppDef(
+        key          = "paths.gnuradio",
+        name         = "GNU Radio Companion",
+        description  = "Visual flowgraph builder for signal processing and SDR",
+        category     = "sdr",
+        exe_name     = "gnuradio-companion",
+        args         = ["--version"],
+        common_paths = [
+            r"C:\Program Files\GNURadio-3.10\bin\gnuradio-companion.exe",
+            r"C:\GNURadio\bin\gnuradio-companion.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/gnuradio-companion",
+            "/usr/local/bin/gnuradio-companion",
+        ],
+        download_url  = "https://www.gnuradio.org/",
+        tab          = "sdr",
+    ),
+
+    AppDef(
+        key          = "paths.direwolf",
+        name         = "Direwolf (AX.25 TNC)",
+        description  = "Software AX.25 TNC for APRS, packet radio, and Winlink",
+        category     = "digital",
+        exe_name     = "direwolf",
+        args         = ["--version"],
+        common_paths = [
+            r"C:\direwolf\direwolf.exe",
+            r"C:\Program Files\Direwolf\direwolf.exe",
+        ],
+        linux_paths  = [
+            "/usr/bin/direwolf",
+            "/usr/local/bin/direwolf",
+        ],
+        download_url  = "https://github.com/wb2osz/direwolf",
+        tab          = "digital",
+    ),
+
+    AppDef(
+        key          = "paths.mmtty",
+        name         = "MMTTY",
+        description  = "RTTY modem — used standalone or as engine inside N1MM/MixW",
+        category     = "digital",
+        exe_name     = "MMTTY",
+        args         = None,
+        common_paths = [
+            r"C:\MMTTY\MMTTY.exe",
+            r"C:\Program Files (x86)\MMTTY\MMTTY.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://hamsoft.ca/pages/mmtty.php",
+        tab          = "digital",
     ),
 ]
 

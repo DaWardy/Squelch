@@ -183,6 +183,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._squelch_enabled = False
         self._squelch_db      = -60.0
         self._squelch_open    = True   # runtime; True when squelch not active or signal above threshold
+        # Noise reduction
+        self._nr_enabled      = False
+        self._nr_level        = 30    # 0-100 %
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -668,6 +671,25 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._squelch_ind.setFixedWidth(16)
         self._squelch_ind.setToolTip(self.tr("Green = squelch open  Red = squelch closed"))
         deml.addWidget(self._squelch_ind, 3, 2)
+        # Noise reduction row
+        self._nr_cb = QCheckBox(self.tr("NR"))
+        self._nr_cb.setToolTip(self.tr(
+            "Spectral averaging noise reduction.\n"
+            "Smooths the spectrum display noise floor.\n"
+            "Higher values = stronger smoothing."))
+        self._nr_cb.toggled.connect(self._on_nr_toggle)
+        deml.addWidget(self._nr_cb, 5, 0)
+        self._nr_lbl = QLabel(f"{self._nr_level}%")
+        self._nr_lbl.setFixedWidth(36)
+        self._nr_lbl.setAlignment(Qt.AlignmentFlag.AlignRight |
+                                   Qt.AlignmentFlag.AlignVCenter)
+        deml.addWidget(self._nr_lbl, 5, 1)
+        self._nr_slider = QSlider(Qt.Orientation.Horizontal)
+        self._nr_slider.setRange(0, 100)
+        self._nr_slider.setValue(self._nr_level)
+        self._nr_slider.setEnabled(False)
+        self._nr_slider.valueChanged.connect(self._on_nr_slider)
+        deml.addWidget(self._nr_slider, 6, 0, 1, 2)
         # TX sub-group — hidden until TX-capable hardware is detected
         self._tx_grp = QGroupBox(self.tr("Transmit"))
         txl = QVBoxLayout(self._tx_grp)
@@ -1262,6 +1284,22 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         if HAS_PG and self._squelch_enabled:
             self._squelch_line.setValue(self._squelch_db)
 
+    def _on_nr_toggle(self, enabled: bool):
+        self._nr_enabled = enabled
+        self._nr_slider.setEnabled(enabled)
+
+    def _on_nr_slider(self, value: int):
+        self._nr_level = value
+        self._nr_lbl.setText(f"{value}%")
+
+    @property
+    def _lo_hz(self) -> int:
+        """LO offset in Hz — read live from config so Settings changes apply immediately."""
+        try:
+            return int(self.cfg.get("sdr.lo_offset_hz", 0) or 0)
+        except Exception:
+            return 0
+
     def _on_peak_hold(self, enabled: bool):
         self._peak_hold = enabled
         if HAS_PG:
@@ -1320,7 +1358,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         try:
             pos = self._wf_plot.plotItem.vb\
                 .mapSceneToView(event.scenePos())
-            hz = int(pos.x() * 1e6)
+            # Displayed freq = hw_freq + lo_offset; reverse to get hw freq
+            hz = int(pos.x() * 1e6) - self._lo_hz
             if hz <= 0:
                 return
             if event.button() == Qt.MouseButton.RightButton:
@@ -1336,7 +1375,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         try:
             pos = self._spec_plot.plotItem.vb\
                 .mapSceneToView(event.scenePos())
-            hz = int(pos.x() * 1e6)
+            hz = int(pos.x() * 1e6) - self._lo_hz
             if hz <= 0:
                 return
             if event.button() == Qt.MouseButton.RightButton:
@@ -1390,6 +1429,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         fft_db  = 20 * np.log10(
             fft_out / FFT_SIZE + 1e-10)
 
+        # Noise reduction — spectral averaging (smooths noise floor)
+        if self._nr_enabled and self._nr_level > 0:
+            win = 1 + int(self._nr_level / 100 * 15)  # 1–16 samples
+            kernel = np.ones(win) / win
+            fft_db = np.convolve(fft_db, kernel, mode='same')
+
         with self._fft_lock:
             self._latest_fft = fft_db
             # Update waterfall
@@ -1433,9 +1478,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             peak  = self._peak_data.copy()
 
         half  = self._span_hz / 2
+        lo_off = self._lo_hz
         freqs = np.linspace(
-            (self._center_hz - half) / 1e6,
-            (self._center_hz + half) / 1e6,
+            (self._center_hz + lo_off - half) / 1e6,
+            (self._center_hz + lo_off + half) / 1e6,
             len(fft))
 
         # Spectrum (apply reference level offset for dBm display)
@@ -1478,9 +1524,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
     def _update_axes(self):
         if not HAS_PG:
             return
+        lo_off = self._lo_hz
         half   = self._span_hz / 2
-        lo_mhz = (self._center_hz - half) / 1e6
-        hi_mhz = (self._center_hz + half) / 1e6
+        lo_mhz = (self._center_hz + lo_off - half) / 1e6
+        hi_mhz = (self._center_hz + lo_off + half) / 1e6
         self._spec_plot.setXRange(lo_mhz, hi_mhz, padding=0)
         self._spec_plot.setYRange(
             self._floor_db + self._y_ref_db,
@@ -1488,7 +1535,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._wf_img.setRect(
             QRectF(lo_mhz, 0, hi_mhz - lo_mhz, WF_ROWS))
         self._wf_plot.setXRange(lo_mhz, hi_mhz, padding=0)
-        self._cf_line.setValue(self._center_hz / 1e6)
+        self._cf_line.setValue((self._center_hz + self._lo_hz) / 1e6)
 
     def _draw_band_segments(self):
         if not HAS_PG:
@@ -1532,6 +1579,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "y_ref_db":        self._y_ref_db,
             "squelch_enabled": self._squelch_enabled,
             "squelch_db":      self._squelch_db,
+            "nr_enabled":      self._nr_enabled,
+            "nr_level":        self._nr_level,
         }
 
     def restore_state(self, state: dict) -> None:
@@ -1556,6 +1605,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._squelch_slider.setValue(int(state["squelch_db"]))
         if "squelch_enabled" in state:
             self._squelch_cb.setChecked(bool(state["squelch_enabled"]))
+        if "nr_level" in state:
+            self._nr_slider.setValue(int(state["nr_level"]))
+        if "nr_enabled" in state:
+            self._nr_cb.setChecked(bool(state["nr_enabled"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

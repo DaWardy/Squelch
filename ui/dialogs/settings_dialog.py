@@ -192,6 +192,19 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         except Exception:
             pass
 
+    def _load_sdr(self, cfg):
+        try:
+            self._lo_offset_spin.setValue(
+                int(cfg.get("sdr.lo_offset_hz", 0) or 0))
+        except Exception:
+            pass
+
+    def _save_sdr(self, cfg):
+        try:
+            cfg.set("sdr.lo_offset_hz", self._lo_offset_spin.value())
+        except Exception:
+            pass
+
     def _load_all(self):
         """Populate all fields from config and keyring."""
         cfg = self.cfg
@@ -200,6 +213,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._load_appearance(cfg)
         self._load_advanced(cfg)
         self._load_apis(cfg)
+        self._load_sdr(cfg)
 
 
     def _conda_exe(self) -> str:
@@ -481,6 +495,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._save_appearance(cfg)
         self._save_advanced(cfg)
         self._save_apis(cfg)
+        self._save_sdr(cfg)
         cfg.save()
         # Deferred so the dialog closes before the stylesheet rebuild
         from PyQt6.QtCore import QTimer

@@ -39,9 +39,32 @@ class _SettingsSdrTab:
             f"color:{_t.warn_color};background:{_t.bg_secondary};padding:8px;"
             f"border:1px solid {_t.border};border-radius:3px;")
         lay.addWidget(warn)
+        lay.addWidget(self._build_sdr_freq_corrections_group())
         lay.addStretch()
         QTimer.singleShot(400, self._check_sdr_status)
         return w
+
+    def _build_sdr_freq_corrections_group(self) -> "QGroupBox":
+        """Frequency correction group — LO offset for up/downconverters."""
+        from PyQt6.QtWidgets import QFormLayout
+        grp = QGroupBox("Frequency Corrections")
+        f = QFormLayout(grp)
+        f.setSpacing(8)
+        f.setContentsMargins(10, 8, 10, 8)
+        self._lo_offset_spin = QSpinBox()
+        self._lo_offset_spin.setRange(-500_000_000, 500_000_000)
+        self._lo_offset_spin.setValue(0)
+        self._lo_offset_spin.setSingleStep(1_000_000)
+        self._lo_offset_spin.setToolTip(
+            "LO (Local Oscillator) offset in Hz.\n"
+            "Use with upconverters or downconverters.\n"
+            "E.g. −125 000 000 Hz for a 125 MHz HF upconverter\n"
+            "so the displayed frequency matches real RF.")
+        f.addRow("LO Offset (Hz):", self._lo_offset_spin)
+        hint = QLabel("0 = disabled (default).  Takes effect immediately.")
+        hint.setStyleSheet("color:#888;")
+        f.addRow("", hint)
+        return grp
 
     _SDR_DRIVERS = [
         ("soapyrtlsdr",   "RTL-SDR  (any RTL2832U dongle)",

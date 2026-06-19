@@ -273,3 +273,55 @@ class TestQsoPopupEnrichment:
         import inspect
         src = inspect.getsource(_qso_path_data)
         assert "1000" in src
+
+
+# ── FEAT-05 Satellite overlay ─────────────────────────────────────────────────
+
+class TestSatelliteOverlay:
+
+    _ISS = {"name": "ISS (ZARYA)", "lat": 51.5, "lon": -0.1,
+            "alt_km": 420.0, "el_deg": 23.5, "is_visible": True}
+    _AO91 = {"name": "AO-91", "lat": 35.0, "lon": 10.0,
+              "alt_km": 680.0, "el_deg": -5.0, "is_visible": False}
+
+    def test_satellites_param_accepted(self):
+        html = _html(satellites=[self._ISS])
+        assert "ISS" in html
+
+    def test_satellites_layer_group_in_html(self):
+        html = _html(satellites=[self._ISS])
+        assert "lyrSatellites" in html
+
+    def test_iss_in_satellites_layer(self):
+        html = _html(satellites=[self._ISS, self._AO91])
+        assert "ISS" in html
+        assert "AO-91" in html
+
+    def test_satellite_altitude_in_popup(self):
+        html = _html(satellites=[self._ISS])
+        assert "alt_km" in html or "Alt:" in html
+
+    def test_satellite_visibility_classes(self):
+        html = _html(satellites=[self._ISS, self._AO91])
+        assert "Above horizon" in html
+        assert "Below horizon" in html
+
+    def test_satellites_in_layer_control(self):
+        html = _html(satellites=[self._ISS])
+        assert '"Satellites"' in html
+
+    def test_satellite_legend_entry(self):
+        html = _html(satellites=[self._ISS])
+        assert "Satellite" in html
+
+    def test_empty_satellites_no_error(self):
+        html = _html(satellites=[])
+        assert "lyrSatellites" in html  # layer still defined
+
+    def test_none_satellites_no_error(self):
+        html = _html(satellites=None)
+        assert "SATELLITES" in html
+
+    def test_iss_gold_color(self):
+        html = _html(satellites=[self._ISS])
+        assert "ffd700" in html  # ISS gold colour

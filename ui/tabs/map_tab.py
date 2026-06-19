@@ -345,6 +345,7 @@ class MapTab(SquelchPanel, QWidget):
                 heard_stations      = heard,
                 hearing_me          = getattr(self, "_hearing_me", {}),
                 winlink_gateways    = wl_gws,
+                satellites          = list(self._satellites),
             )
             self._view.setHtml(html)
             self._update_layer_stats(heard, aprs)

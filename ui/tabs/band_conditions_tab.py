@@ -32,7 +32,8 @@ from PyQt6.QtWidgets import (
     QLabel, QGroupBox, QFrame, QPushButton,
     QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QProgressBar, QTableWidget, QTableWidgetItem,
-    QHeaderView, QSplitter, QSizePolicy, QScrollArea
+    QHeaderView, QSplitter, QSizePolicy, QScrollArea,
+    QCheckBox,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QRectF
 from PyQt6.QtGui import QColor, QBrush, QFont
@@ -90,6 +91,9 @@ class BandConditionsTab(SquelchPanel, QWidget):
             return {
                 "path_target":  self._path_edit.text(),
                 "terrain_mode": getattr(self._prop_sideview, "_terrain_mode", "off"),
+                "zone_gw":      self._zone_gw.isChecked(),
+                "zone_nvis":    self._zone_nvis.isChecked(),
+                "zone_sw":      self._zone_sw.isChecked(),
             }
         except Exception:
             return {}
@@ -100,6 +104,11 @@ class BandConditionsTab(SquelchPanel, QWidget):
                 self._path_edit.setText(state["path_target"])
             if state.get("terrain_mode"):
                 self._prop_sideview.set_terrain_mode(state["terrain_mode"])
+            for key, attr in (("zone_gw", "_zone_gw"),
+                               ("zone_nvis", "_zone_nvis"),
+                               ("zone_sw", "_zone_sw")):
+                if key in state and hasattr(self, attr):
+                    getattr(self, attr).setChecked(state[key])
         except Exception:
             pass
 
@@ -349,6 +358,44 @@ class BandConditionsTab(SquelchPanel, QWidget):
         self._terrain_status.setStyleSheet(f"color:{_t.fg_secondary};font-size:10px;")
         ctrl_row.addWidget(self._terrain_status, 1)
         svl.addLayout(ctrl_row)
+
+        zone_row = QHBoxLayout()
+        zone_row.setSpacing(10)
+        zone_row.addWidget(QLabel("Overlays:"))
+        self._zone_gw = QCheckBox("Groundwave")
+        self._zone_gw.setChecked(True)
+        self._zone_gw.setToolTip(
+            "Show estimated groundwave range along the surface.\n"
+            "Range ≈ 300 / freq_MHz km — shorter at higher frequencies.")
+        zone_row.addWidget(self._zone_gw)
+        self._zone_nvis = QCheckBox("NVIS")
+        self._zone_nvis.setChecked(True)
+        self._zone_nvis.setToolTip(
+            "Show Near-Vertical Incidence Skywave coverage zone.\n"
+            "Active at 2–10 MHz; illuminates paths up to ~500 km.")
+        zone_row.addWidget(self._zone_nvis)
+        self._zone_sw = QCheckBox("Skywave / Skip")
+        self._zone_sw.setChecked(True)
+        self._zone_sw.setToolTip(
+            "Show skywave zones:\n"
+            "• Skip zone (purple) — signal cannot arrive here via skywave\n"
+            "• Illuminated zone (blue) — skywave can arrive here\n"
+            "Skip distance ≈ 2 · F-layer · freq / √(MUF² − freq²)")
+        zone_row.addWidget(self._zone_sw)
+        zone_row.addStretch(1)
+
+        def _on_zone_toggle():
+            if hasattr(self, "_prop_sideview"):
+                self._prop_sideview.set_show_zones(
+                    self._zone_gw.isChecked(),
+                    self._zone_nvis.isChecked(),
+                    self._zone_sw.isChecked())
+
+        self._zone_gw.toggled.connect(_on_zone_toggle)
+        self._zone_nvis.toggled.connect(_on_zone_toggle)
+        self._zone_sw.toggled.connect(_on_zone_toggle)
+        svl.addLayout(zone_row)
+
         self._prop_sideview = PropagationSideView()
         svl.addWidget(self._prop_sideview)
         return sv_grp

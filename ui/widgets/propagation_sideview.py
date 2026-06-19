@@ -51,6 +51,10 @@ class PropagationSideView(QWidget):
         self._terrain_busy:  bool             = False
         self._terrain_label: str              = ""
         self._eirp_dbw:      float             = 10.0  # default 10W
+        # Propagation zone overlay toggles
+        self._show_gw_zone:   bool = True
+        self._show_nvis_zone: bool = True
+        self._show_sw_zone:   bool = True
 
     def set_terrain_mode(self, mode: str):
         """Set terrain mode: 'off', 'online', or 'offline'.
@@ -114,6 +118,13 @@ class PropagationSideView(QWidget):
 
     def set_eirp_dbw(self, dbw: float):
         self._eirp_dbw = dbw
+        self.update()
+
+    def set_show_zones(self, gw: bool, nvis: bool, sw: bool) -> None:
+        """Toggle propagation-zone overlays and repaint."""
+        self._show_gw_zone   = gw
+        self._show_nvis_zone = nvis
+        self._show_sw_zone   = sw
         self.update()
 
     def update_state(self,
@@ -332,6 +343,68 @@ class PropagationSideView(QWidget):
             return 60.0
         return 0.0
 
+    def _draw_propagation_zones(self, p: "QPainter",
+                                x0: int, x1: int, ground: int,
+                                f_top: int, plot_w: int) -> None:
+        """Draw semi-transparent groundwave / NVIS / skywave zone overlays.
+
+        These are educational shading bands showing WHERE each propagation
+        mode can reach, independent of which mode currently dominates.
+        """
+        if not (self._show_gw_zone or self._show_nvis_zone or self._show_sw_zone):
+            return
+        path = self._path_km
+        if path <= 0:
+            return
+        freq = self._freq_mhz
+        muf  = self._muf_mhz
+        px_per_km = plot_w / path
+        sky_h = ground - f_top          # pixel height of "sky" region
+
+        p.setFont(QFont("", 7))
+
+        # ── Groundwave zone ───────────────────────────────────────────────
+        # Surface wave range: roughly 300 / freq_mhz km at HF; tapers to ~5 km at 100 MHz
+        if self._show_gw_zone and freq > 0:
+            gw_km = min(300.0 / max(freq, 0.1), path)
+            x_gw  = int(x0 + gw_km * px_per_km)
+            zone_h = max(18, int((ground - f_top) * 0.12))
+            p.fillRect(x0, ground - zone_h, x_gw - x0, zone_h,
+                       QBrush(QColor(255, 204, 0, 55)))
+            p.setPen(QColor(255, 200, 0, 200))
+            p.drawText(x0 + 3, ground - 3, f"GW ~{gw_km:.0f} km")
+
+        # ── NVIS zone ────────────────────────────────────────────────────
+        # Near-Vertical Incidence Skywave: typically 2–10 MHz, path < ~500 km
+        if self._show_nvis_zone:
+            nvis_km  = min(500.0, path)
+            x_nv     = int(x0 + nvis_km * px_per_km)
+            in_band  = freq > 0 and 2.0 <= freq <= 10.0
+            alpha    = 45 if in_band else 15
+            p.fillRect(x0, f_top, x_nv - x0, sky_h,
+                       QBrush(QColor(68, 200, 255, alpha)))
+            if x_nv - x0 > 25:
+                p.setPen(QColor(68, 200, 255, 190 if in_band else 90))
+                suffix = "" if in_band else " (out of band)"
+                p.drawText(x0 + 3, f_top + 11, f"NVIS{suffix}")
+
+        # ── Skywave zones — skip zone + illuminated zone ──────────────────
+        if self._show_sw_zone and freq > 0 and muf > freq > 0:
+            # Skip distance: 2·h·f / √(MUF²−f²), capped at 80% of path
+            denom    = math.sqrt(max(muf ** 2 - freq ** 2, 0.01))
+            skip_km  = min(2.0 * F_LAYER_KM * freq / denom, path * 0.8)
+            x_skip   = int(x0 + skip_km * px_per_km)
+            # Dead zone (skip) — deep purple tint
+            if x_skip > x0 + 4:
+                p.fillRect(x0, f_top, x_skip - x0, sky_h,
+                           QBrush(QColor(60, 0, 90, 55)))
+                p.setPen(QColor(160, 100, 220, 180))
+                p.drawText(x0 + 3, f_top + 23, f"Skip ~{skip_km:.0f} km")
+            # Illuminated zone — soft blue
+            if x_skip < x1 - 4:
+                p.fillRect(x_skip, f_top, x1 - x_skip, sky_h,
+                           QBrush(QColor(51, 102, 255, 22)))
+
     def _draw_path_loss_bar(self, p: "QPainter", x0: int, plot_w: int,
                             top: int, H: int):
         """Draw EIRP/path-loss signal-strength bar and terrain source label."""
@@ -457,6 +530,7 @@ class PropagationSideView(QWidget):
         self._draw_terrain(p, ground, x0, x1, plot_w, H, bulge_px)
         self._draw_path_loss_bar(p, x0, plot_w, top, H)
         f_top, f_bot = self._draw_ionosphere(p, x0, x1, plot_w, top, ground)
+        self._draw_propagation_zones(p, x0, x1, ground, f_top, plot_w)
         self._draw_station_markers(p, x0, ground, x1, ground)
 
         mode = self._propagation_mode()

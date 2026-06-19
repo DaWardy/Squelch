@@ -533,12 +533,15 @@ class MainWindow(
                     tab.set_map_tab(map_tab)
             except Exception:
                 pass
-        # Wire SDR auto-tune: LocalRF → SDR tab
+        # Wire SDR auto-tune: LocalRF + Weak Signal → SDR tab
         try:
             localrf = self._tab_map.get("localrf")
+            modes   = self._tab_map.get("modes")
             sdr     = self._tab_map.get("sdr")
             if localrf and sdr and hasattr(localrf, "set_sdr_tune_cb"):
                 localrf.set_sdr_tune_cb(sdr._set_freq)
+            if modes and sdr and hasattr(modes, "set_sdr_tune_cb"):
+                modes.set_sdr_tune_cb(sdr._set_freq)
         except Exception:
             pass
 

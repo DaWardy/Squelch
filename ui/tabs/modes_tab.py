@@ -116,6 +116,7 @@ class ModesTab(SquelchPanel, QWidget):
 
         self._current_mode  = "FT8"
         self._active_band   = "20m"
+        self._sdr_tune_cb   = None   # set via set_sdr_tune_cb() from MainWindow
         self._cycle_timer   = QTimer(self)
         self._cycle_timer.setInterval(100)
         self._cycle_timer.timeout.connect(self._update_cycle)
@@ -752,19 +753,20 @@ class ModesTab(SquelchPanel, QWidget):
                 self._sp_table.setItem(row, col, item)
 
     def _tune_to_sota_pota(self, index):
-        """Tune rig to SOTA/POTA spot frequency."""
+        """Tune rig to SOTA/POTA spot frequency with mode inference + SDR sync."""
         row = index.row()
         freq_item = self._sp_table.item(row, 1)
+        call_item = self._sp_table.item(row, 0)
         if not freq_item:
             return
         try:
-            freq_hz = int(float(
-                freq_item.text()) * 1_000_000)
-            if self.rig and self.rig.is_connected:
-                self.rig.set_freq(freq_hz)
-            else:
-                # Update VFO display even without rig
-                self._set_freq(freq_hz)
+            freq_hz = int(float(freq_item.text()) * 1_000_000)
+            callsign = call_item.text() if call_item else ""
+            # SOTA/POTA is usually SSB; mode col is index 2 if present
+            mode_item = self._sp_table.item(row, 2)
+            mode_str = mode_item.text() if mode_item else ""
+            self._sp_table.selectRow(row)
+            self._do_spot_tune(freq_hz, callsign, mode_str)
         except Exception:
             pass
 
@@ -870,18 +872,54 @@ class ModesTab(SquelchPanel, QWidget):
             if shown >= 10:
                 break
 
+    def set_sdr_tune_cb(self, cb) -> None:
+        """Register a callback(freq_hz) to sync the SDR tab when a spot is clicked."""
+        self._sdr_tune_cb = cb
+
+    @staticmethod
+    def _infer_rig_mode(mode_str: str, freq_hz: int) -> str:
+        """Map a DX-spot mode string to a Hamlib rig-mode string."""
+        from core.spot_tune import infer_rig_mode
+        return infer_rig_mode(mode_str, freq_hz)
+
+    def _do_spot_tune(self, freq_hz: int, callsign: str, mode_str: str) -> None:
+        """Shared tune logic for DX, SOTA, and POTA spot double-click."""
+        rig_mode = self._infer_rig_mode(mode_str, freq_hz)
+        # Tune rig (or update VFO display if disconnected)
+        if self.rig and self.rig.is_connected:
+            try:
+                self.rig.set_freq(freq_hz)
+                self.rig.set_mode(rig_mode)
+            except Exception:
+                pass
+        else:
+            try:
+                self._set_freq(freq_hz / 1e6)
+            except Exception:
+                pass
+        # Sync SDR tab
+        if callable(self._sdr_tune_cb):
+            try:
+                self._sdr_tune_cb(freq_hz)
+            except Exception:
+                pass
+        # Status feedback
+        freq_mhz = freq_hz / 1_000_000
+        msg = (f"Tuned → {callsign}  {freq_mhz:.4f} MHz  {rig_mode}"
+               if callsign else f"Tuned → {freq_mhz:.4f} MHz  {rig_mode}")
+        if hasattr(self, "_dx_status"):
+            self._dx_status.setText(msg)
+
     def _tune_to_dx_spot(self, index):
-        """Double-click DX spot to tune rig."""
+        """Double-click DX spot to tune rig + SDR with mode inference."""
         row = index.row()
         if row >= len(self._dx_spots):
             return
         spot = self._dx_spots[row]
         freq_hz = int(spot.freq_khz * 1000)
-        if self.rig and self.rig.is_connected:
-            try:
-                self.rig.set_freq(freq_hz)
-            except Exception:
-                pass
+        self._dx_table.selectRow(row)
+        self._do_spot_tune(freq_hz, getattr(spot, "dx_call", ""),
+                           getattr(spot, "mode", ""))
 
     def _wire(self):
         self._band_combo.currentTextChanged.connect(self._on_band_change)

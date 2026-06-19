@@ -1,4 +1,9 @@
-"""Tests for CustomLayoutTab — user-created split-panel tab."""
+"""Tests for CustomLayoutTab — redesigned coexistence card approach.
+
+Sprint 41: panels are NEVER reparented.  The custom tab shows navigation
+cards — clicking 'Open tab' navigates to the original panel, which remains
+fully functional in its own tab slot at all times.
+"""
 from __future__ import annotations
 import sys
 import ast
@@ -28,30 +33,29 @@ class TestCustomTabSource:
         src = _src("ui/tabs/custom_tab.py")
         assert "class CustomLayoutTab" in src
 
-    def test_panel_slot_frame_class(self):
+    def test_panel_card_class(self):
         src = _src("ui/tabs/custom_tab.py")
-        assert "_PanelSlotFrame" in src
+        assert "_PanelCard" in src
+
+    def test_no_reparenting_methods(self):
+        src = _src("ui/tabs/custom_tab.py")
+        assert "def embed_panel(" not in src, \
+            "embed_panel must not exist — panels are never reparented"
+        assert "def release_panel(" not in src, \
+            "release_panel must not exist — panels are never reparented"
 
     def test_unassign_signal(self):
         src = _src("ui/tabs/custom_tab.py")
         assert "panel_unassign_requested" in src
 
+    def test_navigate_signal(self):
+        src = _src("ui/tabs/custom_tab.py")
+        assert "panel_navigate_requested" in src
+
     def test_assign_unassign_methods(self):
         src = _src("ui/tabs/custom_tab.py")
         assert "def assign_panel(" in src
         assert "def unassign_panel(" in src
-
-    def test_embed_release_methods(self):
-        src = _src("ui/tabs/custom_tab.py")
-        assert "def embed_panel(" in src
-        assert "def release_panel(" in src
-
-    def test_explicit_show_in_embed(self):
-        src = _src("ui/tabs/custom_tab.py")
-        embed_idx = src.find("def embed_panel(")
-        next_def = src.find("\n    def ", embed_idx + 10)
-        body = src[embed_idx:next_def]
-        assert "panel.show()" in body
 
     def test_assigned_keys_property(self):
         src = _src("ui/tabs/custom_tab.py")
@@ -62,18 +66,22 @@ class TestCustomTabSource:
         assert "def save_state(" in src
         assert "def restore_state(" in src
 
-    def test_save_state_uses_assigned_not_slot(self):
+    def test_save_state_uses_assigned(self):
         src = _src("ui/tabs/custom_tab.py")
         save_idx = src.find("def save_state(")
         next_def = src.find("\n    def ", save_idx + 10)
         body = src[save_idx:next_def]
         assert "assigned" in body
-        assert "_slot_keys" not in body
 
     def test_no_hardcoded_dark_hex(self):
         src = _src("ui/tabs/custom_tab.py")
         for bad in ("#141414", "#0a0a0a", "#1a1a1a", "#111111"):
             assert bad not in src, f"hardcoded dark hex {bad} found"
+
+    def test_unlock_rearrange_button(self):
+        src = _src("ui/tabs/custom_tab.py")
+        assert "_unlock_btn" in src, \
+            "Rearrange/unlock button must be present in toolbar"
 
 
 # ── main_window.py wiring checks ──────────────────────────────────────────
@@ -94,6 +102,23 @@ class TestMainWindowCustomTabWiring:
     def test_unassign_panel_method(self):
         src = _src("ui/main_window.py")
         assert "def _unassign_panel_from_custom_tab(" in src
+
+    def test_no_borrowed_panels_infrastructure(self):
+        src = _src("ui/main_window.py")
+        assert "_borrowed_panels: dict" not in src, \
+            "_borrowed_panels must be removed (no reparenting)"
+        assert "def _do_embed_panel(" not in src, \
+            "_do_embed_panel must be removed (no reparenting)"
+        assert "def _do_release_panel(" not in src, \
+            "_do_release_panel must be removed (no reparenting)"
+
+    def test_navigate_to_panel_wired(self):
+        src = _src("ui/main_window.py")
+        assert "def _navigate_to_panel(" in src
+
+    def test_panel_navigate_signal_connected(self):
+        src = _src("ui/main_window.py")
+        assert "panel_navigate_requested.connect" in src
 
     def test_on_tab_switched_handler(self):
         src = _src("ui/main_window.py")
@@ -123,11 +148,6 @@ class TestMainWindowCustomTabWiring:
         src = _src("ui/main_window.py")
         assert "_remove_custom_tab" in src
         assert "_rename_custom_tab" in src
-
-    def test_insert_position_helper(self):
-        # helper lives in ui/tab_utils.py; main_window imports it
-        src = _src("ui/tab_utils.py")
-        assert "def tab_insert_position(" in src
 
     def test_main_window_parses_cleanly(self):
         p = pathlib.Path(__file__).parent.parent / "ui" / "main_window.py"
@@ -164,3 +184,78 @@ class TestTabInsertPosition:
     def test_unknown_key_appends(self):
         tabs = [("a", "", True), ("b", "", True)]
         assert self._pos("z", ["a", "b"], tabs) == 2
+
+
+# ── Pure-logic tests: assign / unassign / reorder ─────────────────────────
+
+_HAS_QT = False
+try:
+    import PyQt6  # noqa: F401
+    _HAS_QT = True
+except ImportError:
+    pass
+
+_needs_qt = pytest.mark.skipif(not _HAS_QT, reason="PyQt6 not installed")
+
+
+class _FakeCfg:
+    def get(self, key, default=None):
+        return default
+
+
+@_needs_qt
+class TestCustomTabLogic:
+
+    def _make(self, *keys):
+        from ui.tabs.custom_tab import CustomLayoutTab
+        ct = CustomLayoutTab("_t1", "My Tab", _FakeCfg())
+        for key in keys:
+            ct.assign_panel(key, key.title())
+        return ct
+
+    def test_assign_adds_key(self):
+        ct = self._make("rig")
+        assert "rig" in ct.assigned_keys
+
+    def test_assign_idempotent(self):
+        ct = self._make("rig", "rig")
+        assert ct.assigned_keys.count("rig") == 1
+
+    def test_unassign_removes_key(self):
+        ct = self._make("rig", "log")
+        ct.unassign_panel("rig")
+        assert "rig" not in ct.assigned_keys
+        assert "log" in ct.assigned_keys
+
+    def test_save_state_round_trip(self):
+        ct = self._make("rig", "log", "map")
+        state = ct.save_state()
+        assert state["assigned"] == ["rig", "log", "map"]
+        assert state["title"] == "My Tab"
+
+    def test_restore_state_populates_keys(self):
+        from ui.tabs.custom_tab import CustomLayoutTab
+        ct = CustomLayoutTab("_t2", "T", _FakeCfg())
+        ct.restore_state({"title": "T", "assigned": ["sdr", "map"]})
+        assert "sdr" in ct.assigned_keys
+        assert "map" in ct.assigned_keys
+
+    def test_move_right_shifts_key(self):
+        ct = self._make("rig", "log", "map")
+        ct._on_move_right("rig")
+        assert ct.assigned_keys == ["log", "rig", "map"]
+
+    def test_move_left_shifts_key(self):
+        ct = self._make("rig", "log", "map")
+        ct._on_move_left("map")
+        assert ct.assigned_keys == ["rig", "map", "log"]
+
+    def test_move_left_at_boundary_no_change(self):
+        ct = self._make("rig", "log")
+        ct._on_move_left("rig")
+        assert ct.assigned_keys[0] == "rig"
+
+    def test_move_right_at_boundary_no_change(self):
+        ct = self._make("rig", "log")
+        ct._on_move_right("log")
+        assert ct.assigned_keys[-1] == "log"

@@ -306,9 +306,6 @@ class MainWindow(
 
         # Custom tab tracking
         self._custom_tabs: dict = {}   # tab_id → CustomLayoutTab
-        self._active_custom_tab: str = ""  # tab_id of the currently-active custom tab
-        self._borrowed_panels: dict[str, str] = {}   # panel_key → custom_tab_id
-        self._borrowed_info: dict[str, tuple] = {}   # panel_key → (orig_idx, label)
 
         # "+" corner button — styled like a browser new-tab button
         _add_tab_btn = QToolButton()
@@ -1003,26 +1000,7 @@ class MainWindow(
     # ── Tab switch handler — drives custom-tab auto-swap ─────────────────
 
     def _on_tab_switched(self, idx: int) -> None:
-        """Called on every tab change. Swaps panels in/out for custom tabs."""
-        widget = self.tabs.widget(idx)
-
-        # If we were on a custom tab, return its panels to the tab bar
-        if self._active_custom_tab:
-            prev_ct = self._custom_tabs.get(self._active_custom_tab)
-            if prev_ct and prev_ct is not widget:
-                for key in list(prev_ct.slot_keys):
-                    self._do_release_panel(self._active_custom_tab, key)
-                self._active_custom_tab = ""
-
-        # If we are now on a custom tab, borrow its assigned panels
-        new_ct = next(
-            (ct for ct in self._custom_tabs.values() if ct is widget), None)
-        if new_ct:
-            self._active_custom_tab = new_ct.panel_id
-            for key in new_ct.assigned_keys:
-                if key not in self._borrowed_panels:
-                    self._do_embed_panel(new_ct.panel_id, key)
-
+        """Called on every tab change."""
         self._update_spectrum_action(idx)
 
     # ── Custom tabs ───────────────────────────────────────────────────────
@@ -1041,6 +1019,7 @@ class MainWindow(
         tab_id = f"_custom_{len(self._custom_tabs)}_{title[:20]}"
         ct = CustomLayoutTab(tab_id, title, self.cfg, self)
         ct.panel_unassign_requested.connect(self._unassign_panel_from_custom_tab)
+        ct.panel_navigate_requested.connect(self._navigate_to_panel)
         self._custom_tabs[tab_id] = ct
         ct.set_add_menu(self._make_add_panel_menu(ct))
         self.tabs.addTab(ct, title)
@@ -1051,11 +1030,6 @@ class MainWindow(
         ct = self._custom_tabs.pop(tab_id, None)
         if ct is None:
             return
-        # Return any currently-embedded panels first
-        for key in list(ct.slot_keys):
-            self._do_release_panel(tab_id, key)
-        if self._active_custom_tab == tab_id:
-            self._active_custom_tab = ""
         idx = self.tabs.indexOf(ct)
         if idx >= 0:
             self.tabs.removeTab(idx)
@@ -1075,51 +1049,29 @@ class MainWindow(
             self._save_custom_tabs_state()
 
     def _assign_panel_to_custom_tab(self, tab_id: str, panel_key: str) -> None:
-        """Assign a panel to a custom tab and embed it immediately (tab is active)."""
+        """Add a navigation card for panel_key to the custom tab."""
         ct = self._custom_tabs.get(tab_id)
-        if ct is None or panel_key in self._borrowed_panels:
+        if ct is None:
             return
-        ct.assign_panel(panel_key)
-        self._do_embed_panel(tab_id, panel_key)
+        label = next((lbl for k, lbl, _ in TABS if k == panel_key), panel_key)
+        panel_title = label.split("  ", 1)[-1] if "  " in label else label
+        ct.assign_panel(panel_key, panel_title)
         self._save_custom_tabs_state()
 
     def _unassign_panel_from_custom_tab(self, tab_id: str,
                                          panel_key: str) -> None:
-        """Unassign a panel — remove from splitter and release to tab bar."""
+        """Remove a panel's navigation card from a custom tab."""
         ct = self._custom_tabs.get(tab_id)
         if ct is None:
             return
         ct.unassign_panel(panel_key)
-        self._do_release_panel(tab_id, panel_key)
         self._save_custom_tabs_state()
 
-    def _do_embed_panel(self, tab_id: str, panel_key: str) -> None:
-        """Move a panel widget into a custom tab's splitter."""
-        ct = self._custom_tabs.get(tab_id)
+    def _navigate_to_panel(self, panel_key: str) -> None:
+        """Switch the main tab bar to the panel identified by panel_key."""
         panel = self._tab_map.get(panel_key)
-        if ct is None or panel is None or panel_key in self._borrowed_panels:
-            return
-        label = next((lbl for k, lbl, _ in TABS if k == panel_key), panel_key)
-        panel_title = label.split("  ", 1)[-1] if "  " in label else label
-        orig_idx = self.tabs.indexOf(panel)
-        self._borrowed_info[panel_key] = (orig_idx, label)
-        self._borrowed_panels[panel_key] = tab_id
-        self.tabs.removeTab(orig_idx)
-        ct.embed_panel(panel, panel_key, panel_title)
-
-    def _do_release_panel(self, tab_id: str, panel_key: str) -> None:
-        """Return a panel widget from a custom tab back to the tab bar."""
-        ct = self._custom_tabs.get(tab_id)
-        if ct is None:
-            return
-        panel = ct.release_panel(panel_key)
-        if panel is None:
-            return
-        self._borrowed_panels.pop(panel_key, None)
-        orig_idx, label = self._borrowed_info.pop(
-            panel_key, (self.tabs.count(), panel_key))
-        insert_at = _tab_insert_position(panel_key, self.tabs, TABS)
-        self.tabs.insertTab(insert_at, panel, label)
+        if panel:
+            self.tabs.setCurrentWidget(panel)
 
     def _make_add_panel_menu(self, ct) -> "QMenu":
         from PyQt6.QtWidgets import QMenu
@@ -1132,17 +1084,10 @@ class MainWindow(
                 if key in assigned:
                     continue  # already in this tab
                 clean = label.split("  ", 1)[-1] if "  " in label else label
-                taken = key in self._borrowed_panels
                 a = menu.addAction(clean)
-                if taken:
-                    other = self._borrowed_panels[key]
-                    other_title = self._custom_tabs[other].panel_title
-                    a.setEnabled(False)
-                    a.setText(f"{clean}  (in '{other_title}')")
-                else:
-                    a.triggered.connect(
-                        lambda _, k=key: self._assign_panel_to_custom_tab(
-                            ct.panel_id, k))
+                a.triggered.connect(
+                    lambda _, k=key: self._assign_panel_to_custom_tab(
+                        ct.panel_id, k))
 
         menu.aboutToShow.connect(_rebuild)
         return menu
@@ -1165,10 +1110,15 @@ class MainWindow(
             ct = CustomLayoutTab(tab_id, title, self.cfg, self)
             ct.panel_unassign_requested.connect(
                 self._unassign_panel_from_custom_tab)
+            ct.panel_navigate_requested.connect(self._navigate_to_panel)
             self._custom_tabs[tab_id] = ct
             ct.set_add_menu(self._make_add_panel_menu(ct))
             self.tabs.addTab(ct, title)
-            ct.restore_state(entry)
+            # Restore assigned panels (assign_panel creates the cards)
+            for key in entry.get("assigned", []):
+                label = next((lbl for k, lbl, _ in TABS if k == key), key)
+                panel_title = label.split("  ", 1)[-1] if "  " in label else label
+                ct.assign_panel(key, panel_title)
 
     def _open_log_folder(self):
         """Open the folder containing squelch.log in the system file manager."""

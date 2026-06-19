@@ -176,6 +176,7 @@ def build_map_html(config,
                    heard_stations: dict | None = None,
                    hearing_me: dict | None = None,
                    winlink_gateways: list | None = None,
+                   satellites: list | None = None,
                    ) -> str:
     """Build self-contained Leaflet map HTML for QWebEngineView."""
     now_utc = datetime.now(timezone.utc)
@@ -206,6 +207,7 @@ def build_map_html(config,
         heard_stations      = _resolve_station_coords(heard_stations or {}),
         hearing_me          = _resolve_station_coords(hearing_me or {}),
         winlink_gateways    = _winlink_gateway_data(winlink_gateways),
+        satellites          = satellites or [],
     )
 
 
@@ -368,6 +370,7 @@ var GRAYLINE     = {ctx['grayline_json']};
 var HEARD        = {json.dumps(ctx['heard_stations'])};
 var HEARING_ME   = {json.dumps(ctx['hearing_me'])};
 var WINLINK_GW   = {json.dumps(ctx['winlink_gateways'])};
+var SATELLITES   = {json.dumps(ctx['satellites'])};
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -398,6 +401,7 @@ var lyrAircraft    = L.layerGroup().addTo(map);
 var lyrHeard       = L.layerGroup().addTo(map);
 var lyrHearingMe   = L.layerGroup().addTo(map);
 var lyrWinlink     = L.layerGroup().addTo(map);
+var lyrSatellites  = L.layerGroup().addTo(map);
 
 // ── Gray line ─────────────────────────────────────────────────
 if (GRAYLINE) {{
@@ -593,6 +597,35 @@ HEARING_ME.forEach(function(s) {{
   ).addTo(lyrHearingMe);
 }});
 
+// ── Satellites — ISS & ham satellites ────────────────────────
+SATELLITES.forEach(function(s) {{
+  var isISS = s.name && s.name.indexOf('ISS') >= 0;
+  var isVisible = s.is_visible || s.visible;
+  var col  = isISS ? '#ffd700' : (isVisible ? '#00ddff' : '#888888');
+  var size = isISS ? 20 : 14;
+  var emoji = isISS ? '🛰️' : '🛰';
+  var opacity = isVisible ? 1.0 : 0.5;
+  L.marker([s.lat, s.lon], {{
+    icon: L.divIcon({{
+      html: '<div title="'+s.name+'" style="'
+           +'font-size:'+(isISS?18:13)+'px;'
+           +'line-height:1;opacity:'+opacity+';'
+           +'filter:drop-shadow(0 0 4px '+col+');'
+           +'cursor:pointer;"></div>',
+      className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup">'
+    +'<b style="color:'+col+'">'+s.name+'</b><br>'
+    +'Alt: '+(s.alt_km?s.alt_km.toFixed(0)+' km':'—')+'<br>'
+    +'El: '+(s.el_deg!=null?s.el_deg.toFixed(1)+'°':'—')+'<br>'
+    +(isVisible
+      ? '<span style="color:#00ff88">● Above horizon</span>'
+      : '<span style="color:#888">● Below horizon</span>')
+    +'</div>'
+  ).addTo(lyrSatellites);
+}});
+
 // ── Layer control (top-right) — toggle overlays ───────────────
 L.control.layers(
   {{"Dark": darkTiles, "Street Map": streetTiles}},
@@ -606,7 +639,8 @@ L.control.layers(
     "APRS":           lyrAprs,
     "Winlink RMS":    lyrWinlink,
     "Repeaters":      lyrRepeaters,
-    "Aircraft":       lyrAircraft
+    "Aircraft":       lyrAircraft,
+    "Satellites":     lyrSatellites
   }},
   {{position:'topright', collapsed:true}}
 ).addTo(map);
@@ -627,7 +661,9 @@ legend.onAdd = function() {{
     +'<span class="leg-dot" style="background:#ff8844;"></span>APRS<br>'
     +'<span class="leg-sq" style="background:#3fbe6f;"></span>Repeater<br>'
     +'<span class="leg-tri-up" style="border-bottom:13px solid #cc66ff;"></span>Winlink RMS<br>'
-    +'<span style="color:#aaaaff;font-size:13px;vertical-align:middle;margin-right:4px;">✈</span>ADS-B';
+    +'<span style="color:#aaaaff;font-size:13px;vertical-align:middle;margin-right:4px;">✈</span>ADS-B<br>'
+    +'<span style="color:#ffd700;font-size:11px;vertical-align:middle;margin-right:4px;">🛰</span>Satellite (visible)<br>'
+    +'<span style="color:#888;font-size:11px;vertical-align:middle;margin-right:4px;">🛰</span>Satellite (below horizon)';
   return d;
 }};
 legend.addTo(map);

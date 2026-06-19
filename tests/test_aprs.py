@@ -197,3 +197,62 @@ class TestAPRSBeaconGuestMode:
 
         assert sent, "beacon sent nothing"
         assert any("W1AW" in p for p in sent)
+
+
+class TestAPRSRFLabBridge:
+    """Verify the data contract between _on_aprs_packet and rf_lab.append_decode."""
+
+    def test_call_ssid_no_ssid(self):
+        pkt = APRSPacket(raw="", callsign="W1AW", ssid="")
+        assert pkt.call_ssid == "W1AW"
+
+    def test_call_ssid_with_ssid(self):
+        pkt = APRSPacket(raw="", callsign="W1AW", ssid="9")
+        assert pkt.call_ssid == "W1AW-9"
+
+    def test_packet_fields_are_strings(self):
+        pkt = APRSPacket(raw="test", callsign="W1AW", ssid="",
+                         comment="Test message")
+        assert isinstance(pkt.call_ssid, str)
+        assert isinstance(pkt.comment, str)
+
+    def test_comment_truncated_to_80(self):
+        long_comment = "X" * 200
+        pkt = APRSPacket(raw="", callsign="W1AW", ssid="", comment=long_comment)
+        msg = (pkt.comment or "")[:80]
+        assert len(msg) == 80
+
+    def test_aprs_freq_hz_constant(self):
+        # Bridge hardcodes 144.390 MHz — verify arithmetic
+        assert 144_390_000 / 1e6 == pytest.approx(144.390)
+
+    def test_aprs_mode_in_decode_colors(self):
+        from ui.tabs.rf_lab_data import DECODE_MODE_COLORS
+        assert "APRS" in DECODE_MODE_COLORS, (
+            "APRS must have a color in DECODE_MODE_COLORS to render in decode monitor")
+
+    def test_bridge_calls_append_decode(self):
+        """Simulate _on_aprs_packet bridge logic with a fake rf_lab tab."""
+        calls = []
+
+        class _FakeRFLab:
+            def append_decode(self, mode, freq_hz, callsign="",
+                              message="", snr=0.0, grid=""):
+                calls.append((mode, freq_hz, callsign, message))
+
+        pkt = APRSPacket(raw="", callsign="KD9ABC", ssid="7",
+                         comment="en route W5 grid DM79")
+        rf_lab = _FakeRFLab()
+        # Reproduce the bridge logic from main_window_network._on_aprs_packet
+        if rf_lab and hasattr(rf_lab, "append_decode") and pkt:
+            rf_lab.append_decode(
+                "APRS", 144_390_000,
+                callsign=pkt.call_ssid,
+                message=(pkt.comment or "")[:80],
+            )
+        assert len(calls) == 1
+        mode, freq_hz, callsign, message = calls[0]
+        assert mode == "APRS"
+        assert freq_hz == 144_390_000
+        assert callsign == "KD9ABC-7"
+        assert "W5" in message

@@ -13,8 +13,7 @@ def _scrolled() -> QWidget:
 def _sep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet(
-        "color:#1a1a1a;margin:4px 0;")
+    f.setStyleSheet("margin:4px 0;")
     return f
 
 
@@ -58,7 +57,7 @@ class _SettingsAudioTab:
         f.addRow("", self._refresh_audio_btn)
         self._audio_status_lbl = QLabel("")
         self._audio_status_lbl.setStyleSheet(
-            "color:#888;font-size:10px;")
+            "color:#888;")
         self._audio_status_lbl.setWordWrap(True)
         f.addRow("", self._audio_status_lbl)
 

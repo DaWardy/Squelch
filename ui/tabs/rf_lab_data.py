@@ -39,6 +39,15 @@ BUILTIN_FREQS: list[tuple[int, str, str, str]] = [
     (108_000_000, "FM Band Hi",  "Broadcast","FM broadcast band end (108.0 MHz)"),
 ]
 
+DECODE_MODE_COLORS: dict[str, str] = {
+    "FT8":  "#00aaff",
+    "FT4":  "#0066cc",
+    "WSPR": "#ffcc00",
+    "JS8":  "#22dddd",
+    "CW":   "#ff8800",
+    "APRS": "#ff8844",
+}
+
 CATEGORY_COLORS: dict[str, str] = {
     "Weather":   "#00aaff",
     "Aviation":  "#ffcc00",
@@ -46,5 +55,7 @@ CATEGORY_COLORS: dict[str, str] = {
     "EMS":       "#ff6644",
     "Space":     "#cc88ff",
     "Broadcast": "#aaaaaa",
-    "Custom":    "#3fbe6f",
+    "Custom":       "#3fbe6f",
+    "CHIRP":        "#cc8844",   # imported from CHIRP CSV — distinct warm amber
+    "SDR Bookmark": "#aa44ff",   # exported from SDR signal ID bookmarks
 }

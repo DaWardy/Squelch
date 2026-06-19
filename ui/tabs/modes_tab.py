@@ -91,7 +91,7 @@ WEAK_SIGNAL_BANDS = [
 
 class ModesTab(SquelchPanel, QWidget):
     panel_id    = "modes"
-    panel_title = "Modes"
+    panel_title = "Weak Signal"
 
     def __init__(self, rig, config, log_db=None, parent=None):
         super().__init__(parent)
@@ -252,7 +252,9 @@ class ModesTab(SquelchPanel, QWidget):
         
         self._tune_btn = QPushButton("Tune Rig")
         self._tune_btn.setToolTip(
-            "Set the rig to the calling frequency for this band/mode and key a steady carrier so you can tune your ATU. Transmits — make sure your antenna is connected.")
+            "Set the rig to the calling frequency for this band/mode\n"
+            "and key a steady carrier so you can tune your ATU.\n"
+            "Transmits — make sure your antenna is connected.")
         self._tune_btn.setFixedHeight(26)
         self._tune_btn.clicked.connect(self._tune_rig)
         band_gl.addWidget(self._tune_btn, 2, 0, 1, 2)
@@ -327,7 +329,8 @@ class ModesTab(SquelchPanel, QWidget):
         btn_row1 = QHBoxLayout()
         self._cq_btn = QPushButton("CQ")
         self._cq_btn.setToolTip(
-            "Start calling CQ — broadcasts your callsign and grid to invite contacts. Transmits on the next TX period.")
+            "Start calling CQ — broadcasts your callsign and grid\n"
+            "to invite contacts. Transmits on the next TX period.")
         self._cq_btn.setFixedHeight(30)
         self._cq_btn.setStyleSheet(
             "background:#1a3a1a;color:#3fbe6f;border:1px solid #3fbe6f;"
@@ -336,7 +339,8 @@ class ModesTab(SquelchPanel, QWidget):
         
         self._halt_btn = QPushButton("Halt TX")
         self._halt_btn.setToolTip(
-            "Immediately stop transmitting. Use this to abort a TX cycle at any time.")
+            "Immediately stop transmitting.\n"
+            "Use this to abort a TX cycle at any time.")
         self._halt_btn.setFixedHeight(30)
         self._halt_btn.setStyleSheet(
             "background:#3a1a1a;color:#cc4444;border:1px solid #cc4444;"
@@ -369,30 +373,38 @@ class ModesTab(SquelchPanel, QWidget):
     def _build_tx_checkboxes(self, tx_gl) -> None:
         self._even_cb = QCheckBox("TX even periods")
         self._even_cb.setToolTip(
-            "Transmit on even 15-second periods (00, 30s). Leave unchecked to use odd periods. Pick the opposite of the station you're working.")
+            "Transmit on even 15-second periods (00, 30s).\n"
+            "Leave unchecked to use odd periods.\n"
+            "Pick the opposite of the station you're working.")
         self._even_cb.setChecked(True)
         tx_gl.addWidget(self._even_cb, 2, 0, 1, 2)
         self._auto_seq_cb = QCheckBox("Auto-sequence")
         self._auto_seq_cb.setToolTip(
-            "Let the software automatically step through the QSO exchange (signal report, R+report, 73). Recommended for beginners.")
+            "Let the software automatically step through the QSO\n"
+            "exchange (signal report, R+report, 73).\n"
+            "Recommended for beginners.")
         self._auto_seq_cb.setChecked(True)
         self._auto_seq_cb.toggled.connect(self.ft8_engine.set_auto_sequence)
         tx_gl.addWidget(self._auto_seq_cb, 3, 0, 1, 2)
         self._auto_cq_cb = QCheckBox("Auto CQ")
         self._auto_cq_cb.setToolTip(
-            "Automatically repeat CQ calls until someone answers. Watch the band — don't leave it unattended while transmitting.")
+            "Automatically repeat CQ calls until someone answers.\n"
+            "Watch the band — don't leave it unattended while transmitting.")
         self._auto_cq_cb.setChecked(False)
         self._auto_cq_cb.toggled.connect(self.ft8_engine.set_auto_cq)
         tx_gl.addWidget(self._auto_cq_cb, 4, 0, 1, 2)
         self._hold_tx_cb = QCheckBox("Hold TX frequency")
         self._hold_tx_cb.setToolTip(
-            "Keep your transmit frequency fixed instead of following the station you're answering. Helps avoid being covered by callers.")
+            "Keep your transmit frequency fixed instead of following\n"
+            "the station you're answering.\n"
+            "Helps avoid being covered by callers.")
         self._hold_tx_cb.setChecked(False)
         self._hold_tx_cb.toggled.connect(self.ft8_engine.set_hold_tx_freq)
         tx_gl.addWidget(self._hold_tx_cb, 5, 0, 1, 2)
         self._dx_only_cb = QCheckBox("DX only (skip domestic)")
         self._dx_only_cb.setToolTip(
-            "Only respond to stations outside your own country — useful for chasing DX.")
+            "Only respond to stations outside your own country.\n"
+            "Useful for chasing DX.")
         self._dx_only_cb.setChecked(False)
         self._dx_only_cb.toggled.connect(self.ft8_engine.set_dx_only)
         tx_gl.addWidget(self._dx_only_cb, 6, 0, 1, 2)
@@ -921,8 +933,9 @@ class ModesTab(SquelchPanel, QWidget):
         self._auto_cq_cb.setEnabled(is_weak)
         if is_weak:
             self._auto_seq_cb.setToolTip(
-                "Let the software automatically step through the QSO exchange "
-                "(signal report, R+report, 73). Recommended for beginners.")
+                "Let the software automatically step through the QSO\n"
+                "exchange (signal report, R+report, 73).\n"
+                "Recommended for beginners.")
         else:
             self._auto_seq_cb.setToolTip(
                 "Auto-sequence is only available for FT8, FT4, WSPR, and JS8.")
@@ -1039,6 +1052,19 @@ class ModesTab(SquelchPanel, QWidget):
 
     def _on_ft8_decode(self, decode: DecodedSignal):
         QTimer.singleShot(0, lambda d=decode: self._add_decode(d))
+        # Push to RF Lab decode monitor (best-effort).
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, "_tab_map"):
+                rf_lab = mw._tab_map.get("rf_lab")
+                if rf_lab and hasattr(rf_lab, "append_decode"):
+                    msg = (decode.message or "")[:80]
+                    QTimer.singleShot(0, lambda d=decode, m=msg: rf_lab.append_decode(
+                        "FT8", d.freq_hz,
+                        callsign=d.callsign, message=m,
+                        snr=float(d.snr), grid=d.grid))
+        except Exception:
+            pass
         # Also pin the heard station on the Map tab (if we can resolve its
         # location from the grid). Best-effort — never block decode display.
         try:
@@ -1075,6 +1101,19 @@ class ModesTab(SquelchPanel, QWidget):
             self._log_activity(f"WSPR spot: {s.display}"),
             setattr(self._stat_decodes, "text",
                     str(int(self._stat_decodes.text()) + 1))))
+        # Push to RF Lab decode monitor (best-effort).
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, "_tab_map"):
+                rf_lab = mw._tab_map.get("rf_lab")
+                if rf_lab and hasattr(rf_lab, "append_decode"):
+                    msg = f"{spot.callsign} {spot.grid} {spot.power_dbm}dBm"
+                    QTimer.singleShot(0, lambda s=spot, m=msg: rf_lab.append_decode(
+                        "WSPR", s.freq_hz,
+                        callsign=s.callsign, message=m,
+                        snr=float(s.snr), grid=s.grid))
+        except Exception:
+            pass
 
     def _on_wsjtx_status(self, connected: bool):
         QTimer.singleShot(0, lambda c=connected: self._apply_wsjtx_status(c))

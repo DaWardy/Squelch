@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Squelch — Package Installer
 cd /d "%~dp0"
 color 0A
@@ -31,7 +31,7 @@ if "%1"=="" (
     exit /b 0
 )
 
-if not exist venv\Scripts\pip.exe (
+if not exist ..\venv\Scripts\pip.exe (
     echo.
     echo  ERROR: Squelch venv not found.
     echo  Run installer.py first to set up the venv.
@@ -46,7 +46,7 @@ echo  Into: %cd%\venv
 echo.
 echo  --------------------------------------------------------
 
-venv\Scripts\pip install %* --no-warn-script-location
+..\venv\Scripts\pip install %* --no-warn-script-location
 set RESULT=%ERRORLEVEL%
 
 echo  --------------------------------------------------------

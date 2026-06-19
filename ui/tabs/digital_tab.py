@@ -106,7 +106,7 @@ PROTOCOL_INFO = {
 
 class DigitalTab(SquelchPanel, QWidget):
     panel_id    = "digital"
-    panel_title = "Digital"
+    panel_title = "Voice Digital"
 
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)

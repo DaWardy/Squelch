@@ -167,6 +167,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._auto_range = True
         self._palette    = "Jet"
         self._peak_hold  = False
+        self._y_ref_db   = 0.0   # reference level offset: 0 = dBFS, non-zero = approx dBm
         self._wf_data    = np.full((WF_ROWS, FFT_SIZE // 2), -100.0)
         self._peak_data  = np.full(FFT_SIZE, -100.0)
         self._fft_lock   = threading.Lock()
@@ -178,6 +179,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # Signal routing
         self._route_to_digital = False
         self._decoder_cb       = None
+        # Squelch
+        self._squelch_enabled = False
+        self._squelch_db      = -60.0
+        self._squelch_open    = True   # runtime; True when squelch not active or signal above threshold
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -367,6 +372,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "Save spectrum+waterfall screenshot to Desktop"))
         shot_btn.clicked.connect(self._save_screenshot)
         lay.addWidget(shot_btn)
+        rflab_btn = QPushButton(self.tr("→ RF Lab"))
+        rflab_btn.setFixedWidth(68)
+        rflab_btn.setToolTip(self.tr(
+            "Export signal bookmarks to RF Lab frequency watchlist"))
+        rflab_btn.clicked.connect(self._export_to_rf_lab)
+        lay.addWidget(rflab_btn)
         audio_btn = QPushButton(self.tr("🎙 Rig Audio"))
         audio_btn.setFixedWidth(96)
         audio_btn.setToolTip(self.tr(
@@ -444,9 +455,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._spec_plot.showGrid(x=False, y=True, alpha=0.15)
         self._spec_plot.setMenuEnabled(False)
         self._spec_plot.setMouseEnabled(x=False, y=False)
-        self._spec_plot.getAxis("left").setWidth(40)
+        self._spec_plot.getAxis("left").setWidth(44)
         self._spec_plot.setLabel(
             "left", "dBFS", color="#444", **{"font-size": "9px"})
+        self._spec_plot.getAxis("left").setStyle(tickFont=_small_font())
         self._spec_plot.setLabel(
             "bottom", "MHz", color="#444", **{"font-size": "9px"})
         self._spec_plot.getAxis("bottom").setStyle(tickFont=_small_font())
@@ -465,6 +477,11 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             brush=pg.mkBrush(255, 255, 255, 8))
         self._level_region.sigRegionChanged.connect(self._on_level_region)
         self._spec_plot.addItem(self._level_region)
+        self._squelch_line = pg.InfiniteLine(
+            angle=0, movable=False,
+            pen=pg.mkPen("#ff8800", width=1, style=Qt.PenStyle.DashLine))
+        self._squelch_line.hide()
+        self._spec_plot.addItem(self._squelch_line)
         self._spec_plot.scene().sigMouseClicked.connect(self._on_spec_click)
         self._spec_plot.wheelEvent = self._wheel_waterfall
 
@@ -570,6 +587,22 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._peak_cb = QCheckBox(self.tr("Peak hold"))
         self._peak_cb.toggled.connect(self._on_peak_hold)
         dl.addWidget(self._peak_cb, 3, 0, 1, 3)
+        dl.addWidget(QLabel(self.tr("Ref:")), 4, 0)
+        self._ref_spin = QDoubleSpinBox()
+        self._ref_spin.setRange(-200.0, 100.0)
+        self._ref_spin.setValue(0.0)
+        self._ref_spin.setSuffix(" dB")
+        self._ref_spin.setSingleStep(1.0)
+        self._ref_spin.setFixedWidth(90)
+        self._ref_spin.setToolTip(self.tr(
+            "Reference level offset (0 = dBFS).\n"
+            "Set to your system's noise figure + gain\n"
+            "to display approximate dBm on the Y axis."))
+        self._ref_spin.valueChanged.connect(self._on_ref_level)
+        dl.addWidget(self._ref_spin, 4, 1)
+        self._ref_unit_lbl = QLabel("dBFS")
+        self._ref_unit_lbl.setFixedWidth(40)
+        dl.addWidget(self._ref_unit_lbl, 4, 2)
         return disp_grp
 
     def _build_span_group(self) -> QGroupBox:
@@ -614,6 +647,27 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._route_cb.toggled.connect(
             lambda c: setattr(self, '_route_to_digital', c))
         deml.addWidget(self._route_cb, 2, 0, 1, 2)
+        # Squelch row
+        self._squelch_cb = QCheckBox(self.tr("Squelch"))
+        self._squelch_cb.setToolTip(self.tr(
+            "Suppress routing when signal is below threshold.\n"
+            "Orange dashed line on spectrum shows threshold level."))
+        self._squelch_cb.toggled.connect(self._on_squelch_toggle)
+        deml.addWidget(self._squelch_cb, 3, 0)
+        self._squelch_lbl = QLabel(f"{int(self._squelch_db):+d} dB")
+        self._squelch_lbl.setFixedWidth(52)
+        self._squelch_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        deml.addWidget(self._squelch_lbl, 3, 1)
+        self._squelch_slider = QSlider(Qt.Orientation.Horizontal)
+        self._squelch_slider.setRange(-120, 0)
+        self._squelch_slider.setValue(int(self._squelch_db))
+        self._squelch_slider.setEnabled(False)
+        self._squelch_slider.valueChanged.connect(self._on_squelch_slider)
+        deml.addWidget(self._squelch_slider, 4, 0, 1, 2)
+        self._squelch_ind = QLabel("●")
+        self._squelch_ind.setFixedWidth(16)
+        self._squelch_ind.setToolTip(self.tr("Green = squelch open  Red = squelch closed"))
+        deml.addWidget(self._squelch_ind, 3, 2)
         # TX sub-group — hidden until TX-capable hardware is detected
         self._tx_grp = QGroupBox(self.tr("Transmit"))
         txl = QVBoxLayout(self._tx_grp)
@@ -1184,6 +1238,30 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             if cmap:
                 self._wf_img.setColorMap(cmap)
 
+    def _on_ref_level(self, value: float):
+        self._y_ref_db = value
+        unit = "dBFS" if value == 0.0 else "dBm"
+        self._ref_unit_lbl.setText(unit)
+        if HAS_PG:
+            self._spec_plot.setLabel(
+                "left", unit, color="#444", **{"font-size": "9px"})
+        self._update_axes()
+
+    def _on_squelch_toggle(self, enabled: bool):
+        self._squelch_enabled = enabled
+        self._squelch_slider.setEnabled(enabled)
+        if HAS_PG:
+            self._squelch_line.setVisible(enabled)
+        if not enabled:
+            self._squelch_open = True
+            self._squelch_ind.setStyleSheet("")
+
+    def _on_squelch_slider(self, value: int):
+        self._squelch_db = float(value)
+        self._squelch_lbl.setText(f"{value:+d} dB")
+        if HAS_PG and self._squelch_enabled:
+            self._squelch_line.setValue(self._squelch_db)
+
     def _on_peak_hold(self, enabled: bool):
         self._peak_hold = enabled
         if HAS_PG:
@@ -1331,8 +1409,11 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         if self._recorder.is_recording:
             self._recorder.write_samples(iq)
 
-        # Route to digital if enabled
-        if self._route_to_digital and self._decoder_cb:
+        # Squelch gate — update open/closed state from peak FFT power
+        if self._squelch_enabled:
+            self._squelch_open = float(np.max(fft_db)) >= self._squelch_db
+        # Route to digital if enabled and squelch open
+        if self._route_to_digital and self._decoder_cb and self._squelch_open:
             try:
                 self._decoder_cb(
                     iq, sample_rate, center_hz)
@@ -1357,12 +1438,13 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             (self._center_hz + half) / 1e6,
             len(fft))
 
-        # Spectrum
-        self._spec_curve.setData(freqs, fft)
+        # Spectrum (apply reference level offset for dBm display)
+        ref = self._y_ref_db
+        self._spec_curve.setData(freqs, fft + ref)
 
         # Peak hold
         if self._peak_hold:
-            self._peak_curve.setData(freqs, peak)
+            self._peak_curve.setData(freqs, peak + ref)
 
         # Auto-range
         if self._auto_range:
@@ -1374,6 +1456,15 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             wf.T,
             autoLevels=False,
             levels=(self._floor_db, self._ceiling_db))
+
+        # Squelch indicator (safe to update on UI thread)
+        if self._squelch_enabled:
+            if self._squelch_open:
+                self._squelch_ind.setStyleSheet("color:#3fbe6f;")
+                self._squelch_ind.setToolTip(self.tr("Squelch OPEN — signal above threshold"))
+            else:
+                self._squelch_ind.setStyleSheet("color:#cc4444;")
+                self._squelch_ind.setToolTip(self.tr("Squelch CLOSED — signal below threshold"))
 
         # Recording status
         if self._recorder.is_recording:
@@ -1392,7 +1483,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         hi_mhz = (self._center_hz + half) / 1e6
         self._spec_plot.setXRange(lo_mhz, hi_mhz, padding=0)
         self._spec_plot.setYRange(
-            self._floor_db, self._ceiling_db, padding=0)
+            self._floor_db + self._y_ref_db,
+            self._ceiling_db + self._y_ref_db, padding=0)
         self._wf_img.setRect(
             QRectF(lo_mhz, 0, hi_mhz - lo_mhz, WF_ROWS))
         self._wf_plot.setXRange(lo_mhz, hi_mhz, padding=0)
@@ -1429,14 +1521,17 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
     def save_state(self) -> dict:
         return {
-            "center_hz": self._center_hz,
-            "span":      self._span_combo.currentText(),
-            "gain":      self._gain_slider.value(),
-            "ppm":       self._ppm_spin.value(),
-            "palette":   self._palette,
-            "floor_db":  self._floor_db,
-            "ceil_db":   self._ceiling_db,
-            "peak_hold": self._peak_hold,
+            "center_hz":       self._center_hz,
+            "span":            self._span_combo.currentText(),
+            "gain":            self._gain_slider.value(),
+            "ppm":             self._ppm_spin.value(),
+            "palette":         self._palette,
+            "floor_db":        self._floor_db,
+            "ceil_db":         self._ceiling_db,
+            "peak_hold":       self._peak_hold,
+            "y_ref_db":        self._y_ref_db,
+            "squelch_enabled": self._squelch_enabled,
+            "squelch_db":      self._squelch_db,
         }
 
     def restore_state(self, state: dict) -> None:
@@ -1455,6 +1550,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._ceil_spin.setValue(float(state["ceil_db"]))
         if "peak_hold" in state:
             self._peak_cb.setChecked(bool(state["peak_hold"]))
+        if "y_ref_db" in state:
+            self._ref_spin.setValue(float(state["y_ref_db"]))
+        if "squelch_db" in state:
+            self._squelch_slider.setValue(int(state["squelch_db"]))
+        if "squelch_enabled" in state:
+            self._squelch_cb.setChecked(bool(state["squelch_enabled"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

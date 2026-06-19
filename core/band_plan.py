@@ -45,6 +45,13 @@ class SegType:
     GUARD       = "Guard/EmComm"
     MIXED       = "Mixed"
     NOVICE      = "Novice/Tech"
+    # Non-amateur service types
+    FRS        = "FRS"
+    GMRS_CHAN  = "GMRS"
+    CB         = "CB"
+    MURS       = "MURS"
+    ISM        = "ISM/Unlicensed"
+    WIFI       = "Wi-Fi/BT"
 
 
 # Segment colors (RGBA hex strings for pyqtgraph)
@@ -63,6 +70,13 @@ SEG_COLORS = {
     SegType.GUARD:       "#ff444480",   # red
     SegType.MIXED:       "#66886680",   # muted green
     SegType.NOVICE:      "#44668880",   # muted blue
+    # Service band colors
+    SegType.FRS:         "#ffaa4480",   # warm orange
+    SegType.GMRS_CHAN:   "#ff884480",   # deeper orange
+    SegType.CB:          "#ddaa2280",   # golden amber
+    SegType.MURS:        "#aa88dd80",   # muted purple
+    SegType.ISM:         "#88bb3380",   # olive green
+    SegType.WIFI:        "#44aadd80",   # bright blue
 }
 
 # License class privileges
@@ -72,6 +86,9 @@ class License:
     EXTRA      = "Extra"
     ALL        = "All"
     NOVICE     = "Novice"
+    # Service band license types (non-amateur)
+    NONE       = "None required"
+    GMRS_LIC   = "GMRS License"
 
 
 @dataclass
@@ -109,6 +126,7 @@ class Band:
     freq_hi:  int         # Hz
     segments: list        # list of BandSegment
     notes:    str = ""
+    category: str = "Amateur"  # "Amateur", "CB", "FRS/GMRS", "MURS", "ISM/Unlicensed"
 
     def segment_at(self, freq_hz: int) -> BandSegment | None:
         for s in self.segments:
@@ -444,9 +462,254 @@ BANDS: list[Band] = [
                     "FM repeater inputs",
                     "447-450 MHz\nFM repeater inputs"),
     ]),
+
+    Band("1.25m", 222_000_000, 225_000_000, [
+        BandSegment(222_000_000, 222_025_000, SegType.CW,      License.ALL,
+                    "CW / EME",
+                    "222.000-222.025 MHz\nCW and weak signal\n"
+                    "Secondary US allocation — must accept primary-user interference"),
+        BandSegment(222_025_000, 222_150_000, SegType.MIXED,   License.ALL,
+                    "Weak signal SSB/CW/Digital",
+                    "222.025-222.150 MHz\nSSB, CW, digital weak signal\n"
+                    "222.100 MHz: National calling frequency (SSB)"),
+        BandSegment(222_150_000, 223_380_000, SegType.MIXED,   License.ALL,
+                    "All modes",
+                    "222.150-223.380 MHz\nAll modes\n"
+                    "222.340 MHz: Packet calling\n223.500 MHz: FM simplex calling"),
+        BandSegment(223_380_000, 223_520_000, SegType.CALLING, License.ALL,
+                    "FM simplex calling area",
+                    "223.380-223.520 MHz\n223.500 MHz: National FM simplex calling"),
+        BandSegment(223_520_000, 225_000_000, SegType.REPEATER, License.ALL,
+                    "FM repeater outputs",
+                    "223.520-225.000 MHz\nFM repeater outputs\n1.6 MHz split"),
+    ], notes="222-225 MHz — USA only; secondary allocation (Technician+)"),
+
+    Band("33cm", 902_000_000, 928_000_000, [
+        BandSegment(902_000_000, 902_250_000, SegType.CW,      License.ALL,
+                    "CW / EME / weak signal",
+                    "902.000-902.250 MHz\nCW, EME, weak signal\n"
+                    "902.100 MHz: National calling (CW/SSB)"),
+        BandSegment(902_250_000, 906_000_000, SegType.MIXED,   License.ALL,
+                    "All modes",
+                    "902.250-906.000 MHz\nAll modes\n"
+                    "Heavily shared with ISM Part 15 devices"),
+        BandSegment(906_000_000, 909_000_000, SegType.DIGITAL, License.ALL,
+                    "Packet / digital",
+                    "906-909 MHz\nPacket, AX.25, digital nodes"),
+        BandSegment(909_000_000, 921_000_000, SegType.MIXED,   License.ALL,
+                    "All modes / ATV / experimental",
+                    "909-921 MHz\nAll modes, ATV, experimental\n"
+                    "Heavy ISM sharing in 915 MHz region"),
+        BandSegment(921_000_000, 928_000_000, SegType.REPEATER, License.ALL,
+                    "FM repeater outputs",
+                    "921-928 MHz\nFM repeater outputs\n25 MHz split"),
+    ], notes="902-928 MHz — 33cm band; primary shared with ISM (Technician+)"),
+
+    Band("23cm", 1_240_000_000, 1_300_000_000, [
+        BandSegment(1_240_000_000, 1_246_000_000, SegType.IMAGE,    License.ALL,
+                    "ATV / fast-scan TV",
+                    "1240-1246 MHz\nAmateur Television (ATV)\nFast-scan TV transmissions"),
+        BandSegment(1_246_000_000, 1_252_000_000, SegType.MIXED,    License.ALL,
+                    "Weak signal / all modes",
+                    "1246-1252 MHz\nSSB, CW, digital, all modes\n"
+                    "1296.100 MHz: National calling (SSB)"),
+        BandSegment(1_252_000_000, 1_258_000_000, SegType.IMAGE,    License.ALL,
+                    "ATV",
+                    "1252-1258 MHz\nAmateur Television"),
+        BandSegment(1_260_000_000, 1_270_000_000, SegType.SATELLITE, License.ALL,
+                    "Satellite uplink",
+                    "1260-1270 MHz\nSatellite uplink\nPrimary for satellite service"),
+        BandSegment(1_270_000_000, 1_276_000_000, SegType.REPEATER, License.ALL,
+                    "FM repeaters",
+                    "1270-1276 MHz\nFM repeater outputs"),
+        BandSegment(1_282_000_000, 1_288_000_000, SegType.REPEATER, License.ALL,
+                    "FM repeaters",
+                    "1282-1288 MHz\nFM repeater outputs"),
+        BandSegment(1_294_000_000, 1_300_000_000, SegType.PHONE,    License.ALL,
+                    "FM simplex",
+                    "1294-1300 MHz\nFM simplex\n1294.500 MHz: National calling"),
+    ], notes="1240-1300 MHz — 23cm band; secondary allocation in USA (Technician+)"),
+
+    Band("13cm", 2_300_000_000, 2_450_000_000, [
+        BandSegment(2_300_000_000, 2_310_000_000, SegType.MIXED,    License.ALL,
+                    "2300-2310 MHz",
+                    "2300-2310 MHz\n13cm lower allocation\nAll modes\n"
+                    "2304.100 MHz: National calling (SSB)"),
+        BandSegment(2_390_000_000, 2_417_000_000, SegType.MIXED,    License.ALL,
+                    "2390-2417 MHz",
+                    "2390-2417 MHz\n13cm upper allocation\nAll modes\n"
+                    "Shares spectrum with ISM 2.4 GHz (2400-2483.5 MHz)"),
+        BandSegment(2_417_000_000, 2_450_000_000, SegType.IMAGE,    License.ALL,
+                    "ATV / 2417-2450 MHz",
+                    "2417-2450 MHz\nAmateur Television (ATV)\n"
+                    "Heavy ISM 2.4 GHz device sharing"),
+    ], notes="2300-2310 + 2390-2450 MHz — 13cm band; gap between sub-bands (Technician+)"),
 ]
 
+
+# ── Non-Amateur Service Bands ─────────────────────────────────────────────
+# CB (Part 95), FRS/GMRS (Part 95), MURS (Part 95), ISM/Unlicensed (Part 15)
+
+SERVICE_BANDS: list[Band] = [
+
+    Band("CB (11m)", 26_965_000, 27_405_000, [
+        BandSegment(26_965_000, 27_045_000, SegType.CB,    License.NONE,
+                    "Channels 1-8 — AM",
+                    "CB Channels 1-8\n26.965-27.045 MHz\n"
+                    "AM only, 4W max\nNo license required since 1984"),
+        BandSegment(27_045_000, 27_085_000, SegType.GUARD, License.NONE,
+                    "Channel 9 — Emergency",
+                    "CB Channel 9: 27.065 MHz\nEmergency / motorist assistance\n"
+                    "Monitored by REACT and some law enforcement"),
+        BandSegment(27_085_000, 27_165_000, SegType.CB,    License.NONE,
+                    "Channels 10-17 — AM",
+                    "CB Channels 10-17\n27.085-27.165 MHz\nAM only"),
+        BandSegment(27_165_000, 27_205_000, SegType.CALLING, License.NONE,
+                    "Channel 19 — Highway calling",
+                    "CB Channel 19: 27.185 MHz\nHighway trucker calling frequency\n"
+                    "Most widely monitored CB frequency\nAM only"),
+        BandSegment(27_205_000, 27_305_000, SegType.CB,    License.NONE,
+                    "Channels 20-35 — AM",
+                    "CB Channels 20-35\n27.205-27.305 MHz\nAM only"),
+        BandSegment(27_305_000, 27_405_000, SegType.CB,    License.NONE,
+                    "Channels 36-40 — AM/SSB",
+                    "CB Channels 36-40\n27.305-27.405 MHz\n"
+                    "SSB (USB) allowed — commonly used for long-range contacts\n"
+                    "AM also permitted\nCh.36-38: often used for SSB"),
+    ], notes="Citizens Band — 40 channels, AM (+ SSB on 36-40), no license (USA)",
+       category="CB"),
+
+    Band("MURS", 151_820_000, 154_600_000, [
+        BandSegment(151_820_000, 151_940_000, SegType.MURS, License.NONE,
+                    "MURS Ch.1-3 (151 MHz)",
+                    "MURS Channels 1-3\n"
+                    "151.820, 151.880, 151.940 MHz\n"
+                    "2W max, 11.25 kHz bandwidth\nNo license required"),
+        BandSegment(154_570_000, 154_600_000, SegType.MURS, License.NONE,
+                    "MURS Ch.4-5 (154 MHz)",
+                    "MURS Channels 4-5\n"
+                    "154.570, 154.600 MHz\n"
+                    "2W max, 20 kHz bandwidth\nNo license required"),
+    ], notes="Multi-Use Radio Service — 5 channels, 2W max, no license (USA)",
+       category="MURS"),
+
+    Band("FRS / GMRS", 462_550_000, 467_725_000, [
+        BandSegment(462_550_000, 462_725_000, SegType.FRS,      License.NONE,
+                    "FRS Ch.1-7, 15-22 (462 MHz)",
+                    "FRS/GMRS Shared — 462 MHz channels\n"
+                    "Ch.1-7: 462.5625-462.7125 MHz (FRS 2W / GMRS up to 5W)\n"
+                    "Ch.15-22: 462.550-462.725 MHz (FRS 2W / GMRS up to 50W)\n"
+                    "FRS: no license\nGMRS: FCC license required (no test)"),
+        BandSegment(467_562_500, 467_712_500, SegType.FRS,      License.NONE,
+                    "FRS Ch.8-14 (467 MHz)",
+                    "FRS Only — 467 MHz channels\n"
+                    "Ch.8-14: 467.5625-467.7125 MHz\n"
+                    "0.5W max — FRS only, not GMRS\nNo license required"),
+        BandSegment(467_550_000, 467_725_000, SegType.GMRS_CHAN, License.GMRS_LIC,
+                    "GMRS repeater inputs (467 MHz)",
+                    "GMRS Repeater Inputs — 467 MHz\n"
+                    "Inputs for GMRS repeaters\nCorresponds to 462 MHz outputs\n"
+                    "GMRS license required"),
+    ], notes="FRS (22 channels, no license) + GMRS (license required, no test) — 462/467 MHz",
+       category="FRS/GMRS"),
+
+    Band("ISM 27 MHz", 26_957_000, 27_283_000, [
+        BandSegment(26_957_000, 27_283_000, SegType.ISM, License.NONE,
+                    "ISM 27 MHz — RC, home devices",
+                    "ISM 27 MHz band: 26.957-27.283 MHz\n"
+                    "RC models (27.145 MHz), garage door openers,\n"
+                    "baby monitors, older cordless phones\n"
+                    "Note: overlaps with CB 11m band (26.965-27.405 MHz)"),
+    ], notes="ISM 27 MHz — unlicensed devices (RC, home electronics)", category="ISM/Unlicensed"),
+
+    Band("ISM 433 MHz", 433_050_000, 434_790_000, [
+        BandSegment(433_050_000, 434_790_000, SegType.ISM, License.NONE,
+                    "ISM 433 MHz — sensors, keyfobs, LoRa",
+                    "ISM 433 MHz: 433.050-434.790 MHz\n"
+                    "EU/worldwide unlicensed: keyfobs, sensors, LoRa 433\n"
+                    "433.920 MHz: ISM calling frequency\n"
+                    "NOT an ISM band in the USA\n"
+                    "Note: overlaps with amateur 70cm band (420-450 MHz)"),
+    ], notes="ISM 433 MHz — EU/worldwide unlicensed (NOT US ISM)", category="ISM/Unlicensed"),
+
+    Band("ISM 900 MHz", 902_000_000, 928_000_000, [
+        BandSegment(902_000_000, 915_000_000, SegType.ISM, License.NONE,
+                    "LoRa/LoRaWAN, Wi-Fi HaLow (lower)",
+                    "ISM 902-915 MHz\nLoRa, LoRaWAN (915 band), Wi-Fi HaLow\n"
+                    "Zigbee 915, Z-Wave 908 MHz\n"
+                    "Note: overlaps with amateur 33cm band (902-928 MHz)"),
+        BandSegment(915_000_000, 928_000_000, SegType.ISM, License.NONE,
+                    "ISM 915-928 MHz — smart devices",
+                    "ISM 915-928 MHz\nSmart meters (AMI), RFID tags,\n"
+                    "medical telemetry, baby monitors, wireless microphones\n"
+                    "LPWAN (Sigfox, NB-IoT sub-GHz)"),
+    ], notes="ISM 902-928 MHz — unlicensed USA; overlaps amateur 33cm band", category="ISM/Unlicensed"),
+
+    Band("ISM 2.4 GHz", 2_400_000_000, 2_483_500_000, [
+        BandSegment(2_400_000_000, 2_412_000_000, SegType.WIFI, License.NONE,
+                    "Wi-Fi Ch.1 / Bluetooth",
+                    "2400-2412 MHz\nWi-Fi channel 1\nBluetooth Classic / BLE lower"),
+        BandSegment(2_412_000_000, 2_472_000_000, SegType.WIFI, License.NONE,
+                    "Wi-Fi 2.4 GHz Ch.1-13",
+                    "2412-2472 MHz\nWi-Fi 802.11b/g/n/ax — channels 1-13\n"
+                    "2.437 GHz: channel 6 (US default)\n"
+                    "Zigbee, Z-Wave 2.4 GHz, Wi-Fi calling"),
+        BandSegment(2_472_000_000, 2_483_500_000, SegType.ISM, License.NONE,
+                    "Bluetooth / BLE / Zigbee upper",
+                    "2472-2483.5 MHz\nBluetooth Classic + BLE upper channels\n"
+                    "Zigbee, IEEE 802.15.4 channels 25-26"),
+    ], notes="ISM 2.4 GHz — Wi-Fi, Bluetooth, BLE, Zigbee (worldwide)", category="ISM/Unlicensed"),
+
+    Band("UNII 5 GHz", 5_150_000_000, 5_925_000_000, [
+        BandSegment(5_150_000_000, 5_250_000_000, SegType.WIFI, License.NONE,
+                    "UNII-1 — indoor only",
+                    "5.150-5.250 GHz\nUNII-1: indoor only\n"
+                    "Wi-Fi 802.11a/n/ac/ax channels 36-48\nMax 200 mW EIRP"),
+        BandSegment(5_250_000_000, 5_350_000_000, SegType.WIFI, License.NONE,
+                    "UNII-2A — DFS required",
+                    "5.250-5.350 GHz\nUNII-2A: outdoor allowed\n"
+                    "Wi-Fi channels 52-64\nDFS (Dynamic Frequency Selection) required"),
+        BandSegment(5_470_000_000, 5_725_000_000, SegType.WIFI, License.NONE,
+                    "UNII-2C — DFS",
+                    "5.470-5.725 GHz\nUNII-2C: Wi-Fi with DFS\n"
+                    "Channels 100-144\nRadar avoidance required"),
+        BandSegment(5_725_000_000, 5_850_000_000, SegType.ISM, License.NONE,
+                    "UNII-3 / ISM 5.8 GHz",
+                    "5.725-5.850 GHz\nISM 5.8 GHz + UNII-3\n"
+                    "Wi-Fi channels 149-165\nCordless phones (5.8 GHz DECT),\n"
+                    "backhaul microwave links"),
+        BandSegment(5_850_000_000, 5_925_000_000, SegType.WIFI, License.NONE,
+                    "UNII-4",
+                    "5.850-5.925 GHz\nUNII-4: expanded Wi-Fi (post-2020)\n"
+                    "Previously DSRC vehicle communications band"),
+    ], notes="UNII/ISM 5 GHz — Wi-Fi 5 GHz (802.11a/n/ac/ax)", category="ISM/Unlicensed"),
+
+    Band("Wi-Fi 6 GHz", 5_925_000_000, 7_125_000_000, [
+        BandSegment(5_925_000_000, 6_425_000_000, SegType.WIFI, License.NONE,
+                    "UNII-5 — Wi-Fi 6E low",
+                    "5.925-6.425 GHz\nUNII-5: Wi-Fi 6E/7 indoor\n"
+                    "Channels 1-93 (20/40/80/160 MHz)\nMax 30 dBm EIRP indoor"),
+        BandSegment(6_425_000_000, 6_525_000_000, SegType.WIFI, License.NONE,
+                    "UNII-6",
+                    "6.425-6.525 GHz\nUNII-6: restricted power\n"
+                    "Standard power access points"),
+        BandSegment(6_525_000_000, 6_875_000_000, SegType.WIFI, License.NONE,
+                    "UNII-7 — Wi-Fi 6E upper",
+                    "6.525-6.875 GHz\nUNII-7: higher power outdoor allowed\n"
+                    "Wi-Fi 6E channels — 160 MHz wide channels available"),
+        BandSegment(6_875_000_000, 7_125_000_000, SegType.WIFI, License.NONE,
+                    "UNII-8 — Wi-Fi 7",
+                    "6.875-7.125 GHz\nUNII-8: Wi-Fi 7 (802.11be)\n"
+                    "320 MHz channels enabled in this range"),
+    ], notes="6 GHz Wi-Fi (Wi-Fi 6E / Wi-Fi 7) — USA unlicensed (FCC 2020)", category="ISM/Unlicensed"),
+]
+
+# Combined list for dialogs / reference tools
+ALL_BANDS: list[Band] = BANDS + SERVICE_BANDS
+
 # ── Quick lookup structures ───────────────────────────────────────────────
+# _BAND_BY_NAME / _BANDS_SORTED cover amateur BANDS only (for VFO lookups).
+# Use ALL_BANDS for reference dialogs that include service allocations.
 
 _BAND_BY_NAME: dict[str, Band] = {b.name: b for b in BANDS}
 _BANDS_SORTED: list[Band] = sorted(BANDS, key=lambda b: b.freq_lo)
@@ -554,7 +817,7 @@ DIGITAL_FREQS: dict[str, list[tuple[str, int]]] = {
 }
 
 # ── BAND_EDGES dict for compatibility with rig_tab and other modules ──────
-# Derived from BANDS list above
+# Amateur bands only — excludes SERVICE_BANDS intentionally (VFO / rig use).
 BAND_EDGES: dict[str, tuple[int, int]] = {
     b.name: (b.freq_lo, b.freq_hi) for b in BANDS
 }

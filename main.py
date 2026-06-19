@@ -1,3 +1,4 @@
+# Entry point — run this file or use run_squelch.bat
 # Squelch — Amateur Radio Operations Platform
 # Copyright (C) 2026  github.com/dawardy/squelch
 #

@@ -16,13 +16,15 @@ controls. This tab is a pure receive/monitor panel.
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QLineEdit, QComboBox, QGroupBox, QSplitter, QFrame, QMessageBox,
-    QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox
+    QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox,
+    QTextEdit,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
@@ -30,6 +32,7 @@ from PyQt6.QtGui import QColor, QFont
 from ui.panel import SquelchPanel
 from ui.tabs.rf_lab_data import BUILTIN_FREQS as _BUILTIN_FREQS
 from ui.tabs.rf_lab_data import CATEGORY_COLORS as _CATEGORY_COLORS
+from ui.tabs.rf_lab_data import DECODE_MODE_COLORS as _DECODE_MODE_COLORS
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +56,8 @@ class RFLabTab(SquelchPanel, QWidget):
         super().__init__(parent)
         self.cfg = cfg
         self._custom_freqs: list[tuple[int, str, str, str]] = []
+        self._decode_entries: list[tuple] = []
+        self._splitter: QSplitter | None = None
         self._build()
 
     # ── Build ─────────────────────────────────────────────────────────────
@@ -62,9 +67,72 @@ class RFLabTab(SquelchPanel, QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addWidget(self._build_header())
-        root.addWidget(self._build_toolbar())
-        root.addWidget(self._build_table(), 1)
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
+        self._splitter.addWidget(self._build_decode_monitor())
+        self._splitter.addWidget(self._build_freq_section())
+        self._splitter.setSizes([220, 400])
+        self._splitter.setChildrenCollapsible(False)
+        root.addWidget(self._splitter, 1)
         root.addWidget(self._build_status_bar())
+
+    def _build_freq_section(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self._build_toolbar())
+        lay.addWidget(self._build_table(), 1)
+        return w
+
+    def _build_decode_monitor(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self._build_decode_header())
+        self._decode_view = QTextEdit()
+        self._decode_view.setReadOnly(True)
+        self._decode_view.setFont(QFont("Courier New", 10))
+        self._decode_view.setStyleSheet(
+            "QTextEdit{background:#050505;border:none;"
+            "border-bottom:1px solid #2a2a2a;}")
+        self._decode_view.setPlaceholderText(
+            "  Decoded signals will appear here as the SDR receives them…")
+        lay.addWidget(self._decode_view, 1)
+        return w
+
+    def _build_decode_header(self) -> QFrame:
+        bar = QFrame()
+        bar.setObjectName("decode_hdr")
+        bar.setStyleSheet(
+            "QFrame#decode_hdr{"
+            "border-bottom:1px solid #2a2a2a;padding:2px 8px;}")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(8)
+        lbl = QLabel("📡  Live Decode Monitor")
+        lbl.setStyleSheet("font-weight:bold;color:#3fbe6f;")
+        lay.addWidget(lbl)
+        rx_badge = QLabel("RX ONLY")
+        rx_badge.setStyleSheet(
+            "background:#1a3a1a;color:#3fbe6f;"
+            "border:1px solid #3fbe6f;border-radius:3px;"
+            "padding:1px 6px;font-size:9px;")
+        lay.addWidget(rx_badge)
+        lay.addStretch()
+        self._decode_mode_filter = QComboBox()
+        self._decode_mode_filter.addItem("All modes")
+        for m in ["FT8", "FT4", "WSPR", "JS8", "CW", "APRS"]:
+            self._decode_mode_filter.addItem(m)
+        self._decode_mode_filter.setToolTip("Filter by mode")
+        self._decode_mode_filter.currentTextChanged.connect(
+            self._refresh_decode_view)
+        lay.addWidget(self._decode_mode_filter)
+        clear_btn = QPushButton("Clear")
+        clear_btn.setFixedWidth(60)
+        clear_btn.clicked.connect(self._clear_decodes)
+        lay.addWidget(clear_btn)
+        return bar
 
     def _build_header(self) -> QFrame:
         bar = QFrame()
@@ -117,6 +185,13 @@ class RFLabTab(SquelchPanel, QWidget):
         add_btn.setToolTip("Add a custom frequency to the watchlist")
         add_btn.clicked.connect(self._add_custom_freq)
         lay.addWidget(add_btn)
+
+        chirp_btn = QPushButton("Import CHIRP CSV…")
+        chirp_btn.setToolTip(
+            "Import channels from a CHIRP-exported CSV file\n"
+            "(no token or internet required)")
+        chirp_btn.clicked.connect(self._import_chirp)
+        lay.addWidget(chirp_btn)
 
         remove_btn = QPushButton("Remove")
         remove_btn.setToolTip("Remove selected custom frequency")
@@ -252,6 +327,57 @@ class RFLabTab(SquelchPanel, QWidget):
                 f"{total} monitoring frequencies loaded  |  "
                 "TX available via SDR tab (USRP/HackRF only)")
 
+    def _import_chirp(self):
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import CHIRP CSV", "",
+            "CHIRP CSV (*.csv);;All Files (*)")
+        if not path:
+            return
+        try:
+            from network.chirp_import import parse_chirp_csv
+            repeaters = parse_chirp_csv(path)
+        except Exception as e:
+            QMessageBox.warning(self, "Import Error",
+                                f"Could not read CHIRP CSV:\n{e}")
+            return
+        added = 0
+        for r in repeaters:
+            hz = int(round(r.output_mhz * 1_000_000))
+            if hz <= 0:
+                continue
+            name = (r.callsign or "").strip() or "Unnamed"
+            desc = (r.notes or r.city or "").strip()
+            if any(f[0] == hz and f[1] == name for f in self._custom_freqs):
+                continue
+            self._custom_freqs.append((hz, name, "CHIRP", desc))
+            added += 1
+        self._populate_table()
+        total = len(_BUILTIN_FREQS) + len(self._custom_freqs)
+        self._status_lbl.setText(
+            f"Imported {added} channels from CHIRP — {total} total  |  "
+            "TX available via SDR tab (USRP/HackRF only)")
+
+    def add_custom_freqs_batch(self, entries: list) -> tuple:
+        """Add (freq_hz, name, category, desc) entries, skipping exact duplicates.
+
+        Returns (added_count, skipped_count).
+        """
+        added = skipped = 0
+        for hz, name, cat, desc in entries:
+            if any(f[0] == hz and f[1] == name for f in self._custom_freqs):
+                skipped += 1
+                continue
+            self._custom_freqs.append((hz, name, cat, desc))
+            added += 1
+        if added:
+            self._populate_table()
+            total = len(_BUILTIN_FREQS) + len(self._custom_freqs)
+            self._status_lbl.setText(
+                f"Added {added} SDR bookmark(s) to watchlist — {total} total  |  "
+                "TX available via SDR tab (USRP/HackRF only)")
+        return added, skipped
+
     def _remove_selected(self):
         rows = self._table.selectedItems()
         if not rows:
@@ -272,23 +398,79 @@ class RFLabTab(SquelchPanel, QWidget):
             return
         self._populate_table()
 
+    # ── Decode monitor ────────────────────────────────────────────────────
+
+    def append_decode(self, mode: str, freq_hz: int,
+                      callsign: str = "", message: str = "",
+                      snr: float = 0.0, grid: str = "") -> None:
+        """Add a decoded signal entry. Called by FT8/WSPR/APRS decoders."""
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%SZ")
+        entry = (ts, mode.upper(), int(freq_hz),
+                 callsign, grid, message, snr)
+        self._decode_entries.append(entry)
+        if len(self._decode_entries) > 500:
+            self._decode_entries = self._decode_entries[-500:]
+        filt = getattr(self, "_decode_mode_filter", None)
+        sel = filt.currentText() if filt else "All modes"
+        if sel not in ("All modes", "") and mode.upper() != sel:
+            return
+        self._append_decode_line(entry)
+
+    def _append_decode_line(self, entry: tuple) -> None:
+        ts, mode, freq_hz, callsign, grid, message, snr = entry
+        freq_mhz = freq_hz / 1e6
+        col = _DECODE_MODE_COLORS.get(mode, "#aaaaaa")
+        snr_str = f"{snr:+.0f}dB" if snr != 0.0 else ""
+        parts = [p for p in (callsign, grid, message, snr_str) if p]
+        text = "  ".join(parts)
+        line = (
+            f'<span style="color:#444">{ts}</span>'
+            f' <span style="color:{col};font-weight:bold">'
+            f'{mode[:6]}</span>'
+            f' <span style="color:#555">{freq_mhz:.4f}</span>'
+            f' <span style="color:#ccc">{text}</span>'
+        )
+        self._decode_view.append(line)
+        sb = self._decode_view.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def _refresh_decode_view(self) -> None:
+        self._decode_view.clear()
+        filt = self._decode_mode_filter.currentText()
+        for entry in self._decode_entries:
+            _, mode, *_ = entry
+            if filt not in ("All modes", "") and mode != filt:
+                continue
+            self._append_decode_line(entry)
+
+    def _clear_decodes(self) -> None:
+        self._decode_entries.clear()
+        self._decode_view.clear()
+
     # ── Persistence ───────────────────────────────────────────────────────
 
     def save_state(self) -> dict:
+        sizes = (self._splitter.sizes()
+                 if self._splitter else [220, 400])
         return {
             "custom_freqs": [
                 {"hz": hz, "name": name, "cat": cat, "desc": desc}
                 for hz, name, cat, desc in self._custom_freqs
-            ]
+            ],
+            "splitter_sizes": sizes,
         }
 
     def restore_state(self, state: dict) -> None:
         self._custom_freqs = [
-            (int(f["hz"]), f.get("name", ""), f.get("cat", "Custom"), f.get("desc", ""))
+            (int(f["hz"]), f.get("name", ""), f.get("cat", "Custom"),
+             f.get("desc", ""))
             for f in state.get("custom_freqs", [])
         ]
         if self._custom_freqs:
             self._populate_table()
+        sizes = state.get("splitter_sizes")
+        if sizes and self._splitter and len(sizes) == 2:
+            self._splitter.setSizes(sizes)
 
 
 class _AddFreqDialog(QDialog):

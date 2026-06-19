@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Squelch - SoapySDR Fix
 cd /d "%~dp0"
 echo.
@@ -6,21 +6,21 @@ echo  Squelch SoapySDR Fix
 echo  ====================
 echo.
 
-if not exist venv\Scripts\python.exe (
+if not exist ..\venv\Scripts\python.exe (
     echo  ERROR: venv not found. Run run_installer.bat first.
     echo.
     pause & exit /b 1
 )
 
 :: Get site-packages using sysconfig
-for /f "delims=" %%S in ('venv\Scripts\python.exe -c "import sysconfig; print(sysconfig.get_path(chr(112)+chr(117)+chr(114)+chr(101)+chr(108)+chr(105)+chr(98)))"') do set "SITE=%%S"
+for /f "delims=" %%S in ('..\venv\Scripts\python.exe -c "import sysconfig; print(sysconfig.get_path(chr(112)+chr(117)+chr(114)+chr(101)+chr(108)+chr(105)+chr(98)))"') do set "SITE=%%S"
 
 :: Fallback
-if not defined SITE set "SITE=%~dp0venv\Lib\site-packages"
-if not exist "%SITE%" set "SITE=%~dp0venv\Lib\site-packages"
+if not defined SITE set "SITE=%~dp0..\venv\Lib\site-packages"
+if not exist "%SITE%" set "SITE=%~dp0..\venv\Lib\site-packages"
 
 echo  Venv Python:
-venv\Scripts\python.exe --version
+..\venv\Scripts\python.exe --version
 echo  Site-packages: %SITE%
 echo.
 
@@ -31,10 +31,10 @@ if not exist "%SITE%" (
 )
 
 :: Test if already working
-venv\Scripts\python.exe -c "import SoapySDR; print(SoapySDR.getAPIVersion())" 2>nul
+..\venv\Scripts\python.exe -c "import SoapySDR; print(SoapySDR.getAPIVersion())" 2>nul
 if %ERRORLEVEL% EQU 0 (
     echo  SoapySDR already working.
-    venv\Scripts\python.exe -c "import SoapySDR; d=SoapySDR.Device.enumerate(); print(str(len(d))+' device(s) found')"
+    ..\venv\Scripts\python.exe -c "import SoapySDR; d=SoapySDR.Device.enumerate(); print(str(len(d))+' device(s) found')"
     echo.
     pause & exit /b 0
 )
@@ -69,7 +69,7 @@ if not defined SOAPYFOUND (
 echo  Found: %SOAPYFOUND%
 
 :: Version check
-for /f "delims=" %%V in ('venv\Scripts\python.exe -c "import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))"') do set "VENVVER=%%V"
+for /f "delims=" %%V in ('..\venv\Scripts\python.exe -c "import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))"') do set "VENVVER=%%V"
 echo  Venv Python version tag: cp%VENVVER%
 
 :: Check .pyd file version
@@ -142,7 +142,7 @@ if "%PLUGINS_FOUND%"=="0" (
 
 echo.
 echo  Verifying...
-venv\Scripts\python.exe -c "import SoapySDR; print('  SoapySDR '+SoapySDR.getAPIVersion()+' working'); d=SoapySDR.Device.enumerate(); print('  Devices: '+str(len(d))+(str([str(x.get('label',x.get('driver','?'))) for x in d]) if d else ' -- none detected (check USB connection)'))"
+..\venv\Scripts\python.exe -c "import SoapySDR; print('  SoapySDR '+SoapySDR.getAPIVersion()+' working'); d=SoapySDR.Device.enumerate(); print('  Devices: '+str(len(d))+(str([str(x.get('label',x.get('driver','?'))) for x in d]) if d else ' -- none detected (check USB connection)'))"
 if %ERRORLEVEL% EQU 0 (
     echo.
     echo  SUCCESS. Restart Squelch.
@@ -156,7 +156,7 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo  FAILED. Check that Python versions match:
-    venv\Scripts\python.exe --version
+    ..\venv\Scripts\python.exe --version
     echo  .pyd built for: %PYDNAME%
     echo.
     echo  If versions differ: run recreate_venv.bat

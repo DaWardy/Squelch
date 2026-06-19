@@ -71,14 +71,24 @@ class _SettingsSdrTab:
             f"QCheckBox::indicator:disabled{{background:{_t2.bg_secondary};"
             f"border-color:{_t2.fg_muted};}}")
         self._sdr_checks = {}
+        self._sdr_status_labels: dict = {}
         for pkg, label, note in self._SDR_DRIVERS:
             row = QVBoxLayout()
             row.setSpacing(4)
             row.setContentsMargins(0, 6, 0, 6)
+            hrow = QHBoxLayout()
+            hrow.setSpacing(8)
             cb = QCheckBox(label)
             cb.setStyleSheet(cb_style)
             self._sdr_checks[pkg] = cb
-            row.addWidget(cb)
+            hrow.addWidget(cb)
+            status_lbl = QLabel("")
+            status_lbl.setFixedWidth(100)
+            status_lbl.setStyleSheet("font-size:11px;")
+            self._sdr_status_labels[pkg] = status_lbl
+            hrow.addWidget(status_lbl)
+            hrow.addStretch()
+            row.addLayout(hrow)
             nl = QLabel("        " + note)
             nl.setWordWrap(True)
             nl.setStyleSheet(f"color:{_t2.fg_muted};font-size:11px;")

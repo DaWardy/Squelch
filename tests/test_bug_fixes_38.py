@@ -1,4 +1,4 @@
-"""Sprint 38 bug-fix tests — BUG-04 sideview labels, BUG-10 workspace, BUG-11 lock label."""
+"""Sprint 38 bug-fix tests — BUG-04 sideview labels, BUG-11 lock label; tab presets."""
 from __future__ import annotations
 import sys
 import ast
@@ -13,27 +13,29 @@ def _src(rel: str) -> str:
     return (pathlib.Path(__file__).parent.parent / rel).read_text(encoding="utf-8")
 
 
-# ── BUG-10 — Entering workspace mode must hide the main window ────────────────
+# ── Tab presets — workspace mode removed; presets now native to tab UI ────────
 
-class TestWorkspaceModeHidesMainWindow:
-    def test_hide_called_after_panel_shell_show(self):
+class TestTabPresets:
+    def test_tab_presets_dict_defined(self):
         src = _src("ui/main_window.py")
-        enter_idx = src.find("def _enter_workspace_mode(")
-        # find next method boundary to bound the search
-        next_def = src.find("\n    def ", enter_idx + 10)
-        body = src[enter_idx: next_def if next_def > 0 else enter_idx + 1500]
-        shell_show = body.find("_panel_shell.show()")
-        hide_call  = body.find("self.hide()")
-        assert shell_show >= 0, "_panel_shell.show() not found in _enter_workspace_mode"
-        assert hide_call  >= 0, "self.hide() not found in _enter_workspace_mode"
-        assert hide_call > shell_show, "self.hide() must come AFTER _panel_shell.show()"
+        assert "TAB_PRESETS" in src
 
-    def test_exit_workspace_still_shows_main_window(self):
+    def test_hf_ops_preset_defined(self):
         src = _src("ui/main_window.py")
-        exit_idx = src.find("def exit_workspace_mode(")
-        next_def = src.find("\n    def ", exit_idx + 10)
-        body = src[exit_idx: next_def if next_def > 0 else exit_idx + 800]
-        assert "self.show()" in body
+        assert "HF Ops" in src
+
+    def test_apply_tab_preset_method_exists(self):
+        src = _src("ui/main_window.py")
+        assert "def _apply_tab_preset(" in src
+
+    def test_save_tab_layout_method_exists(self):
+        src = _src("ui/main_window.py")
+        assert "def _save_tab_layout(" in src
+
+    def test_no_workspace_mode_entry_point(self):
+        src = _src("ui/main_window.py")
+        assert "_enter_workspace_mode" not in src
+        assert "exit_workspace_mode" not in src
 
     def test_main_window_parses_cleanly(self):
         p = pathlib.Path(__file__).parent.parent / "ui" / "main_window.py"

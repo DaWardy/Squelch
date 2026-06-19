@@ -427,8 +427,8 @@ def _check_config_inner():
     # Squelch stores config in APPDATA, not the app folder
     appdata = Path(os.environ.get("APPDATA", Path.home()))
     appdata_cfg = appdata / "Squelch" / "config.json"
-    local_cfg   = Path("config.json")
-    example_cfg = Path("config.example.json")
+    local_cfg   = Path(__file__).parent.parent / "config.json"
+    example_cfg = Path(__file__).parent.parent / "config.example.json"
 
     # Find whichever config exists
     cfg_path = None
@@ -556,7 +556,7 @@ def _prompt_installer_if_needed(results: dict) -> None:
             ans = input("  Launch installer now? (Y/n): ").strip().lower()
             if ans in ("", "y", "yes"):
                 import subprocess as _sp
-                _sp.run([sys.executable, "installer.py"])
+                _sp.run([sys.executable, str(Path(__file__).parent / "installer.py")])
         except (EOFError, KeyboardInterrupt):
             pass
 

@@ -250,14 +250,28 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             "soapyairspy":   ("SoapyAirspy",   "Airspy"),
             "limesuite":     ("SoapyLMS7",     "LimeSDR"),
         }
+        from core.themes import get_theme as _gt
+        _t = _gt(self.cfg.get("ui.theme", "Dark"))
+        status_labels = getattr(self, "_sdr_status_labels", {})
         for pkg, (stem, hw) in plugin_map.items():
             found = list(site.glob(stem + "*.pyd"))
             if found:
                 lines.append("  [installed]  " + hw + " - " + found[0].name)
                 if pkg in self._sdr_checks:
                     self._sdr_checks[pkg].setChecked(False)
+                    self._sdr_checks[pkg].setEnabled(False)
+                if pkg in status_labels:
+                    status_labels[pkg].setText("✓ Installed")
+                    status_labels[pkg].setStyleSheet(
+                        "color:#3fbe6f;font-size:11px;font-weight:bold;")
             else:
                 lines.append("  [ missing ]  " + hw)
+                if pkg in self._sdr_checks:
+                    self._sdr_checks[pkg].setEnabled(True)
+                if pkg in status_labels:
+                    status_labels[pkg].setText("Not installed")
+                    status_labels[pkg].setStyleSheet(
+                        f"color:{_t.fg_muted};font-size:11px;")
         try:
             self._sdr_log.setPlainText("\n".join(lines))
         except RuntimeError:

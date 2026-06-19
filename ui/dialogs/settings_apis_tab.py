@@ -14,8 +14,7 @@ def _scrolled() -> QWidget:
 def _sep() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet(
-        "color:#1a1a1a;margin:4px 0;")
+    f.setStyleSheet("margin:4px 0;")
     return f
 
 

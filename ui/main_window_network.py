@@ -159,7 +159,7 @@ class _MainWindowNetworkMixin:
                 "The existing data file (if any) is unchanged.")
 
     def _on_aprs_packet(self, packet):
-        """Update map tab with new APRS station and run anomaly detection."""
+        """Update map tab, run anomaly detection, push to RF Lab decode monitor."""
         try:
             map_tab = self._tab_map.get("map")
             if map_tab and hasattr(map_tab, "set_aprs_stations"):
@@ -174,6 +174,16 @@ class _MainWindowNetworkMixin:
             for alert in alerts:
                 log.warning("APRS anomaly: %s", alert)
                 self._aprs_anomaly_alert(alert)
+        except Exception:
+            pass
+        try:
+            rf_lab = self._tab_map.get("rf_lab")
+            if rf_lab and hasattr(rf_lab, "append_decode") and packet:
+                rf_lab.append_decode(
+                    "APRS", 144_390_000,
+                    callsign=packet.call_ssid,
+                    message=(packet.comment or "")[:80],
+                )
         except Exception:
             pass
 

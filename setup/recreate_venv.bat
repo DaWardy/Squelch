@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Squelch - Recreate Virtual Environment
 cd /d "%~dp0"
 echo.
@@ -43,8 +43,8 @@ echo  Found Python: %CONDAPY%
 "%CONDAPY%" --version
 echo.
 echo  Current venv Python (for comparison):
-if exist venv\Scripts\python.exe (
-    venv\Scripts\python.exe --version
+if exist ..\venv\Scripts\python.exe (
+    ..\venv\Scripts\python.exe --version
 ) else (
     echo  (no venv exists)
 )
@@ -74,11 +74,11 @@ echo  Venv created.
 
 echo.
 echo  Upgrading pip...
-venv\Scripts\python.exe -m pip install --upgrade pip --quiet 2>nul
+..\venv\Scripts\python.exe -m pip install --upgrade pip --quiet 2>nul
 
 echo.
 echo  Installing required packages...
-venv\Scripts\pip install PyQt6 requests pyqtgraph numpy sounddevice sgp4 defusedxml --quiet
+..\venv\Scripts\pip install PyQt6 requests pyqtgraph numpy sounddevice sgp4 defusedxml --quiet
 if %ERRORLEVEL% EQU 0 (
     echo  Packages installed.
 ) else (

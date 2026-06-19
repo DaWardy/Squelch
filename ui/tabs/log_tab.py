@@ -43,6 +43,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate, QDateTime
 from PyQt6.QtGui import QColor, QBrush, QFont
 
+from core.freq_format import (format_freq_cfg, freq_label, freq_placeholder,
+                               parse_freq_input)
 from core.log_db import (LogDB, QSO, get_log_db,
                          first_contact_keys, first_contact_band_keys)
 from core.validator import callsign_soft, grid_square_soft
@@ -730,12 +732,13 @@ class LogTab(SquelchPanel, QWidget):
         dupe_label.setStyleSheet("font-size:10px;font-style:italic;")
         lay.addRow("", dupe_label)
 
+        _fu = self.cfg.get("display.freq_units", "MHz") if self.cfg else "MHz"
         freq_edit = QLineEdit()
-        freq_edit.setPlaceholderText("MHz, e.g. 14.074")
-        freq_edit.setMaxLength(12)
+        freq_edit.setPlaceholderText(freq_placeholder(_fu))
+        freq_edit.setMaxLength(16)
         freq_edit.setToolTip(
-            "Frequency in MHz — auto-fills Band when recognised")
-        lay.addRow("Freq (MHz):", freq_edit)
+            f"Frequency in {_fu} — auto-fills Band when recognised")
+        lay.addRow(f"{freq_label(_fu)}:", freq_edit)
 
         band_combo = QComboBox()
         band_combo.addItems(self._BANDS)
@@ -746,14 +749,11 @@ class LogTab(SquelchPanel, QWidget):
 
         def _freq_to_band():
             from core.band_plan import band_at_freq
-            text = freq_edit.text().strip().replace(",", ".")
-            try:
-                hz = int(float(text) * 1_000_000)
+            hz = parse_freq_input(freq_edit.text(), _fu)
+            if hz:
                 b = band_at_freq(hz)
                 if b:
                     band_combo.setCurrentText(b.name)
-            except (ValueError, TypeError):
-                pass
         freq_edit.editingFinished.connect(_freq_to_band)
 
         now_utc = QDateTime.currentDateTimeUtc()
@@ -965,12 +965,9 @@ class LogTab(SquelchPanel, QWidget):
                         QMessageBox.StandardButton.No)
                     if reply == QMessageBox.StandardButton.No:
                         return
-            try:
-                freq_hz = int(
-                    float(f["freq_edit"].text().strip()
-                          .replace(",", ".")) * 1_000_000)
-            except (ValueError, TypeError):
-                freq_hz = 0
+            _fu2 = (self.cfg.get("display.freq_units", "MHz")
+                    if self.cfg else "MHz")
+            freq_hz = parse_freq_input(f["freq_edit"].text(), _fu2)
             dt_str = (f["dt_edit"].dateTime()
                       .toUTC().toString("yyyy-MM-ddTHH:mm:ssZ"))
             qrz = f.get("_qrz_info")
@@ -1302,12 +1299,18 @@ class LogTab(SquelchPanel, QWidget):
         call.setMaxLength(12)
         f.addRow("Callsign:", call)
 
-        freq_mhz = (qso.freq_hz / 1_000_000
-                    if getattr(qso, "freq_hz", 0) else 0.0)
-        freq = QLineEdit(f"{freq_mhz:.6g}" if freq_mhz else "")
-        freq.setMaxLength(12)
-        freq.setPlaceholderText("MHz, e.g. 14.074")
-        f.addRow("Freq (MHz):", freq)
+        _fu3 = (self.cfg.get("display.freq_units", "MHz")
+                if self.cfg else "MHz")
+        hz0 = getattr(qso, "freq_hz", 0) or 0
+        if hz0:
+            from core.freq_format import format_freq
+            freq_val = format_freq(hz0, _fu3).split()[0]  # number only
+        else:
+            freq_val = ""
+        freq = QLineEdit(freq_val)
+        freq.setMaxLength(16)
+        freq.setPlaceholderText(freq_placeholder(_fu3))
+        f.addRow(f"{freq_label(_fu3)}:", freq)
 
         band = QComboBox()
         bands = ["160m","80m","60m","40m","30m","20m",
@@ -1373,12 +1376,9 @@ class LogTab(SquelchPanel, QWidget):
             qso.comment     = comment.text().strip()
             qso.datetime_on = (dt_edit.dateTime().toUTC()
                                .toString("yyyy-MM-ddTHH:mm:ssZ"))
-            try:
-                qso.freq_hz = int(
-                    float(freq.text().strip()
-                          .replace(",", ".")) * 1_000_000)
-            except (ValueError, TypeError):
-                qso.freq_hz = 0
+            _fu4 = (self.cfg.get("display.freq_units", "MHz")
+                    if self.cfg else "MHz")
+            qso.freq_hz = parse_freq_input(freq.text(), _fu4)
             self.log_db.update_qso(qso)
             self._load_log()
             log.info(f"QSO edited: {qso.call}")

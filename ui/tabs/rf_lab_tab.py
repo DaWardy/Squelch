@@ -33,6 +33,7 @@ from ui.panel import SquelchPanel
 from ui.tabs.rf_lab_data import BUILTIN_FREQS as _BUILTIN_FREQS
 from ui.tabs.rf_lab_data import CATEGORY_COLORS as _CATEGORY_COLORS
 from ui.tabs.rf_lab_data import DECODE_MODE_COLORS as _DECODE_MODE_COLORS
+from core.freq_format import format_freq_cfg
 
 log = logging.getLogger(__name__)
 
@@ -253,7 +254,7 @@ class RFLabTab(SquelchPanel, QWidget):
         for hz, name, cat, desc in all_freqs:
             if cat_filter not in ("All categories", "") and cat != cat_filter:
                 continue
-            freq_str = f"{hz / 1e6:.3f} MHz"
+            freq_str = format_freq_cfg(hz, self.cfg)
             if search and search not in name.lower() and search not in freq_str.lower():
                 continue
             row = self._table.rowCount()
@@ -262,7 +263,7 @@ class RFLabTab(SquelchPanel, QWidget):
 
     def _set_row(self, row: int, hz: int, name: str, cat: str, desc: str):
         color = _CATEGORY_COLORS.get(cat, "#aaaaaa")
-        freq_str = f"{hz / 1e6:.3f} MHz"
+        freq_str = format_freq_cfg(hz, self.cfg)
 
         for col, text in [(0, name), (1, freq_str), (2, cat), (3, desc)]:
             item = QTableWidgetItem(text)
@@ -285,9 +286,8 @@ class RFLabTab(SquelchPanel, QWidget):
 
     def _tune(self, hz: int):
         self.tune_requested.emit(hz)
-        freq_mhz = hz / 1e6
         self._status_lbl.setText(
-            f"Tuned SDR to {freq_mhz:.3f} MHz  |  "
+            f"Tuned SDR to {format_freq_cfg(hz, self.cfg)}  |  "
             "Switch to SDR tab to monitor")
         sdr_tab = self._find_sdr_tab()
         if sdr_tab:
@@ -418,7 +418,7 @@ class RFLabTab(SquelchPanel, QWidget):
 
     def _append_decode_line(self, entry: tuple) -> None:
         ts, mode, freq_hz, callsign, grid, message, snr = entry
-        freq_mhz = freq_hz / 1e6
+        freq_str = format_freq_cfg(freq_hz, self.cfg)
         col = _DECODE_MODE_COLORS.get(mode, "#aaaaaa")
         snr_str = f"{snr:+.0f}dB" if snr != 0.0 else ""
         parts = [p for p in (callsign, grid, message, snr_str) if p]
@@ -427,7 +427,7 @@ class RFLabTab(SquelchPanel, QWidget):
             f'<span style="color:#444">{ts}</span>'
             f' <span style="color:{col};font-weight:bold">'
             f'{mode[:6]}</span>'
-            f' <span style="color:#555">{freq_mhz:.4f}</span>'
+            f' <span style="color:#555">{freq_str}</span>'
             f' <span style="color:#ccc">{text}</span>'
         )
         self._decode_view.append(line)

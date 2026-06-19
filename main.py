@@ -42,14 +42,14 @@ from typing import Optional, Callable, List, Dict, Tuple  # safety net for modul
 os.chdir(Path(__file__).parent)
 
 
-def setup_logging(debug: bool = False):
-    # Ensure log directory exists before FileHandler tries to open it
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+def setup_logging(debug: bool = False, log_dir: "Path | None" = None):
+    actual_log_dir = Path(log_dir) if log_dir else LOG_DIR
+    actual_log_dir.mkdir(parents=True, exist_ok=True)
     level = logging.DEBUG if debug else logging.INFO
     fmt   = "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s"
 
     handlers = [logging.StreamHandler(sys.stdout)]
-    log_path = LOG_DIR / "squelch.log"
+    log_path = actual_log_dir / "squelch.log"
     try:
         handlers.append(
             logging.FileHandler(str(log_path), encoding="utf-8"))
@@ -63,7 +63,6 @@ def setup_logging(debug: bool = False):
     logging.basicConfig(
         level=level, format=fmt, handlers=handlers, force=True)
 
-    # Record where logs actually go so it can be surfaced in the UI.
     logging.getLogger().info(f"Diagnostic log: {log_path}")
     return log_path
 
@@ -395,12 +394,21 @@ def main():
     except Exception:
         pass
     args = parse_args()
-    setup_logging(args.debug)
-    if not args.debug:
+    # Peek at config early to get custom log dir + level before full init
+    _log_dir_cfg = None
+    try:
         from core.config import CONFIG_PATH, Config as _C
-        level_str = _C(CONFIG_PATH).get("advanced.log_level", "INFO")
-        import logging as _lg
-        _lg.getLogger().setLevel(getattr(_lg, level_str, _lg.INFO))
+        _peek = _C(CONFIG_PATH)
+        _ld = _peek.get("advanced.log_dir", "")
+        if _ld:
+            _log_dir_cfg = Path(_ld)
+        if not args.debug:
+            import logging as _lg
+            level_str = _peek.get("advanced.log_level", "INFO")
+            _lg.getLogger().setLevel(getattr(_lg, level_str, _lg.INFO))
+    except Exception:
+        pass
+    setup_logging(args.debug, log_dir=_log_dir_cfg)
     log = logging.getLogger(__name__)
     log.info("=" * 56)
     log.info(f"Squelch starting  lab={args.lab_mode}  debug={args.debug}")

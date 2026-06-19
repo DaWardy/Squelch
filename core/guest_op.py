@@ -118,9 +118,12 @@ _CALL_RE = re.compile(r"[^A-Z0-9/]")
 
 def operating_callsign(cfg) -> str:
     """The callsign to identify with for ANY mode (FT8, FT4, JS8, PSK, RTTY,
-    CW, SSB, Winlink...). If a guest operator is active, that is their call;
-    otherwise the station call. Centralizes the rule so all modes agree —
-    "FT8" was never the only mode this applies to.
+    CW, SSB, Winlink...).  Priority order:
+
+      1. Guest operator (supervised student) — guest.callsign
+      2. Event / portable override — station.event_callsign
+         (e.g. W1AW/5 for portable, W100AW for a special-event station)
+      3. Normal station callsign — cfg.callsign
 
     Strips any character outside [A-Z0-9/] before returning — FCC §97.119
     requires a valid callsign; injected chars would corrupt OTA identification.
@@ -130,6 +133,12 @@ def operating_callsign(cfg) -> str:
             gc = (cfg.get("guest.callsign", "") or "").strip().upper()
             if gc:
                 return _CALL_RE.sub("", gc)
+    except Exception:
+        pass
+    try:
+        ec = (cfg.get("station.event_callsign", "") or "").strip().upper()
+        if ec:
+            return _CALL_RE.sub("", ec)
     except Exception:
         pass
     try:

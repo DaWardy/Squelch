@@ -141,7 +141,7 @@ class _SettingsSdrTab:
         """Install/Check buttons and log output area."""
         from PyQt6.QtWidgets import QTextEdit
         btn_row = QHBoxLayout()
-        self._sdr_install_btn = QPushButton("Install Selected Drivers")
+        self._sdr_install_btn = QPushButton("Install / Reinstall Selected")
         self._sdr_install_btn.setFixedHeight(32)
         _t5 = _sdr_get_theme(self.cfg.get("ui.theme", "Dark"))
         self._sdr_install_btn.setStyleSheet(

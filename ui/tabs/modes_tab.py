@@ -407,8 +407,18 @@ class ModesTab(SquelchPanel, QWidget):
             "Automatically repeat CQ calls until someone answers.\n"
             "Watch the band — don't leave it unattended while transmitting.")
         self._auto_cq_cb.setChecked(False)
-        self._auto_cq_cb.toggled.connect(self.ft8_engine.set_auto_cq)
-        tx_gl.addWidget(self._auto_cq_cb, 4, 0, 1, 2)
+        self._auto_cq_cb.toggled.connect(self._on_auto_cq_toggle)
+        tx_gl.addWidget(self._auto_cq_cb, 4, 0)
+        self._auto_cq_timeout = QSpinBox()
+        self._auto_cq_timeout.setRange(0, 60)
+        self._auto_cq_timeout.setValue(0)
+        self._auto_cq_timeout.setSuffix(" min")
+        self._auto_cq_timeout.setSpecialValueText("No limit")
+        self._auto_cq_timeout.setFixedWidth(80)
+        self._auto_cq_timeout.setToolTip(
+            "Auto-stop CQ after this many minutes with no reply.\n"
+            "0 = keep calling indefinitely.")
+        tx_gl.addWidget(self._auto_cq_timeout, 4, 1)
         self._hold_tx_cb = QCheckBox("Hold TX frequency")
         self._hold_tx_cb.setToolTip(
             "Keep your transmit frequency fixed instead of following\n"
@@ -574,14 +584,26 @@ class ModesTab(SquelchPanel, QWidget):
         rl.addWidget(self._activity_log)
 
     def _build_decode_right_panel(self) -> "QWidget":
-        """Right half of the modes splitter: decode table + activity log."""
+        """Right half of the modes splitter: decode table + activity log + WSPR polar."""
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(4, 8, 8, 8)
         rl.setSpacing(4)
         self._build_decode_signals_section(rl)
         self._build_activity_log_section(rl)
+        self._build_wspr_polar_panel(rl)
         return right
+
+    def _build_wspr_polar_panel(self, rl: "QVBoxLayout") -> None:
+        """WSPR azimuthal polar chart — visible only in WSPR mode."""
+        from ui.widgets.wspr_polar import WSPRPolarChart
+        self._wspr_polar_chart = WSPRPolarChart()
+        self._wspr_polar_chart.setFixedHeight(230)
+        self._wspr_polar_chart.setVisible(False)
+        self._wspr_polar_chart.setToolTip(
+            "WSPR heard stations by bearing and distance from your station.\n"
+            "Colour: blue = weak, green = fair, yellow/red = strong.")
+        rl.addWidget(self._wspr_polar_chart)
 
 
     def _build_fldigi_panel(self) -> QWidget:
@@ -1262,6 +1284,9 @@ class ModesTab(SquelchPanel, QWidget):
         if hasattr(self, "_sstv_panel"):
             self._sstv_panel.setVisible(
                 self._current_mode == "SSTV")
+        if hasattr(self, "_wspr_polar_chart"):
+            self._wspr_polar_chart.setVisible(
+                self._current_mode == "WSPR")
         self._auto_seq_cb.setEnabled(is_weak)
         self._auto_cq_cb.setEnabled(is_weak)
         if is_weak:
@@ -1432,6 +1457,37 @@ class ModesTab(SquelchPanel, QWidget):
         except Exception:
             pass
 
+    def _on_auto_cq_toggle(self, checked: bool) -> None:
+        """Start or stop Auto CQ; record start time for timeout check."""
+        import time as _t
+        self.ft8_engine.set_auto_cq(checked)
+        if checked:
+            self._auto_cq_start = _t.time()
+            self._auto_cq_qso_at_start = int(self._stat_qsos.text())
+        else:
+            self._auto_cq_start = None
+
+    def _check_auto_cq_timeout(self) -> None:
+        """Called periodically; stops Auto CQ when timeout expires with no QSO."""
+        timeout_min = self._auto_cq_timeout.value()
+        if timeout_min <= 0:
+            return
+        start = getattr(self, "_auto_cq_start", None)
+        if not start or not self._auto_cq_cb.isChecked():
+            return
+        import time as _t
+        elapsed_min = (_t.time() - start) / 60.0
+        if elapsed_min < timeout_min:
+            return
+        # Check whether any new QSO was made since Auto CQ started
+        current_qsos = int(self._stat_qsos.text())
+        qsos_at_start = getattr(self, "_auto_cq_qso_at_start", current_qsos)
+        if current_qsos <= qsos_at_start:
+            # No reply — stop Auto CQ
+            self._auto_cq_cb.setChecked(False)
+            self._log_activity(
+                f"Auto CQ stopped: no reply in {timeout_min} min")
+
     def _on_seq_state(self, state: AutoSeqState, detail: str = ""):
         QTimer.singleShot(0, lambda s=state: self._apply_state(s))
 
@@ -1448,6 +1504,22 @@ class ModesTab(SquelchPanel, QWidget):
             self._log_activity(f"WSPR spot: {s.display}"),
             setattr(self._stat_decodes, "text",
                     str(int(self._stat_decodes.text()) + 1))))
+        # Update polar chart if visible
+        if hasattr(self, "_wspr_polar_chart"):
+            existing = list(getattr(self, "_wspr_spot_list", []))
+            if len(existing) > 200:
+                existing = existing[-200:]
+            entry = {
+                "bearing_deg":  spot.bearing_deg,
+                "distance_km":  spot.distance_km,
+                "snr":          float(spot.snr),
+                "callsign":     spot.callsign,
+                "band":         spot.band,
+            }
+            existing.append(entry)
+            self._wspr_spot_list = existing
+            QTimer.singleShot(0, lambda e=existing:
+                              self._wspr_polar_chart.set_spots(e))
         # Push to RF Lab decode monitor and map (best-effort).
         try:
             mw = self.window()
@@ -1634,6 +1706,12 @@ class ModesTab(SquelchPanel, QWidget):
                 self.ft8_engine._in_tx) else "RX"
             self._cycle_label.setText(
                 f"{tx_rx}  {period}  {remaining:.1f}s")
+            # Check auto-CQ timeout every ~15 seconds (every 150 calls at 100ms)
+            if hasattr(self, "_auto_cq_timeout"):
+                try:
+                    self._check_auto_cq_timeout()
+                except Exception:
+                    pass
 
     def _on_decode_dblclick(self, index):
         """Double-click a decode to call that station."""

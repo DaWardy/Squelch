@@ -169,6 +169,7 @@ class LogTab(SquelchPanel, QWidget):
         self._build_awards_section(root)
         self._build_contest_score_panel(root)
         self._build_activator_panel(root)
+        self._build_contest_timer_panel(root)
         self._build_session_notes_panel(root)
 
     def _build_stats_bar(self, root):
@@ -627,6 +628,106 @@ class LogTab(SquelchPanel, QWidget):
         self._act_status.setText(msg)
         self._act_status.setStyleSheet(
             f"color:{'#3fbe6f' if ok else '#cc4444'};font-size:10px;")
+
+    def _build_contest_timer_panel(self, root) -> None:
+        """Collapsible contest operating timer — elapsed + countdown."""
+        from PyQt6.QtWidgets import QToolButton as _TB
+        toggle = _TB("▶ Contest Timer")
+        toggle.setCheckable(True)
+        toggle.setChecked(False)
+        toggle.setStyleSheet(
+            "QToolButton{background:transparent;border:none;"
+            "font-weight:bold;text-align:left;padding:4px 8px;}")
+        root.addWidget(toggle)
+
+        self._ctimer_body = QWidget()
+        self._ctimer_body.setVisible(False)
+        toggle.toggled.connect(self._ctimer_body.setVisible)
+        cl = QVBoxLayout(self._ctimer_body)
+        cl.setContentsMargins(8, 2, 8, 4)
+        cl.setSpacing(4)
+
+        # Duration row
+        dur_row = QHBoxLayout()
+        dur_row.addWidget(QLabel("Duration:"))
+        self._ctimer_dur = QSpinBox()
+        self._ctimer_dur.setRange(1, 96)
+        self._ctimer_dur.setValue(24)
+        self._ctimer_dur.setSuffix(" hr")
+        self._ctimer_dur.setFixedWidth(80)
+        self._ctimer_dur.setToolTip("Contest duration in hours (e.g. 24 for Field Day)")
+        dur_row.addWidget(self._ctimer_dur)
+        dur_row.addStretch()
+        self._ctimer_start_btn = QPushButton("▶ Start")
+        self._ctimer_start_btn.setFixedHeight(24)
+        self._ctimer_start_btn.setFixedWidth(60)
+        self._ctimer_start_btn.clicked.connect(self._ctimer_start)
+        dur_row.addWidget(self._ctimer_start_btn)
+        self._ctimer_reset_btn = QPushButton("↺")
+        self._ctimer_reset_btn.setFixedHeight(24)
+        self._ctimer_reset_btn.setFixedWidth(30)
+        self._ctimer_reset_btn.setToolTip("Reset timer")
+        self._ctimer_reset_btn.clicked.connect(self._ctimer_reset)
+        dur_row.addWidget(self._ctimer_reset_btn)
+        cl.addLayout(dur_row)
+
+        # Timer display
+        self._ctimer_display = QLabel("00:00:00 elapsed  •  — remaining")
+        self._ctimer_display.setStyleSheet(
+            "color:#3fbe6f;font-family:'Courier New';font-size:13px;"
+            "font-weight:bold;")
+        cl.addWidget(self._ctimer_display)
+        root.addWidget(self._ctimer_body)
+
+        # Internal timer state
+        self._ctimer_running  = False
+        self._ctimer_start_ts: "float | None" = None
+        self._ctimer_qt = QTimer(self)
+        self._ctimer_qt.setInterval(1000)
+        self._ctimer_qt.timeout.connect(self._ctimer_tick)
+
+    def _ctimer_start(self) -> None:
+        import time
+        if self._ctimer_running:
+            self._ctimer_running = False
+            self._ctimer_qt.stop()
+            self._ctimer_start_btn.setText("▶ Start")
+        else:
+            if self._ctimer_start_ts is None:
+                self._ctimer_start_ts = time.time()
+            self._ctimer_running = True
+            self._ctimer_qt.start()
+            self._ctimer_start_btn.setText("⏸ Pause")
+
+    def _ctimer_reset(self) -> None:
+        self._ctimer_running  = False
+        self._ctimer_start_ts = None
+        self._ctimer_qt.stop()
+        self._ctimer_start_btn.setText("▶ Start")
+        self._ctimer_display.setText("00:00:00 elapsed  •  — remaining")
+
+    def _ctimer_tick(self) -> None:
+        import time
+        if not self._ctimer_start_ts:
+            return
+        elapsed_s  = int(time.time() - self._ctimer_start_ts)
+        dur_s      = self._ctimer_dur.value() * 3600
+        remaining_s = max(0, dur_s - elapsed_s)
+        def _fmt(s):
+            h, rem = divmod(s, 3600)
+            m, sec = divmod(rem, 60)
+            return f"{h:02d}:{m:02d}:{sec:02d}"
+        elapsed_str   = _fmt(elapsed_s)
+        remaining_str = _fmt(remaining_s) if remaining_s > 0 else "00:00:00  FINISHED"
+        self._ctimer_display.setText(
+            f"{elapsed_str} elapsed  •  {remaining_str} remaining")
+        if remaining_s == 0:
+            self._ctimer_running = False
+            self._ctimer_qt.stop()
+            self._ctimer_start_btn.setText("▶ Start")
+            self._ctimer_display.setStyleSheet(
+                "color:#cc4444;font-family:'Courier New';font-size:13px;"
+                "font-weight:bold;")
 
     def _build_session_notes_panel(self, root) -> None:
         """Collapsible scratch pad for session notes, callsigns, exchanges."""
@@ -1475,6 +1576,11 @@ class LogTab(SquelchPanel, QWidget):
         qrz_act    = menu.addAction(f"🔗  Open QRZ page")
         filter_act = menu.addAction(
             f"🔍  Show all QSOs with {call}" if call else "🔍  Show all QSOs with…")
+        # Tune rig to QSO frequency
+        tune_act = None
+        if qso and getattr(qso, "freq_hz", 0):
+            freq_label = f"{qso.freq_hz/1e6:.4f} MHz  {qso.mode or ''}"
+            tune_act = menu.addAction(f"📻  Tune rig → {freq_label}")
         menu.addSeparator()
         del_act    = menu.addAction("🗑  Delete QSO…")
         action = menu.exec(self._table.mapToGlobal(pos))
@@ -1490,8 +1596,28 @@ class LogTab(SquelchPanel, QWidget):
             if qso:
                 self._search.setText(qso.call)
                 self._apply_filter()
+        elif tune_act and action == tune_act:
+            self._tune_rig_to_qso(qso)
         elif action == del_act:
             self._delete_qso_row(row)
+
+    def _tune_rig_to_qso(self, qso) -> None:
+        """Retune the rig to the frequency and mode stored in a log QSO."""
+        try:
+            mw  = self.window()
+            rig = getattr(mw, "_tab_map", {}).get("rig")
+            if rig and hasattr(rig, "rig") and rig.rig.is_connected:
+                hz   = int(getattr(qso, "freq_hz", 0) or 0)
+                mode = (getattr(qso, "mode", "") or "").upper().strip()
+                if hz > 0:
+                    rig.rig.set_freq(hz)
+                if mode:
+                    rig.rig.set_mode(mode)
+                # Also update the VFO display
+                if hz > 0 and hasattr(rig, "_set_freq"):
+                    rig._set_freq(hz)
+        except Exception:
+            pass
 
     def _get_row_qso(self, row: int):
         """Get QSO object for a table row via stored QSO id."""

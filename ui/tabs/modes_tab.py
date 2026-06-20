@@ -117,6 +117,10 @@ class ModesTab(SquelchPanel, QWidget):
         self._current_mode  = "FT8"
         self._active_band   = "20m"
         self._sdr_tune_cb   = None   # set via set_sdr_tune_cb() from MainWindow
+        # Band-opening detection: track unique grids decoded per band (rolling 5 min)
+        self._band_grids:   dict = {}  # band → list[(timestamp, grid)]
+        self._band_prev_cnt: dict = {}  # band → count at last check
+        self._band_open_timer = None   # created after build()
         self._cycle_timer   = QTimer(self)
         self._cycle_timer.setInterval(100)
         self._cycle_timer.timeout.connect(self._update_cycle)
@@ -1010,6 +1014,46 @@ class ModesTab(SquelchPanel, QWidget):
             shown += 1
             if shown >= 10:
                 break
+        # Push all spots to map (best-effort, deduped by callsign)
+        try:
+            mw = self.window()
+            map_tab = getattr(mw, "_tab_map", {}).get("map") if mw else None
+            if map_tab and hasattr(map_tab, "set_dx_spots"):
+                import time as _time
+                spot_dicts = [
+                    {"callsign": s.dx_call,
+                     "freq_hz":  int(s.freq_khz * 1000),
+                     "band":     s.band,
+                     "mode":     getattr(s, "mode", ""),
+                     "snr":      getattr(s, "snr", 0),
+                     "age_min":  round((_time.time() - s.timestamp) / 60)}
+                    for s in self._dx_spots
+                ]
+                QTimer.singleShot(0, lambda d=spot_dicts: map_tab.set_dx_spots(d))
+        except Exception:
+            pass
+
+    def _check_band_openings(self) -> None:
+        """Detect when a band transitions from quiet to active (opening)."""
+        import time as _t
+        cutoff = _t.time() - 300   # 5-minute window
+        THRESHOLD = 5              # unique grids = "open"
+        for band, entries in list(self._band_grids.items()):
+            # Prune old entries
+            recent = [(ts, g) for ts, g in entries if ts >= cutoff]
+            self._band_grids[band] = recent
+            unique = len({g for _, g in recent})
+            prev   = self._band_prev_cnt.get(band, 0)
+            if unique >= THRESHOLD and prev < THRESHOLD:
+                # Band just opened
+                try:
+                    self._log_activity(
+                        f"🔓 Band opening: {band}  •  {unique} stations heard")
+                    from PyQt6.QtWidgets import QApplication
+                    QApplication.beep()
+                except Exception:
+                    pass
+            self._band_prev_cnt[band] = unique
 
     def set_sdr_tune_cb(self, cb) -> None:
         """Register a callback(freq_hz) to sync the SDR tab when a spot is clicked."""
@@ -1064,6 +1108,11 @@ class ModesTab(SquelchPanel, QWidget):
         self._band_combo.currentTextChanged.connect(self._on_band_change)
         self._tx_freq_spin.valueChanged.connect(
             self.ft8_engine.set_tx_freq)
+        # Band-opening detector: check every 90 seconds
+        self._band_open_timer = QTimer(self)
+        self._band_open_timer.setInterval(90_000)
+        self._band_open_timer.timeout.connect(self._check_band_openings)
+        self._band_open_timer.start()
 
     # ── Mode tab switching ────────────────────────────────────────────────
 
@@ -1232,6 +1281,12 @@ class ModesTab(SquelchPanel, QWidget):
 
     def _on_ft8_decode(self, decode: DecodedSignal):
         QTimer.singleShot(0, lambda d=decode: self._add_decode(d))
+        # Track decoded grids per band for opening detection
+        if getattr(decode, "grid", "") and self._active_band:
+            import time as _t
+            band = self._active_band
+            self._band_grids.setdefault(band, [])
+            self._band_grids[band].append((_t.time(), decode.grid))
         # Push to RF Lab decode monitor (best-effort).
         try:
             mw = self.window()

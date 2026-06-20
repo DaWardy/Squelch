@@ -178,6 +178,7 @@ def build_map_html(config,
                    winlink_gateways: list | None = None,
                    satellites: list | None = None,
                    wspr_spots: list | None = None,
+                   dx_spots: list | None = None,
                    ) -> str:
     """Build self-contained Leaflet map HTML for QWebEngineView."""
     now_utc = datetime.now(timezone.utc)
@@ -210,7 +211,40 @@ def build_map_html(config,
         winlink_gateways    = _winlink_gateway_data(winlink_gateways),
         satellites          = satellites or [],
         wspr_spots          = wspr_spots or [],
+        dx_spots            = _resolve_dx_spot_locs(dx_spots or []),
     )
+
+
+def _resolve_dx_spot_locs(spots: list) -> list[dict]:
+    """Add lat/lon to DX spots using CTY.DAT; drops spots without location."""
+    if not spots:
+        return []
+    try:
+        from network.cty_data import get_cty
+        cty = get_cty()
+    except Exception:
+        return []
+    out = []
+    for s in spots[:200]:  # cap to avoid oversized HTML
+        call = s.get("callsign", "")
+        try:
+            ent = cty.lookup(call) if cty else None
+        except Exception:
+            ent = None
+        if not ent or not (ent.lat or ent.lon):
+            continue
+        out.append({
+            "callsign": call,
+            "lat":      ent.lat,
+            "lon":      ent.lon,
+            "band":     s.get("band", ""),
+            "freq_mhz": s.get("freq_hz", 0) / 1e6,
+            "mode":     s.get("mode", ""),
+            "snr":      s.get("snr", 0),
+            "country":  ent.name,
+            "age_min":  s.get("age_min", 0),
+        })
+    return out
 
 
 def _winlink_gateway_data(gateways: list | None) -> list[dict]:
@@ -374,6 +408,7 @@ var HEARING_ME   = {json.dumps(ctx['hearing_me'])};
 var WINLINK_GW   = {json.dumps(ctx['winlink_gateways'])};
 var SATELLITES   = {json.dumps(ctx['satellites'])};
 var WSPR_SPOTS   = {json.dumps(ctx['wspr_spots'])};
+var DX_SPOTS     = {json.dumps(ctx['dx_spots'])};
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -406,6 +441,7 @@ var lyrHearingMe   = L.layerGroup().addTo(map);
 var lyrWinlink     = L.layerGroup().addTo(map);
 var lyrSatellites  = L.layerGroup().addTo(map);
 var lyrWspr        = L.layerGroup().addTo(map);
+var lyrDxSpots     = L.layerGroup().addTo(map);
 
 // ── Gray line ─────────────────────────────────────────────────
 if (GRAYLINE) {{
@@ -576,6 +612,32 @@ WSPR_SPOTS.forEach(function(s) {{
   }}
 }});
 
+// ── DX cluster spots — star markers at DX station location ───
+var DX_BAND_COLS = {{
+  '160m':'#ff8866','80m':'#ffaa44','60m':'#ffcc44','40m':'#ffee22',
+  '30m':'#ccee22','20m':'#88ee22','17m':'#44ee66','15m':'#22eebb',
+  '12m':'#22ccff','10m':'#22aaff','6m':'#6688ff','2m':'#cc88ff'
+}};
+var DX_DEF = '#ffddaa';
+DX_SPOTS.forEach(function(d) {{
+  if (!d.lat || !d.lon) return;
+  var col  = DX_BAND_COLS[d.band] || DX_DEF;
+  var dim  = d.age_min && d.age_min > 15 ? 0.4 : 0.9;
+  L.marker([d.lat, d.lon], {{
+    icon: L.divIcon({{
+      html: '<div style="color:'+col+';font-size:12px;'
+           +'opacity:'+dim+';text-shadow:0 0 3px #000;">★</div>',
+      className:'', iconSize:[12,12], iconAnchor:[6,6]
+    }})
+  }}).bindPopup(
+    '<div class="qso-popup">'
+    +'<b style="color:'+col+'">'+d.callsign+'</b>  '+d.country+'<br>'
+    +d.freq_mhz.toFixed(3)+' MHz  '+d.band+'  '+d.mode+'<br>'
+    +(d.snr ? 'SNR '+d.snr+' dB' : '')
+    +'</div>'
+  ).addTo(lyrDxSpots);
+}});
+
 // ── Map right-click → propagation path analysis ───────────────
 map.on('contextmenu', function(e) {{
   var lat = e.latlng.lat.toFixed(5);
@@ -709,7 +771,8 @@ L.control.layers(
     "Repeaters":      lyrRepeaters,
     "Aircraft":       lyrAircraft,
     "Satellites":     lyrSatellites,
-    "WSPR spots":     lyrWspr
+    "WSPR spots":     lyrWspr,
+    "DX Spots":       lyrDxSpots
   }},
   {{position:'topright', collapsed:true}}
 ).addTo(map);

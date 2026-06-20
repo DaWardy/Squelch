@@ -122,6 +122,8 @@ class SatTracker:
         self._on_update: Callable = None
         self._update_interval = 5.0   # seconds
         self._tle_loaded = False
+        # Next-pass cache: name → SatPass (recomputed when pass elapses)
+        self._pass_cache: dict[str, "Optional[SatPass]"] = {}
 
     @property
     def is_running(self) -> bool:
@@ -297,6 +299,66 @@ NOAA 19
                a / math.sqrt(1 - e2 * math.sin(math.radians(lat))**2))
         return lat, lon, alt
 
+    def _compute_next_pass(
+            self, name: str, sat,
+            obs_lat: float, obs_lon: float,
+            hours_ahead: int = 24
+    ) -> "Optional[SatPass]":
+        """Predict the next pass of a satellite for a ground observer.
+
+        Steps forward at 60-second intervals for up to ``hours_ahead`` hours.
+        Returns the first positive-elevation window found as a SatPass,
+        or None if no pass is predicted in the look-ahead window.
+
+        Runs in the tracking thread — safe to call from _compute_position.
+        """
+        if not HAS_SGP4 or (obs_lat == 0.0 and obs_lon == 0.0):
+            return None
+        from datetime import timedelta
+        now        = datetime.now(timezone.utc)
+        step_s     = 60
+        max_steps  = hours_ahead * 3600 // step_s
+        in_pass    = False
+        aos_time   = now
+        aos_az     = 0.0
+        max_el     = -1.0
+        max_el_time = now
+        try:
+            for i in range(max_steps):
+                t = now + timedelta(seconds=i * step_s)
+                jd, fr = jday(t.year, t.month, t.day,
+                              t.hour, t.minute,
+                              t.second + t.microsecond / 1e6)
+                e, r, _ = sat.sgp4(jd, fr)
+                if e != 0:
+                    continue
+                sat_lat, sat_lon, sat_alt = self._eci_to_geodetic(r, jd, fr)
+                el, az, _ = self._azel(
+                    obs_lat, obs_lon, 0.0, sat_lat, sat_lon, sat_alt)
+                if not in_pass and el > 0:
+                    in_pass     = True
+                    aos_time    = t
+                    aos_az      = az
+                    max_el      = el
+                    max_el_time = t
+                elif in_pass:
+                    if el > max_el:
+                        max_el      = el
+                        max_el_time = t
+                    elif el <= 0:
+                        return SatPass(
+                            sat_name    = name,
+                            aos_utc     = aos_time,
+                            los_utc     = t,
+                            max_el_deg  = round(max_el, 1),
+                            max_el_utc  = max_el_time,
+                            aos_az_deg  = round(aos_az, 1),
+                            los_az_deg  = round(az, 1),
+                        )
+        except Exception as e:
+            log.debug(f"next_pass {name}: {e}")
+        return None
+
     def _compute_position(
             self, name: str, sat,
             obs_lat: float, obs_lon: float
@@ -320,6 +382,15 @@ NOAA 19
                 el_deg, az_deg, rng_km = \
                     self._azel(obs_lat, obs_lon, 0, lat, lon, alt)
 
+            # Retrieve or compute next pass (cached; recomputed when elapsed)
+            cached = self._pass_cache.get(name)
+            now_ts = time.time()
+            if (cached is None or
+                    cached.los_utc.timestamp() < now_ts):
+                cached = self._compute_next_pass(
+                    name, sat, obs_lat, obs_lon)
+                self._pass_cache[name] = cached
+
             return SatPosition(
                 name       = name,
                 lat        = round(lat, 3),
@@ -330,6 +401,8 @@ NOAA 19
                 az_deg     = round(az_deg, 1),
                 range_km   = round(rng_km, 0),
                 doppler_hz = self._doppler(vel, el_deg, 145_000_000),
+                is_sunlit  = False,
+                next_pass  = cached,
                 timestamp  = time.time(),
             )
         except Exception as e:

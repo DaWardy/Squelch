@@ -138,6 +138,8 @@ class ModesTab(SquelchPanel, QWidget):
                 "mode_tab":      self._mode_tabs.currentIndex(),
                 "filter":        getattr(self, "_callsign_filter", ""),
                 "splitter_sizes": sizes,
+                "dx_watch":      getattr(self._dx_watch_edit, "text",
+                                         lambda: "")(),
             }
         except Exception:
             return {}
@@ -146,6 +148,8 @@ class ModesTab(SquelchPanel, QWidget):
         try:
             if "mode_tab" in state:
                 self._mode_tabs.setCurrentIndex(state["mode_tab"])
+            if "dx_watch" in state and hasattr(self, "_dx_watch_edit"):
+                self._dx_watch_edit.setText(state["dx_watch"])
             if "splitter_sizes" in state and hasattr(self, "_main_splitter"):
                 sizes = state["splitter_sizes"]
                 if isinstance(sizes, list) and len(sizes) == 2:
@@ -713,6 +717,15 @@ class ModesTab(SquelchPanel, QWidget):
         self._dx_mode_filter.setFixedWidth(60)
         self._dx_mode_filter.currentTextChanged.connect(self._filter_dx_spots)
         ctrl.addWidget(self._dx_mode_filter)
+        ctrl.addWidget(QLabel("Alert:"))
+        self._dx_watch_edit = QLineEdit()
+        self._dx_watch_edit.setPlaceholderText("callsign/prefix, e.g. JA,P5,VK")
+        self._dx_watch_edit.setFixedWidth(130)
+        self._dx_watch_edit.setToolTip(
+            "Comma-separated callsigns or prefixes to watch.\n"
+            "When a matching spot arrives, a beep sounds and\n"
+            "the spot is highlighted in the DX table.")
+        ctrl.addWidget(self._dx_watch_edit)
         ctrl.addStretch()
         self._dx_status = QLabel("DX Cluster: not connected")
         self._dx_status.setStyleSheet("")
@@ -941,6 +954,27 @@ class ModesTab(SquelchPanel, QWidget):
         if len(self._dx_spots) > 100:
             self._dx_spots = self._dx_spots[:100]
         self._filter_dx_spots()
+        self._check_dx_alert(spot)
+
+    def _check_dx_alert(self, spot) -> None:
+        """Beep and highlight if the spot matches the watch list."""
+        watch_text = getattr(self, "_dx_watch_edit", None)
+        if not watch_text:
+            return
+        raw = watch_text.text().strip()
+        if not raw:
+            return
+        terms = [t.strip().upper() for t in raw.split(",") if t.strip()]
+        call_upper = spot.dx_call.upper()
+        matched = any(call_upper == t or call_upper.startswith(t)
+                      for t in terms)
+        if matched:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.beep()
+            self._dx_status.setText(
+                f"⚡ ALERT: {spot.dx_call}  "
+                f"{spot.freq_khz/1000:.3f} MHz  {getattr(spot, 'mode', '')}")
+            self._dx_status.setStyleSheet("color:#ffcc00;font-weight:bold;")
 
     def _resolve_dx_band(self) -> str:
         """Return the band filter string: '' = all, otherwise e.g. '20m'."""
@@ -1247,7 +1281,7 @@ class ModesTab(SquelchPanel, QWidget):
             self._log_activity(f"WSPR spot: {s.display}"),
             setattr(self._stat_decodes, "text",
                     str(int(self._stat_decodes.text()) + 1))))
-        # Push to RF Lab decode monitor (best-effort).
+        # Push to RF Lab decode monitor and map (best-effort).
         try:
             mw = self.window()
             if mw and hasattr(mw, "_tab_map"):
@@ -1258,6 +1292,35 @@ class ModesTab(SquelchPanel, QWidget):
                         "WSPR", s.freq_hz,
                         callsign=s.callsign, message=m,
                         snr=float(s.snr), grid=s.grid))
+                # Push to map if we have a grid → lat/lon
+                map_tab = mw._tab_map.get("map")
+                if map_tab and spot.grid and hasattr(map_tab, "set_wspr_spots"):
+                    try:
+                        from core.location import _grid_to_latlon
+                        lat, lon = _grid_to_latlon(spot.grid.upper())
+                        spot_dict = {
+                            "callsign": spot.callsign,
+                            "grid":     spot.grid,
+                            "band":     spot.band,
+                            "snr":      spot.snr,
+                            "power_dbm": spot.power_dbm,
+                            "dist_km":  int(spot.distance_km),
+                            "lat":      lat,
+                            "lon":      lon,
+                        }
+                        # Accumulate in the map's list
+                        existing = list(map_tab._wspr_spots)
+                        # Keep last 100 spots; deduplicate by callsign+band
+                        key = f"{spot.callsign}_{spot.band}"
+                        existing = [s for s in existing
+                                    if f"{s['callsign']}_{s['band']}" != key]
+                        existing.append(spot_dict)
+                        if len(existing) > 100:
+                            existing = existing[-100:]
+                        QTimer.singleShot(
+                            0, lambda s=existing: map_tab.set_wspr_spots(s))
+                    except Exception:
+                        pass
         except Exception:
             pass
 

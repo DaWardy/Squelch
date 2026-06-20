@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QLineEdit, QSizePolicy,
     QMessageBox
 )
-from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 
 from network.grayline import (
     gray_line_info, format_gray_line_status)
@@ -38,10 +38,35 @@ log = logging.getLogger(__name__)
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebEngineCore import QWebEngineSettings
+    from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
     HAS_WEBENGINE = True
 except ImportError:
     HAS_WEBENGINE = False
+    QWebEnginePage = object   # sentinel for subclassing guard
+
+
+class _MapPage(QWebEnginePage):
+    """QWebEnginePage that intercepts squelch:// navigation URLs.
+
+    When the user clicks "Analyze propagation" in the Leaflet right-click
+    popup, the popup's href navigates to squelch://path-analysis?lat=X&lon=Y.
+    This page class catches that URL, emits path_analysis_requested, and
+    cancels the navigation so the map stays in place.
+    """
+    path_analysis_requested = pyqtSignal(float, float)
+
+    def acceptNavigationRequest(self, url, nav_type, is_main_frame):
+        if url.scheme() == "squelch" and url.host() == "path-analysis":
+            try:
+                from urllib.parse import parse_qs
+                params = parse_qs(url.query())
+                lat = float(params["lat"][0])
+                lon = float(params["lon"][0])
+                self.path_analysis_requested.emit(lat, lon)
+            except Exception:
+                pass
+            return False   # cancel navigation — map stays visible
+        return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
 # Map refresh interval — gray line moves visibly over ~60s
 MAP_REFRESH_S = 60
@@ -78,6 +103,9 @@ class HeardSpot:
 class MapTab(SquelchPanel, QWidget):
     panel_id    = "map"
     panel_title = "Map"
+
+    # Emitted when user right-clicks map → "Analyze propagation to this point"
+    path_analysis_requested = pyqtSignal(float, float)   # lat, lon
 
     """
     Full-featured map tab with Leaflet.
@@ -131,8 +159,12 @@ class MapTab(SquelchPanel, QWidget):
         # Toolbar
         root.addWidget(self._build_toolbar())
 
-        # Map view
+        # Map view — use _MapPage to intercept squelch:// navigation
         self._view = QWebEngineView()
+        self._map_page = _MapPage(self._view)
+        self._map_page.path_analysis_requested.connect(
+            self.path_analysis_requested)
+        self._view.setPage(self._map_page)
         self._view.settings().setAttribute(
             QWebEngineSettings.WebAttribute
             .JavascriptEnabled, True)

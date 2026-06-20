@@ -544,6 +544,16 @@ class MainWindow(
                 modes.set_sdr_tune_cb(sdr._set_freq)
         except Exception:
             pass
+        # Wire map right-click → Band Conditions path analysis
+        try:
+            bandcond = self._tab_map.get("bandcond")
+            if (map_tab and bandcond and
+                    hasattr(map_tab, "path_analysis_requested") and
+                    hasattr(bandcond, "_handle_map_path")):
+                map_tab.path_analysis_requested.connect(
+                    bandcond._handle_map_path)
+        except Exception:
+            pass
 
     def _build_tab(self, key: str, label: str, ldb) -> "QWidget":
         """Instantiate one tab widget. Imports are lazy (local)."""

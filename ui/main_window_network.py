@@ -196,6 +196,22 @@ class _MainWindowNetworkMixin:
                 )
         except Exception:
             pass
+        # Route APRS message packets to the map message log
+        try:
+            if packet:
+                msg_data = packet.parse_message()
+                if msg_data:
+                    to_call, message, _msg_id = msg_data
+                    map_tab = self._tab_map.get("map")
+                    if map_tab and hasattr(map_tab, "add_aprs_message"):
+                        from core.guest_op import operating_callsign
+                        my_call = (operating_callsign(self.cfg) or "").upper()
+                        directed = to_call.upper() == my_call
+                        QTimer.singleShot(0, lambda f=packet.call_ssid,
+                                          t=to_call, m=message, d=directed:
+                                          map_tab.add_aprs_message(f, t, m, d))
+        except Exception:
+            pass
 
     def _aprs_anomaly_alert(self, alert) -> None:
         """Surface an anomaly alert to the user (status bar + optional tab)."""

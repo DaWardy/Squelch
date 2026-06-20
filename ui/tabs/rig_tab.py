@@ -958,6 +958,19 @@ class RigTab(SquelchPanel, QWidget):
         self._doppler_status.setStyleSheet("color:#aaa;font-size:9px;")
         doppler_row.addWidget(self._doppler_status, 1)
         rl.addLayout(doppler_row)
+
+        # Next-pass countdown display
+        self._pass_lbl = QLabel("Next pass: —")
+        self._pass_lbl.setStyleSheet(
+            "color:#3fbe6f;font-family:'Courier New';font-size:10px;")
+        self._pass_lbl.setWordWrap(True)
+        rl.addWidget(self._pass_lbl)
+        self._pass_progress = QLabel("")
+        self._pass_progress.setStyleSheet(
+            "color:#ffcc00;font-family:'Courier New';font-size:11px;"
+            "font-weight:bold;")
+        rl.addWidget(self._pass_progress)
+
         self._rig_root.addWidget(self._rotor_body)
 
     # ── Rotor callbacks ───────────────────────────────────────────────────
@@ -1031,10 +1044,12 @@ class RigTab(SquelchPanel, QWidget):
                 self._rotor_auto_btn.isChecked())
 
     def update_from_sat_position(self, positions: list) -> None:
-        """Called with SatTracker positions; auto-tracks selected satellite."""
+        """Called with SatTracker positions; auto-tracks and shows pass info."""
+        target_name = self._rotor_sat_combo.currentText()
+        # Update pass countdown for the selected satellite (regardless of tracking state)
+        self._update_pass_countdown(positions, target_name)
         if not self.set_sat_track_cb_enabled():
             return
-        target_name = self._rotor_sat_combo.currentText()
         for pos in positions:
             if not isinstance(pos, dict):
                 continue
@@ -1069,6 +1084,48 @@ class RigTab(SquelchPanel, QWidget):
                 shift_khz = scaled / 1000
                 self._doppler_status.setText(
                     f"Shift {shift_khz:+.2f} kHz → {corrected_hz/1e6:.4f} MHz")
+            break
+
+    def _update_pass_countdown(self, positions: list, target_name: str) -> None:
+        """Update the next-pass info panel for the selected satellite."""
+        if not hasattr(self, "_pass_lbl"):
+            return
+        if target_name == "— off —":
+            self._pass_lbl.setText("Next pass: select a satellite above")
+            self._pass_progress.setText("")
+            return
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        for pos in positions:
+            if not isinstance(pos, dict):
+                continue
+            if pos.get("name", "").upper() != target_name.upper():
+                continue
+            np = pos.get("next_pass")
+            el = pos.get("el_deg", -99.0)
+            if el >= 0:
+                # Currently in a pass
+                self._pass_progress.setText(
+                    f"▲ PASS IN PROGRESS  El {el:.1f}°  "
+                    f"Az {pos.get('az_deg', 0.0):.0f}°")
+                self._pass_lbl.setText(target_name)
+                return
+            self._pass_progress.setText("")
+            if not np:
+                self._pass_lbl.setText(f"{target_name}: no pass predicted in 24h")
+                return
+            try:
+                aos_str = np.get("aos", "?")
+                los_str = np.get("los", "?")
+                max_el  = np.get("max_el", 0.0)
+                aos_az  = np.get("aos_az", 0.0)
+                # Compute countdown from AOS string (HH:MM UTC)
+                self._pass_lbl.setText(
+                    f"{target_name}  AOS {aos_str}  "
+                    f"Max El {max_el:.0f}°  Az {aos_az:.0f}°  "
+                    f"LOS {los_str}")
+            except Exception:
+                self._pass_lbl.setText(f"{target_name}: pass data unavailable")
             break
 
     def _build_connection_section(self, inner):

@@ -169,6 +169,7 @@ class LogTab(SquelchPanel, QWidget):
         self._build_awards_section(root)
         self._build_contest_score_panel(root)
         self._build_activator_panel(root)
+        self._build_session_notes_panel(root)
 
     def _build_stats_bar(self, root):
         """Top row of QSO count / award stat counters."""
@@ -626,6 +627,46 @@ class LogTab(SquelchPanel, QWidget):
         self._act_status.setText(msg)
         self._act_status.setStyleSheet(
             f"color:{'#3fbe6f' if ok else '#cc4444'};font-size:10px;")
+
+    def _build_session_notes_panel(self, root) -> None:
+        """Collapsible scratch pad for session notes, callsigns, exchanges."""
+        from PyQt6.QtWidgets import QToolButton as _TB, QTextEdit as _TE
+        toggle = _TB("▶ Session Notes")
+        toggle.setCheckable(True)
+        toggle.setChecked(False)
+        toggle.setStyleSheet(
+            "QToolButton{background:transparent;border:none;"
+            "font-weight:bold;text-align:left;padding:4px 8px;}")
+        root.addWidget(toggle)
+
+        self._notes_body = QWidget()
+        self._notes_body.setVisible(False)
+        toggle.toggled.connect(self._notes_body.setVisible)
+        nl = QVBoxLayout(self._notes_body)
+        nl.setContentsMargins(8, 2, 8, 4)
+        nl.setSpacing(2)
+
+        self._session_notes = _TE()
+        self._session_notes.setMaximumHeight(120)
+        self._session_notes.setPlaceholderText(
+            "Quick notes — exchanges, callsigns, contest info, conditions…\n"
+            "Saved automatically between sessions.")
+        self._session_notes.setStyleSheet(
+            "background:#0a0a0a;color:#cccccc;"
+            "font-family:'Courier New';font-size:10px;border:none;")
+        # Restore saved notes
+        if self.cfg:
+            saved = self.cfg.get("log.session_notes", "") or ""
+            if saved:
+                self._session_notes.setPlainText(saved)
+        self._session_notes.textChanged.connect(self._save_session_notes)
+        nl.addWidget(self._session_notes)
+        root.addWidget(self._notes_body)
+
+    def _save_session_notes(self) -> None:
+        if self.cfg and hasattr(self, "_session_notes"):
+            self.cfg.set("log.session_notes",
+                         self._session_notes.toPlainText()[:4000])
 
     def _show_dxcc_needed(self):
         """Open the DXCC entity status dialog."""

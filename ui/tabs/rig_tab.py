@@ -808,7 +808,14 @@ class RigTab(SquelchPanel, QWidget):
             mem_export = QPushButton("Export CSV")
             mem_export.setFixedHeight(24)
             mem_export.clicked.connect(self._mem_export_csv)
-            for b in (mem_store, mem_recall_btn, mem_clear, mem_export):
+            chirp_btn = QPushButton("Import CHIRP…")
+            chirp_btn.setFixedHeight(24)
+            chirp_btn.setToolTip(
+                "Import channels from a CHIRP-exported CSV file\n"
+                "into the memory channel bank.")
+            chirp_btn.clicked.connect(self._mem_import_chirp)
+            for b in (mem_store, mem_recall_btn, mem_clear,
+                      mem_export, chirp_btn):
                 b.setStyleSheet(
                     "background:#1a1a1a;border:1px solid #333;"
                     "border-radius:3px;")
@@ -816,6 +823,7 @@ class RigTab(SquelchPanel, QWidget):
             mem_btn_row.addWidget(mem_recall_btn)
             mem_btn_row.addWidget(mem_clear)
             mem_btn_row.addWidget(mem_export)
+            mem_btn_row.addWidget(chirp_btn)
             mem_btn_row.addStretch()
             mem_layout.addLayout(mem_btn_row)
             self._rig_root.addWidget(self._mem_body)
@@ -1715,6 +1723,39 @@ class RigTab(SquelchPanel, QWidget):
         row = self._mem_table.currentRow()
         if row >= 0:
             self._mem_table.removeRow(row)
+
+    def _mem_import_chirp(self) -> None:
+        """Import memory channels from a CHIRP-exported CSV file."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import CHIRP CSV", "",
+            "CSV files (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            from network.chirp_import import parse_chirp_csv
+            repeaters = parse_chirp_csv(path)
+        except Exception as e:
+            QMessageBox.warning(self, "CHIRP Import",
+                                f"Failed to parse CSV:\n{e}")
+            return
+        added = 0
+        for rep in repeaters:
+            freq_hz = int(rep.output_mhz * 1_000_000)
+            mode    = rep.mode or "FM"
+            label   = (rep.callsign or "").strip()[:12] or f"CH{added+1}"
+            slot    = max(self._memories.keys(), default=0) + 1
+            self._memories[slot] = (freq_hz, mode, label)
+            r = self._mem_table.rowCount()
+            self._mem_table.insertRow(r)
+            self._mem_table.setItem(r, 0, QTableWidgetItem(f"M{slot:02d}"))
+            self._mem_table.setItem(r, 1,
+                QTableWidgetItem(f"{rep.output_mhz:.6f} MHz"))
+            self._mem_table.setItem(r, 2, QTableWidgetItem(mode))
+            self._mem_table.setItem(r, 3, QTableWidgetItem(label))
+            added += 1
+        QMessageBox.information(self, "CHIRP Import",
+                                f"Imported {added} channel(s) from CHIRP CSV.")
 
     def _mem_export_csv(self):
         """Export memory channels to a CSV file."""

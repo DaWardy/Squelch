@@ -888,6 +888,12 @@ class MainWindow(
             "ISM/unlicensed frequency reference with category filter")
         band_plan_a.triggered.connect(self._show_band_plan)
         hm.addAction(band_plan_a)
+        grid_calc_a = QAction(self.tr("Grid Square Calculator…"), self)
+        grid_calc_a.setToolTip(
+            "Convert between Maidenhead grid locators and lat/lon.\n"
+            "Shows distance and bearing from your station.")
+        grid_calc_a.triggered.connect(self._show_grid_calc)
+        hm.addAction(grid_calc_a)
         hm.addSeparator()
         about_a = QAction(self.tr("About Squelch"), self)
         about_a.triggered.connect(self._about)
@@ -1191,6 +1197,19 @@ class MainWindow(
         from ui.dialogs.band_plan_dialog import BandPlanDialog
         lic = self.cfg.get("station.license", "Extra")
         dlg = BandPlanDialog(license_class=lic, parent=self)
+        dlg.exec()
+
+    def _show_grid_calc(self):
+        from ui.dialogs.grid_calc_dialog import GridCalcDialog
+        dlg = GridCalcDialog(cfg=self.cfg, parent=self)
+        # Pre-fill with currently entered path-to grid if available
+        try:
+            from ui.tabs.band_conditions_tab import BandConditionsTab
+            bc = self._tab_map.get("bandcond")
+            if bc and hasattr(bc, "_path_edit") and bc._path_edit.text():
+                dlg._grid_in.setText(bc._path_edit.text())
+        except Exception:
+            pass
         dlg.exec()
 
     def _show_network_log(self):

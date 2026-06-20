@@ -658,14 +658,9 @@ class LogTab(SquelchPanel, QWidget):
             self._grids_bar.setValue(
                 min(stats["grids_worked"], 500))
 
-            # QSO rate — count QSOs in the last 60 minutes
-            cutoff = datetime.now(timezone.utc).replace(
-                minute=0, second=0, microsecond=0)
-            hour_ago = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
-            rate = sum(
-                1 for q in self._all_qsos
-                if q.datetime_on and q.datetime_on >= hour_ago)
-            self._stat_widgets["rate"].setText(str(rate))
+            # QSO rate — rolling 60-minute window via LogDB
+            self._stat_widgets["rate"].setText(
+                str(stats.get("rate_per_hour", 0)))
 
             # Today's QSO count + optional daily goal
             today_start = datetime.now(timezone.utc).strftime(

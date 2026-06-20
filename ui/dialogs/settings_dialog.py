@@ -190,6 +190,15 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             self._hamalert_url_secret.setText(cfg.get("apis.hamalert_url_secret", ""))
             self._hamalert_key.setText(store.retrieve("hamalert_password") or "")
             self._hamalert_sms_token.setText(store.retrieve("hamalert_sms_token") or "")
+            # APRS beacon
+            self._aprs_beacon_comment.setText(
+                cfg.get("aprs.beacon_comment", "") or "")
+            self._aprs_beacon_interval.setValue(
+                int(cfg.get("aprs.beacon_interval_s", 600) or 600))
+            sym = cfg.get("aprs.symbol", "house") or "house"
+            idx = self._aprs_beacon_symbol.findData(sym)
+            if idx >= 0:
+                self._aprs_beacon_symbol.setCurrentIndex(idx)
         except Exception:
             pass
 
@@ -487,6 +496,13 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                     store.store(key, attr.text())
         except Exception as e:
             log.warning(f"Keyring save: {e}")
+        # APRS beacon settings (plain cfg — not sensitive)
+        cfg.set("aprs.beacon_comment",
+                self._aprs_beacon_comment.text().strip())
+        cfg.set("aprs.beacon_interval_s",
+                self._aprs_beacon_interval.value())
+        cfg.set("aprs.symbol",
+                self._aprs_beacon_symbol.currentData() or "house")
 
     def _apply(self):
         """Save all settings without closing."""

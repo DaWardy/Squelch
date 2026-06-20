@@ -232,6 +232,23 @@ class MapTab(SquelchPanel, QWidget):
         self._cs_edit.textChanged.connect(
             lambda _: self._cs_timer.start(400))
         lay.addWidget(self._cs_edit)
+        lay.addWidget(_vsep(_t.border))
+        # APRS beacon toggle
+        self._beacon_btn = QPushButton("⚑ Beacon")
+        self._beacon_btn.setCheckable(True)
+        self._beacon_btn.setFixedHeight(26)
+        self._beacon_btn.setFixedWidth(76)
+        self._beacon_btn.setToolTip(
+            "Transmit APRS position beacon via APRS-IS.\n"
+            "Requires APRS connection (connect in Local RF tab).\n"
+            "Interval and comment set in Settings → APIs → APRS.")
+        self._beacon_btn.toggled.connect(self._on_beacon_toggle)
+        lay.addWidget(self._beacon_btn)
+        self._beacon_status = QLabel("")
+        self._beacon_status.setStyleSheet(
+            f"color:{_t.fg_muted};font-size:9px;")
+        self._beacon_status.setFixedWidth(80)
+        lay.addWidget(self._beacon_status)
         lay.addStretch()
         self._stats_lbl = QLabel("")
         self._stats_lbl.setStyleSheet(
@@ -488,6 +505,64 @@ class MapTab(SquelchPanel, QWidget):
         else:
             # Refresh Leaflet map
             QTimer.singleShot(0, self._refresh_map)
+
+    # ── APRS beacon ───────────────────────────────────────────────────────
+
+    def _on_beacon_toggle(self, checked: bool) -> None:
+        """Start or stop the APRS position beacon."""
+        try:
+            mw = self.window()
+            beacon = getattr(mw, "_aprs_beacon", None)
+            if not beacon:
+                self._beacon_btn.setChecked(False)
+                self._beacon_status.setText("No APRS conn")
+                return
+            if checked:
+                interval = int(self.cfg.get("aprs.beacon_interval_s",
+                                            600) or 600)
+                beacon.on_beacon(self._on_beacon_sent)
+                beacon.start(interval)
+                self._beacon_btn.setStyleSheet("color:#3fbe6f;")
+                self._beacon_status.setText("Arming…")
+                self._beacon_countdown_timer = QTimer(self)
+                self._beacon_countdown_timer.timeout.connect(
+                    self._update_beacon_countdown)
+                self._beacon_countdown_timer.start(10_000)
+            else:
+                if beacon.is_running:
+                    beacon.stop()
+                self._beacon_btn.setStyleSheet("")
+                self._beacon_status.setText("")
+                if hasattr(self, "_beacon_countdown_timer"):
+                    self._beacon_countdown_timer.stop()
+        except Exception:
+            pass
+
+    def _on_beacon_sent(self, packet: str, success: bool) -> None:
+        """Callback from APRSBeacon — runs in beacon thread."""
+        from PyQt6.QtCore import QTimer as _QT
+        _QT.singleShot(0, lambda p=packet, s=success: self._apply_beacon_status(p, s))
+
+    def _apply_beacon_status(self, packet: str, success: bool) -> None:
+        if success:
+            self._beacon_status.setText("Sent ✓")
+            self._beacon_status.setStyleSheet("color:#3fbe6f;font-size:9px;")
+        else:
+            self._beacon_status.setText("Send failed")
+            self._beacon_status.setStyleSheet("color:#cc4444;font-size:9px;")
+
+    def _update_beacon_countdown(self) -> None:
+        try:
+            mw = self.window()
+            beacon = getattr(mw, "_aprs_beacon", None)
+            if beacon and beacon.is_running:
+                secs = beacon.seconds_until_next
+                if secs > 0:
+                    self._beacon_status.setText(f"In {secs//60}m{secs%60:02d}s")
+                    self._beacon_status.setStyleSheet(
+                        "color:#888;font-size:9px;")
+        except Exception:
+            pass
 
     def set_wspr_spots(self, spots: list) -> None:
         """Called when a new WSPR spot is decoded; accumulates for map display."""

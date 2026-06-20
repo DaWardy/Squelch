@@ -72,7 +72,22 @@ class _SettingsApisTab:
         self._apis_add_hrdlog_section(f)
         self._apis_add_repeaterbook_section(f)
         self._apis_add_aprs_beacon_section(f)
+        self._apis_add_w3w_section(f)
         return scroll
+
+    def _apis_add_w3w_section(self, f: "QFormLayout") -> None:
+        f.addRow(_sep())
+        _section(f, "What3Words")
+        note = QLabel(
+            "Free API key at what3words.com/select-plan → Free tier.\n"
+            "Used in Help → Grid Square Calculator → What3Words tab.")
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#888;")
+        f.addRow("", note)
+        self._w3w_key = QLineEdit()
+        self._w3w_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._w3w_key.setPlaceholderText("What3Words API key")
+        f.addRow("API Key:", self._w3w_key)
 
     def _apis_add_aprs_beacon_section(self, f: "QFormLayout") -> None:
         f.addRow(_sep())

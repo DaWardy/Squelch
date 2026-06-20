@@ -417,6 +417,18 @@ class LocationManager:
             self._enrich_location(loc)
             return loc
 
+        # What3Words (///word.word.word  or  word.word.word)
+        w3w_q = query.lstrip("/")
+        if _is_w3w(w3w_q):
+            result = _w3w_to_latlon(w3w_q, self.cfg)
+            if result:
+                lat, lon = result
+                loc = Location(lat=lat, lon=lon,
+                               grid=_latlon_to_grid(lat, lon),
+                               source=LocationSource.GEOCODED)
+                self._enrich_location(loc)
+                return loc
+
         # ZIP code
         if re.match(r"^\d{5}$", query):
             return self._nominatim_search(query + ", USA")
@@ -563,6 +575,109 @@ class LocationManager:
 
 
 # ── Standalone helpers ────────────────────────────────────────────────────
+
+_W3W_RE = re.compile(
+    r"^[a-z]+\.[a-z]+\.[a-z]+$", re.IGNORECASE)
+
+W3W_API_URL = "https://api.what3words.com/v3/convert-to-coordinates"
+W3W_REVERSE_URL = "https://api.what3words.com/v3/convert-to-3wa"
+
+
+def _is_w3w(text: str) -> bool:
+    """Return True if text looks like a What3Words address (word.word.word)."""
+    return bool(_W3W_RE.match(text.strip()))
+
+
+def _w3w_to_latlon(words: str, cfg=None) -> "tuple[float, float] | None":
+    """Resolve a What3Words address to (lat, lon) via the W3W API.
+
+    Returns None on failure (no key, network error, bad address).
+    API key read from cfg key ``apis.w3w_key`` or env var W3W_API_KEY.
+    """
+    if not HAS_REQUESTS:
+        return None
+    import os
+    api_key = ""
+    if cfg:
+        try:
+            api_key = cfg.get("apis.w3w_key", "") or ""
+        except Exception:
+            pass
+    if not api_key:
+        api_key = os.environ.get("W3W_API_KEY", "")
+    if not api_key:
+        log.debug("W3W: no API key (set apis.w3w_key in Settings → APIs)")
+        return None
+    try:
+        from core.netlog import record_connection
+        record_connection("api.what3words.com", purpose="W3W geocode",
+                          user_initiated=False)
+        resp = requests.get(W3W_API_URL,
+                            params={"words": words.lower().lstrip("/"),
+                                    "key": api_key},
+                            timeout=6)
+        data = resp.json()
+        coords = data.get("coordinates", {})
+        lat = coords.get("lat")
+        lon = coords.get("lng")
+        if lat is not None and lon is not None:
+            return float(lat), float(lon)
+    except Exception as e:
+        log.debug(f"W3W lookup failed: {e}")
+    return None
+
+
+def _latlon_to_w3w(lat: float, lon: float, cfg=None) -> "str | None":
+    """Convert (lat, lon) to a What3Words address. Returns None on failure."""
+    if not HAS_REQUESTS:
+        return None
+    import os
+    api_key = ""
+    if cfg:
+        try:
+            api_key = cfg.get("apis.w3w_key", "") or ""
+        except Exception:
+            pass
+    if not api_key:
+        api_key = os.environ.get("W3W_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        from core.netlog import record_connection
+        record_connection("api.what3words.com", purpose="W3W reverse geocode",
+                          user_initiated=False)
+        resp = requests.get(W3W_REVERSE_URL,
+                            params={"coordinates": f"{lat},{lon}",
+                                    "key": api_key},
+                            timeout=6)
+        data = resp.json()
+        return data.get("words")
+    except Exception:
+        return None
+
+
+def _latlon_to_mgrs(lat: float, lon: float) -> str:
+    """Convert lat/lon to MGRS string (requires mgrs library)."""
+    if not _HAS_MGRS:
+        return ""
+    try:
+        m = mgrs_lib.MGRS()
+        return m.toMGRS(lat, lon).decode()
+    except Exception:
+        return ""
+
+
+def _mgrs_to_latlon(mgrs_str: str) -> "tuple[float, float] | None":
+    """Convert MGRS string to (lat, lon). Returns None on failure."""
+    if not _HAS_MGRS:
+        return None
+    try:
+        m = mgrs_lib.MGRS()
+        lat, lon = m.toLatLon(mgrs_str.upper().encode())
+        return float(lat), float(lon)
+    except Exception:
+        return None
+
 
 def _valid_grid(grid) -> bool:
     if not isinstance(grid, str):

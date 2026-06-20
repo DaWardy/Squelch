@@ -191,6 +191,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
             self._hamalert_url_secret.setText(cfg.get("apis.hamalert_url_secret", ""))
             self._hamalert_key.setText(store.retrieve("hamalert_password") or "")
             self._hamalert_sms_token.setText(store.retrieve("hamalert_sms_token") or "")
+            self._w3w_key.setText(store.retrieve("w3w_api_key") or "")
             # APRS beacon
             self._aprs_beacon_comment.setText(
                 cfg.get("aprs.beacon_comment", "") or "")
@@ -493,6 +494,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 (self._rb_token,          "repeaterbook_token"),
                 (self._hamalert_key,      "hamalert_password"),
                 (self._hamalert_sms_token, "hamalert_sms_token"),
+                (self._w3w_key,           "w3w_api_key"),
             ]:
                 if attr.text():
                     store.store(key, attr.text())

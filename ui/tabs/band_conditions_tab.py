@@ -946,6 +946,21 @@ class BandConditionsTab(SquelchPanel, QWidget):
         except Exception:
             pass
 
+    def _handle_map_path(self, lat: float, lon: float) -> None:
+        """Called when the user right-clicks the map and chooses 'Analyze path'.
+
+        Converts lat/lon to a Maidenhead grid square and sets the Path-to
+        field, triggering the same propagation analysis as manual entry.
+        """
+        try:
+            from core.location import _latlon_to_grid
+            grid = _latlon_to_grid(lat, lon)
+            if hasattr(self, "_path_edit"):
+                self._path_edit.setText(grid)
+                self._on_path_changed()
+        except Exception as e:
+            log.debug(f"Map path analysis: {e}")
+
     def _update_path_sideview(self, km: float, target: str, feed):
         """Update sideview and path reliability chart for the entered path."""
         try:

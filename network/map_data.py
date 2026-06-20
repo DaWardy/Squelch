@@ -516,19 +516,44 @@ APRS.forEach(function(a) {{
   ).addTo(lyrAprs);
 }});
 
-// ── ADS-B aircraft ────────────────────────────────────────────
+// ── ADS-B aircraft — altitude-coded colour ────────────────────
+function _acColor(alt) {{
+  if (alt > 35000) return '#ff88ff';   // high FL — magenta
+  if (alt > 18000) return '#aaaaff';   // upper airspace — blue
+  if (alt > 5000)  return '#88ccff';   // mid airspace — cyan
+  return '#66ddaa';                    // low / VFR — green
+}}
 AIRCRAFT.forEach(function(a) {{
+  var col = _acColor(a.alt);
   L.marker([a.lat, a.lon], {{
     icon: L.divIcon({{
-      html: '<div style="color:#aaaaff;font-size:16px;'
-           +'transform:rotate('+a.track+'deg);text-shadow:0 0 3px #000;">✈</div>',
+      html: '<div style="color:'+col+';font-size:16px;'
+           +'transform:rotate('+a.track+'deg);'
+           +'text-shadow:0 0 4px #000,0 0 2px #000;cursor:pointer;">✈</div>',
       className:'', iconSize:[16,16], iconAnchor:[8,8]
     }})
   }}).bindPopup(
-    '<div class="qso-popup">'+(a.flight||a.icao)+'<br>'
-    +'Alt: '+a.alt.toLocaleString()+' ft<br>'
-    +'Speed: '+a.speed+' kts</div>'
+    '<div class="qso-popup">'
+    +'<b style="color:'+col+'">'+(a.flight||a.icao)+'</b><br>'
+    +'Alt: <b>'+a.alt.toLocaleString()+'</b> ft<br>'
+    +'Speed: '+a.speed+' kts  Hdg: '+a.track+'°'
+    +'</div>'
   ).addTo(lyrAircraft);
+}});
+
+// ── Map right-click → propagation path analysis ───────────────
+map.on('contextmenu', function(e) {{
+  var lat = e.latlng.lat.toFixed(5);
+  var lon = e.latlng.lng.toFixed(5);
+  L.popup({{maxWidth: 240}})
+    .setLatLng(e.latlng)
+    .setContent(
+      '<div class="qso-popup">'
+      +'<b>'+lat+'°, '+lon+'°</b><br>'
+      +'<a href="squelch://path-analysis?lat='+lat+'&lon='+lon
+      +'" style="color:#3fbe6f;">→ Analyze propagation to this point</a>'
+      +'</div>')
+    .openOn(map);
 }});
 
 // ── Heard stations (FT8/FT4/decode) — mode-coloured dots ─────

@@ -375,6 +375,18 @@ class LogDB:
                 "SELECT COUNT(DISTINCT band) FROM qso "
                 "WHERE band != '' AND band IS NOT NULL").fetchone()[0]
 
+    def rate_per_hour(self, minutes: int = 60) -> int:
+        """QSO count in the last *minutes* minutes (UTC), rounded to per-hour."""
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)
+                  ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._lock:
+            count = self._conn.execute(
+                "SELECT COUNT(*) FROM qso WHERE datetime_on >= ?",
+                (cutoff,)).fetchone()[0]
+        # Scale to per-hour if monitoring window != 60 min
+        return int(round(count * 60 / max(minutes, 1)))
+
     def stats(self) -> dict:
         return {
             "total_qsos":   self.total_qsos(),
@@ -383,6 +395,7 @@ class LogDB:
             "waz_worked":   self.waz_count(),
             "bands_worked": self.bands_worked(),
             "grids_worked": self.grids_worked(),
+            "rate_per_hour": self.rate_per_hour(),
         }
 
     def qsos_by_band(self) -> list[tuple[str, int]]:

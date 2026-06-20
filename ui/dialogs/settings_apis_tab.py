@@ -71,7 +71,38 @@ class _SettingsApisTab:
         self._apis_add_eqsl_section(f)
         self._apis_add_hrdlog_section(f)
         self._apis_add_repeaterbook_section(f)
+        self._apis_add_aprs_beacon_section(f)
         return scroll
+
+    def _apis_add_aprs_beacon_section(self, f: "QFormLayout") -> None:
+        f.addRow(_sep())
+        _section(f, "APRS Beacon")
+        note = QLabel(
+            "APRS position beacon is sent via the APRS-IS connection.\n"
+            "Toggle from the Map tab toolbar  (⚑ Beacon button).")
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#888;")
+        f.addRow("", note)
+        self._aprs_beacon_comment = QLineEdit()
+        self._aprs_beacon_comment.setMaxLength(43)
+        self._aprs_beacon_comment.setPlaceholderText("e.g. Squelch SDR")
+        self._aprs_beacon_comment.setToolTip(
+            "Comment appended to the APRS position packet (max 43 chars).\n"
+            "Grid square is included automatically.")
+        f.addRow("Comment:", self._aprs_beacon_comment)
+        self._aprs_beacon_interval = QSpinBox()
+        self._aprs_beacon_interval.setRange(120, 3600)
+        self._aprs_beacon_interval.setValue(600)
+        self._aprs_beacon_interval.setSuffix(" s")
+        self._aprs_beacon_interval.setToolTip(
+            "How often to send the beacon (seconds). Minimum 120 s.")
+        f.addRow("Interval:", self._aprs_beacon_interval)
+        self._aprs_beacon_symbol = QComboBox()
+        for sym in ("house", "portable", "car", "walker", "bicycle", "emergency"):
+            self._aprs_beacon_symbol.addItem(sym.title(), sym)
+        self._aprs_beacon_symbol.setToolTip(
+            "APRS symbol shown on the map for your station.")
+        f.addRow("Symbol:", self._aprs_beacon_symbol)
 
     def _apis_add_qrz_section(self, f: "QFormLayout") -> None:
         f.addRow(_sep())

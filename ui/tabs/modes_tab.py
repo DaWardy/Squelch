@@ -146,6 +146,9 @@ class ModesTab(SquelchPanel, QWidget):
                 "splitter_sizes": sizes,
                 "dx_watch":      getattr(self._dx_watch_edit, "text",
                                          lambda: "")(),
+                "auto_tune":     getattr(self, "_auto_tune_cb",
+                                         type("o", (), {"isChecked": lambda: False})()
+                                         ).isChecked(),
                 "ft8_watch":     getattr(self, "_ft8_watch_edit",
                                          type("o", (), {"text": lambda: ""})()
                                          ).text(),
@@ -161,6 +164,8 @@ class ModesTab(SquelchPanel, QWidget):
                 self._dx_watch_edit.setText(state["dx_watch"])
             if "ft8_watch" in state and hasattr(self, "_ft8_watch_edit"):
                 self._ft8_watch_edit.setText(state["ft8_watch"])
+            if "auto_tune" in state and hasattr(self, "_auto_tune_cb"):
+                self._auto_tune_cb.setChecked(bool(state["auto_tune"]))
             if "splitter_sizes" in state and hasattr(self, "_main_splitter"):
                 sizes = state["splitter_sizes"]
                 if isinstance(sizes, list) and len(sizes) == 2:
@@ -274,6 +279,13 @@ class ModesTab(SquelchPanel, QWidget):
         self._tune_btn.setFixedHeight(26)
         self._tune_btn.clicked.connect(self._tune_rig)
         band_gl.addWidget(self._tune_btn, 2, 0, 1, 2)
+        self._auto_tune_cb = QCheckBox("Auto-tune rig on band change")
+        self._auto_tune_cb.setChecked(False)
+        self._auto_tune_cb.setToolTip(
+            "When checked, changing the band combo automatically tunes\n"
+            "the rig to the standard digital mode calling frequency\n"
+            "and sets USB-Digital (PKTUSB) mode.")
+        band_gl.addWidget(self._auto_tune_cb, 3, 0, 1, 2)
         band_grp.setMinimumHeight(80)
         self._left_layout.addWidget(band_grp)
         
@@ -1322,6 +1334,17 @@ class ModesTab(SquelchPanel, QWidget):
             self.ft8_engine.freq_hz = freq
             self._freq_label.setText(
                 f"{freq/1e6:.6f} MHz")
+            # Auto-tune rig if checkbox is checked and rig is connected
+            if (hasattr(self, "_auto_tune_cb") and
+                    self._auto_tune_cb.isChecked() and
+                    self.rig and self.rig.is_connected):
+                try:
+                    self.rig.set_freq(freq)
+                    self.rig.set_mode("PKTUSB")
+                    self._log_activity(
+                        f"Auto-tuned → {freq/1e6:.4f} MHz PKTUSB ({band})")
+                except Exception:
+                    pass
 
     def _get_mode_freq(self, mode: str, band: str) -> int:
         """Get conventional frequency for mode+band."""

@@ -72,14 +72,15 @@ class _MainWindowNetworkMixin:
                         "max_el": sp.max_el_deg,
                         "aos_az": sp.aos_az_deg,
                     }
-                sats = [{"name":      p.name,
-                         "lat":       p.lat,
-                         "lon":       p.lon,
-                         "alt_km":    p.alt_km,
-                         "el_deg":    p.el_deg,
-                         "az_deg":    p.az_deg,
-                         "visible":   p.is_visible,
-                         "next_pass": _pass_dict(p.next_pass)}
+                sats = [{"name":       p.name,
+                         "lat":        p.lat,
+                         "lon":        p.lon,
+                         "alt_km":     p.alt_km,
+                         "el_deg":     p.el_deg,
+                         "az_deg":     p.az_deg,
+                         "doppler_hz": p.doppler_hz,
+                         "visible":    p.is_visible,
+                         "next_pass":  _pass_dict(p.next_pass)}
                         for p in positions]
                 QTimer.singleShot(0,
                     lambda s=sats:

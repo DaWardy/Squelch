@@ -934,6 +934,30 @@ class RigTab(SquelchPanel, QWidget):
         self._rotor_sat_status.setStyleSheet("color:#777;font-size:9px;")
         sat_row.addWidget(self._rotor_sat_status, 1)
         rl.addLayout(sat_row)
+
+        # Doppler correction row
+        doppler_row = QHBoxLayout()
+        self._doppler_cb = QCheckBox("Doppler correct")
+        self._doppler_cb.setToolTip(
+            "Auto-apply Doppler shift to the rig's VFO A frequency\n"
+            "during satellite tracking. Enter the satellite's nominal\n"
+            "downlink frequency. Requires rig connection.")
+        doppler_row.addWidget(self._doppler_cb)
+        doppler_row.addWidget(QLabel("Nom. freq:"))
+        from PyQt6.QtWidgets import QDoubleSpinBox as _DSB2
+        self._doppler_nom_freq = _DSB2()
+        self._doppler_nom_freq.setRange(0.001, 6000.0)
+        self._doppler_nom_freq.setDecimals(4)
+        self._doppler_nom_freq.setSuffix(" MHz")
+        self._doppler_nom_freq.setValue(145.2000)
+        self._doppler_nom_freq.setFixedWidth(100)
+        self._doppler_nom_freq.setToolTip(
+            "Nominal (unshifted) satellite downlink frequency in MHz.")
+        doppler_row.addWidget(self._doppler_nom_freq)
+        self._doppler_status = QLabel("")
+        self._doppler_status.setStyleSheet("color:#aaa;font-size:9px;")
+        doppler_row.addWidget(self._doppler_status, 1)
+        rl.addLayout(doppler_row)
         self._rig_root.addWidget(self._rotor_body)
 
     # ── Rotor callbacks ───────────────────────────────────────────────────
@@ -1028,6 +1052,23 @@ class RigTab(SquelchPanel, QWidget):
             self._rotor_compass.set_target(az)
             self._rotor_sat_status.setText(
                 f"Az {az:.1f}°  El {el:.1f}°")
+
+            # Doppler correction: scale shift from 145 MHz reference
+            doppler_ref = pos.get("doppler_hz", 0.0)
+            if (doppler_ref and
+                    hasattr(self, "_doppler_cb") and
+                    self._doppler_cb.isChecked()):
+                nom_hz  = self._doppler_nom_freq.value() * 1_000_000
+                scaled  = doppler_ref * (nom_hz / 145_000_000)
+                corrected_hz = int(nom_hz + scaled)
+                if self.rig and self.rig.is_connected:
+                    try:
+                        self.rig.set_freq(corrected_hz)
+                    except Exception:
+                        pass
+                shift_khz = scaled / 1000
+                self._doppler_status.setText(
+                    f"Shift {shift_khz:+.2f} kHz → {corrected_hz/1e6:.4f} MHz")
             break
 
     def _build_connection_section(self, inner):

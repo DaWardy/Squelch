@@ -11,7 +11,8 @@ Standard S-unit → dBm mapping used (HF receiver, 50 Ω):
   S9 = -73 dBm; each S-unit below = -6 dB; each 10 dB above S9 = +10 dBm.
 """
 import math
-from PyQt6.QtCore import Qt, QRectF
+from collections import deque
+from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import (QPainter, QPen, QBrush, QColor,
                           QLinearGradient, QFont)
 from PyQt6.QtWidgets import QWidget
@@ -40,23 +41,29 @@ _SEG_COLS = [
 _TICK_LEVELS = {0, 3, 5, 7, 9, 11, 13}
 
 
+_HISTORY_LEN = 120   # readings kept (one per rig poll, ~30-120 seconds)
+
+
 class SMeterWidget(QWidget):
-    """Horizontal signal-strength bar with S-unit scale and dBm readout."""
+    """Horizontal signal-strength bar with S-unit scale, dBm readout,
+    and a small rolling signal-history spark-line below the bar."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._level: int  = 0     # 0-13
         self._dbm:   int  = _DBM[0]
         self._cal_offset: int = 0  # user calibration offset in dB
+        self._history: deque = deque(maxlen=_HISTORY_LEN)
         self.setMinimumWidth(140)
-        self.setFixedHeight(28)
+        self.setFixedHeight(46)   # extra 18px for history spark-line
 
     # ── Public API ────────────────────────────────────────────────────────
 
     def set_level(self, s_level: int, cal_offset: int = 0) -> None:
-        """Update the meter.  s_level: 0-13.  cal_offset: user dB trim."""
+        """Update the meter and append to history.  s_level: 0-13."""
         self._level      = max(0, min(13, s_level))
         self._cal_offset = cal_offset
+        self._history.append(self._level)
         self._dbm        = _DBM[self._level] + cal_offset
         self.update()
 
@@ -116,6 +123,38 @@ class SMeterWidget(QWidget):
         p.setFont(QFont("Courier New", 7))
         p.setPen(col.darker(130))
         p.drawText(bar_w + 4, scale_y + 10, f"{self._dbm} dBm")
+
+        # ── Spark-line history chart ──────────────────────────────────────
+        if len(self._history) >= 2:
+            spark_y  = scale_y + 14   # top of spark area
+            spark_h  = H - spark_y - 2
+            if spark_h >= 4:
+                p.fillRect(0, spark_y, bar_w, spark_h,
+                           QBrush(QColor(12, 16, 22)))
+                hist = list(self._history)
+                n_pts = len(hist)
+                step  = bar_w / max(n_pts - 1, 1)
+                pts   = []
+                for i, lv in enumerate(hist):
+                    x = i * step
+                    y = spark_y + spark_h - 1 - int(lv / 13 * (spark_h - 2))
+                    pts.append(QPointF(x, y))
+                # Draw coloured line
+                for i in range(len(pts) - 1):
+                    mid_lv  = (hist[i] + hist[i + 1]) / 2
+                    seg_col = self._bar_color_for(int(mid_lv))
+                    p.setPen(QPen(seg_col, 1))
+                    p.drawLine(pts[i], pts[i + 1])
+
+    @staticmethod
+    def _bar_color_for(level: int) -> QColor:
+        if level < 5:
+            return QColor(63, 190, 111)
+        if level < 8:
+            return QColor(255, 204, 0)
+        if level < 10:
+            return QColor(255, 140, 0)
+        return QColor(204, 68, 68)
 
     def _bar_color(self) -> QColor:
         if self._level < 5:

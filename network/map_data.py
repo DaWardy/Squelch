@@ -179,6 +179,7 @@ def build_map_html(config,
                    satellites: list | None = None,
                    wspr_spots: list | None = None,
                    dx_spots: list | None = None,
+                   show_aprs_labels: bool = False,
                    ) -> str:
     """Build self-contained Leaflet map HTML for QWebEngineView."""
     now_utc = datetime.now(timezone.utc)
@@ -212,6 +213,7 @@ def build_map_html(config,
         satellites          = satellites or [],
         wspr_spots          = wspr_spots or [],
         dx_spots            = _resolve_dx_spot_locs(dx_spots or []),
+        show_aprs_labels    = bool(show_aprs_labels),
     )
 
 
@@ -339,6 +341,12 @@ def _render_html(**ctx) -> str:
     font-size:11px; color:#aaa; min-width:130px;
   }}
   .qso-popup b {{ color:#3fbe6f; }}
+  .aprs-label {{
+    background: transparent; border: none; box-shadow: none;
+    color: #ff9966; font-size: 10px; font-family: 'Courier New', monospace;
+    white-space: nowrap; text-shadow: 0 0 3px #000, 0 0 3px #000;
+    padding: 0;
+  }}
   .qso-popup .lotw {{ color:#3fbe6f; }}
   .grid-label {{
     background:transparent; border:none;
@@ -409,6 +417,7 @@ var WINLINK_GW   = {json.dumps(ctx['winlink_gateways'])};
 var SATELLITES   = {json.dumps(ctx['satellites'])};
 var WSPR_SPOTS   = {json.dumps(ctx['wspr_spots'])};
 var DX_SPOTS     = {json.dumps(ctx['dx_spots'])};
+var SHOW_APRS_LABELS = {'true' if ctx.get('show_aprs_labels') else 'false'};
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -548,12 +557,20 @@ REPEATERS.forEach(function(r) {{
 
 // ── APRS stations ─────────────────────────────────────────────
 APRS.forEach(function(a) {{
-  L.circleMarker([a.lat, a.lon], {{
+  var m = L.circleMarker([a.lat, a.lon], {{
     radius:5, color:'#ff8844', fillColor:'#ff8844',
     fillOpacity:0.7, weight:1
   }}).bindPopup(
     '<div class="qso-popup"><b>'+a.call+'</b><br>'+a.comment+'</div>'
-  ).addTo(lyrAprs);
+  );
+  if (SHOW_APRS_LABELS) {{
+    m.bindTooltip(a.call, {{
+      permanent: true, direction: 'right',
+      className: 'aprs-label',
+      offset: [6, 0]
+    }});
+  }}
+  m.addTo(lyrAprs);
 }});
 
 // ── ADS-B aircraft — altitude-coded colour ────────────────────

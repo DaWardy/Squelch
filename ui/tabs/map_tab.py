@@ -305,6 +305,13 @@ class MapTab(SquelchPanel, QWidget):
             "Connect in Local RF tab first")
         self._show_aprs.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_aprs)
+        self._show_aprs_labels = QCheckBox("Labels")
+        self._show_aprs_labels.setChecked(False)
+        self._show_aprs_labels.setToolTip(
+            "Show callsign labels on APRS station markers.\n"
+            "May clutter the map when many stations are visible.")
+        self._show_aprs_labels.toggled.connect(lambda _: self._refresh_map())
+        lay.addWidget(self._show_aprs_labels)
         self._show_wl_gw = QCheckBox("Winlink GW")
         self._show_wl_gw.setChecked(True)
         self._show_wl_gw.setToolTip(
@@ -400,6 +407,9 @@ class MapTab(SquelchPanel, QWidget):
                 hearing_me          = getattr(self, "_hearing_me", {}),
                 winlink_gateways    = wl_gws,
                 satellites          = list(self._satellites),
+                show_aprs_labels    = getattr(self, "_show_aprs_labels",
+                                              type("o", (), {"isChecked": lambda: False})()
+                                              ).isChecked(),
                 wspr_spots          = list(self._wspr_spots),
                 dx_spots            = list(self._dx_spots),
             )

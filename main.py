@@ -435,6 +435,15 @@ def main():
     safety.start_watchdog()
     log.info("Safety watchdog active")
 
+    # Backup log database on startup
+    try:
+        from core.log_db import get_log_db
+        from core.backup import backup_log
+        _ldb_path = get_log_db()._path
+        backup_log(_ldb_path)
+    except Exception as _e:
+        log.debug(f"Startup backup: {_e}")
+
     from ui.main_window import MainWindow
     window = MainWindow(config, rig, location)
     _wiring_smoke_test(window)
@@ -453,6 +462,13 @@ def main():
         pass
     rig.disconnect()
     config.save_if_dirty()
+    # Backup log database on clean exit
+    try:
+        from core.log_db import get_log_db
+        from core.backup import backup_log
+        backup_log(get_log_db()._path)
+    except Exception:
+        pass
     log.info("Shutdown complete")
     sys.exit(ret)
 

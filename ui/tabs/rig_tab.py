@@ -164,6 +164,7 @@ class RigTab(SquelchPanel, QWidget):
         self._scan_timer.timeout.connect(self._scan_step)
         self._memories      = {}           # slot -> (hz, mode, label)
         self._spectrum_widget = None
+        self._rotor: "object | None" = None   # RotorController (lazy import)
 
         self._build()
         self._wire()
@@ -196,6 +197,7 @@ class RigTab(SquelchPanel, QWidget):
                 "scanner_open":  _vis("_scan_body"),
                 "memory_open":   _vis("_mem_body"),
                 "spectrum_open": _vis("_spectrum_widget"),
+                "rotor_open":    _vis("_rotor_body"),
                 # Persist memory channels as list of [slot, hz, mode, label]
                 "memories": [
                     [slot, hz, mode, label]
@@ -214,6 +216,7 @@ class RigTab(SquelchPanel, QWidget):
                 ("scanner_open",  "_scan_body",      "_scan_toggle"),
                 ("memory_open",   "_mem_body",       "_mem_toggle"),
                 ("spectrum_open", "_spectrum_widget", "_spec_toggle"),
+                ("rotor_open",    "_rotor_body",      "_rotor_toggle"),
             ]:
                 if key not in state:
                     continue
@@ -262,6 +265,7 @@ class RigTab(SquelchPanel, QWidget):
         self._build_cw_section(inner)
         self._build_scanner_section(inner)
         self._build_memory_section(inner)
+        self._build_rotor_section(inner)
         self._build_connection_section(inner)
         self._build_spectrum_section(inner)
 
@@ -784,9 +788,144 @@ class RigTab(SquelchPanel, QWidget):
             mem_btn_row.addStretch()
             mem_layout.addLayout(mem_btn_row)
             self._rig_root.addWidget(self._mem_body)
-    
-            # ── Connection ────────────────────────────────────────────────────
 
+    def _build_rotor_section(self, inner):
+        """Collapsible rotor/antenna controller panel."""
+        from PyQt6.QtWidgets import (QDoubleSpinBox as _DSB, QLineEdit as _LE,
+                                      QSpinBox as _SB)
+        from ui.widgets.rotor_compass import RotorCompass
+
+        self._rotor_toggle = _collapse_btn("Rotor Control")
+        self._rotor_toggle.toggled.connect(
+            lambda c: self._rotor_body.setVisible(c))
+        self._rig_root.addWidget(self._rotor_toggle)
+
+        self._rotor_body = QWidget()
+        self._rotor_body.setVisible(False)
+        rl = QVBoxLayout(self._rotor_body)
+        rl.setContentsMargins(8, 4, 8, 4)
+        rl.setSpacing(4)
+
+        # Host:Port + status
+        conn_row = QHBoxLayout()
+        self._rotor_host = _LE("localhost")
+        self._rotor_host.setFixedWidth(110)
+        self._rotor_host.setPlaceholderText("host")
+        self._rotor_port_spin = _SB()
+        self._rotor_port_spin.setRange(1, 65535)
+        self._rotor_port_spin.setValue(4533)
+        self._rotor_port_spin.setFixedWidth(65)
+        self._rotor_conn_btn = QPushButton("Connect")
+        self._rotor_conn_btn.setFixedHeight(24)
+        self._rotor_conn_btn.setFixedWidth(76)
+        self._rotor_conn_btn.clicked.connect(self._rotor_toggle_connect)
+        self._rotor_status = QLabel("● Disconnected")
+        self._rotor_status.setStyleSheet("color:#777;font-size:10px;")
+        conn_row.addWidget(QLabel("Host:"))
+        conn_row.addWidget(self._rotor_host)
+        conn_row.addWidget(QLabel(":"))
+        conn_row.addWidget(self._rotor_port_spin)
+        conn_row.addWidget(self._rotor_conn_btn)
+        conn_row.addWidget(self._rotor_status, 1)
+        rl.addLayout(conn_row)
+
+        # Compass rose + az/el controls side by side
+        ctrl_row = QHBoxLayout()
+        self._rotor_compass = RotorCompass()
+        self._rotor_compass.setFixedSize(140, 140)
+        ctrl_row.addWidget(self._rotor_compass)
+
+        az_el_col = QVBoxLayout()
+        az_el_col.setSpacing(4)
+        az_row = QHBoxLayout()
+        az_row.addWidget(QLabel("Az:"))
+        self._rotor_az = _DSB()
+        self._rotor_az.setRange(0.0, 360.0)
+        self._rotor_az.setDecimals(1)
+        self._rotor_az.setSuffix("°")
+        self._rotor_az.setFixedWidth(80)
+        az_row.addWidget(self._rotor_az)
+        az_el_col.addLayout(az_row)
+
+        el_row = QHBoxLayout()
+        el_row.addWidget(QLabel("El:"))
+        self._rotor_el = _DSB()
+        self._rotor_el.setRange(0.0, 90.0)
+        self._rotor_el.setDecimals(1)
+        self._rotor_el.setSuffix("°")
+        self._rotor_el.setFixedWidth(80)
+        el_row.addWidget(self._rotor_el)
+        az_el_col.addLayout(el_row)
+
+        btn_col = QVBoxLayout()
+        set_btn  = QPushButton("Set →")
+        set_btn.setFixedHeight(26)
+        set_btn.setToolTip("Send azimuth/elevation to rotator")
+        set_btn.clicked.connect(self._rotor_set_position)
+        park_btn = QPushButton("Park")
+        park_btn.setFixedHeight(26)
+        park_btn.setToolTip("Send the rotator to its park position")
+        park_btn.clicked.connect(self._rotor_park)
+        for b in (set_btn, park_btn):
+            b.setStyleSheet("background:#1a1a1a;border:1px solid #333;"
+                            "border-radius:3px;")
+        btn_col.addWidget(set_btn)
+        btn_col.addWidget(park_btn)
+
+        az_el_col.addLayout(btn_col)
+        az_el_col.addStretch()
+        ctrl_row.addLayout(az_el_col)
+        rl.addLayout(ctrl_row)
+        self._rig_root.addWidget(self._rotor_body)
+
+    # ── Rotor callbacks ───────────────────────────────────────────────────
+
+    def _rotor_toggle_connect(self):
+        from core.rotor import RotorController
+        from PyQt6.QtCore import QTimer as _QT
+        if self._rotor and self._rotor.is_connected:
+            self._rotor.disconnect()
+            self._rotor = None
+            self._rotor_conn_btn.setText("Connect")
+            self._rotor_status.setText("● Disconnected")
+            self._rotor_status.setStyleSheet("color:#777;font-size:10px;")
+            return
+        host = self._rotor_host.text().strip() or "localhost"
+        port = self._rotor_port_spin.value()
+        self._rotor = RotorController(host, port)
+        self._rotor.on_position(self._on_rotor_position)
+        if self._rotor.connect():
+            self._rotor_conn_btn.setText("Disconnect")
+            self._rotor_status.setText("● Connected")
+            self._rotor_status.setStyleSheet("color:#3fbe6f;font-size:10px;")
+        else:
+            self._rotor = None
+            self._rotor_status.setText("● Connection failed")
+            self._rotor_status.setStyleSheet("color:#cc4444;font-size:10px;")
+
+    def _on_rotor_position(self, az: float, el: float):
+        """Called from rotor poll thread — marshal to UI thread."""
+        from PyQt6.QtCore import QTimer as _QT
+        _QT.singleShot(0, lambda: self._apply_rotor_position(az, el))
+
+    def _apply_rotor_position(self, az: float, el: float):
+        if hasattr(self, "_rotor_compass"):
+            self._rotor_compass.set_current(az, el)
+        if hasattr(self, "_rotor_az"):
+            self._rotor_az.setValue(az)
+        if hasattr(self, "_rotor_el"):
+            self._rotor_el.setValue(el)
+
+    def _rotor_set_position(self):
+        if self._rotor and self._rotor.is_connected:
+            az = self._rotor_az.value()
+            el = self._rotor_el.value()
+            self._rotor.set_position(az, el)
+            self._rotor_compass.set_target(az)
+
+    def _rotor_park(self):
+        if self._rotor and self._rotor.is_connected:
+            self._rotor.park()
 
     def _build_connection_section(self, inner):
             # ── Connection ────────────────────────────────────────────────────

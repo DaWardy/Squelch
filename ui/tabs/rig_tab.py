@@ -907,6 +907,33 @@ class RigTab(SquelchPanel, QWidget):
         az_el_col.addStretch()
         ctrl_row.addLayout(az_el_col)
         rl.addLayout(ctrl_row)
+
+        # Satellite auto-track row
+        sat_row = QHBoxLayout()
+        sat_row.addWidget(QLabel("Track:"))
+        self._rotor_sat_combo = QComboBox()
+        self._rotor_sat_combo.setFixedWidth(130)
+        self._rotor_sat_combo.setToolTip(
+            "Satellite to track.\n"
+            "Enable Auto-track to send position updates to rotctld.")
+        for name in ("— off —", "ISS (ZARYA)", "AO-91", "AO-92", "AO-73",
+                     "SO-50", "RS-44", "CAS-4A", "CAS-4B"):
+            self._rotor_sat_combo.addItem(name)
+        sat_row.addWidget(self._rotor_sat_combo)
+        self._rotor_auto_btn = QPushButton("Auto-track")
+        self._rotor_auto_btn.setCheckable(True)
+        self._rotor_auto_btn.setFixedHeight(24)
+        self._rotor_auto_btn.setFixedWidth(84)
+        self._rotor_auto_btn.setToolTip(
+            "When checked, rotor follows the selected satellite\n"
+            "using live az/el data from the satellite tracker.\n"
+            "Requires rotctld connection and satellite tracking.")
+        self._rotor_auto_btn.toggled.connect(self._rotor_auto_toggled)
+        sat_row.addWidget(self._rotor_auto_btn)
+        self._rotor_sat_status = QLabel("")
+        self._rotor_sat_status.setStyleSheet("color:#777;font-size:9px;")
+        sat_row.addWidget(self._rotor_sat_status, 1)
+        rl.addLayout(sat_row)
         self._rig_root.addWidget(self._rotor_body)
 
     # ── Rotor callbacks ───────────────────────────────────────────────────
@@ -957,6 +984,51 @@ class RigTab(SquelchPanel, QWidget):
     def _rotor_park(self):
         if self._rotor and self._rotor.is_connected:
             self._rotor.park()
+
+    # ── Satellite auto-tracking ───────────────────────────────────────────
+
+    def _rotor_auto_toggled(self, checked: bool) -> None:
+        """Enable/disable satellite auto-tracking via the rotor."""
+        if checked:
+            sat_name = self._rotor_sat_combo.currentText()
+            if sat_name == "— off —":
+                self._rotor_auto_btn.setChecked(False)
+                return
+            self._rotor_auto_btn.setStyleSheet("color:#3fbe6f;")
+            self._rotor_sat_status.setText(f"Tracking {sat_name}")
+        else:
+            self._rotor_auto_btn.setStyleSheet("")
+            self._rotor_sat_status.setText("")
+            self._rotor_compass.set_target(None)
+
+    def set_sat_track_cb_enabled(self) -> bool:
+        """Return True when satellite auto-tracking is active."""
+        return (hasattr(self, "_rotor_auto_btn") and
+                self._rotor_auto_btn.isChecked())
+
+    def update_from_sat_position(self, positions: list) -> None:
+        """Called with SatTracker positions; auto-tracks selected satellite."""
+        if not self.set_sat_track_cb_enabled():
+            return
+        target_name = self._rotor_sat_combo.currentText()
+        for pos in positions:
+            if not isinstance(pos, dict):
+                continue
+            if pos.get("name", "").upper() != target_name.upper():
+                continue
+            az = pos.get("az_deg", pos.get("az", 0.0))
+            el = pos.get("el_deg", pos.get("el", 0.0))
+            if el < 0:
+                self._rotor_sat_status.setText(
+                    f"{target_name} below horizon  El {el:.1f}°")
+                return
+            # Only move rotor when satellite is above horizon
+            if self._rotor and self._rotor.is_connected:
+                self._rotor.set_position(az, el)
+            self._rotor_compass.set_target(az)
+            self._rotor_sat_status.setText(
+                f"Az {az:.1f}°  El {el:.1f}°")
+            break
 
     def _build_connection_section(self, inner):
             # ── Connection ────────────────────────────────────────────────────

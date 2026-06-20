@@ -120,6 +120,15 @@ class _SettingsStationTab:
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         f.addRow(sep)
+        self._k_index_alarm = QSpinBox()
+        self._k_index_alarm.setRange(0, 9)
+        self._k_index_alarm.setValue(0)
+        self._k_index_alarm.setSpecialValueText("Off")
+        self._k_index_alarm.setToolTip(
+            "Sound an alert when K-index reaches or exceeds this value.\n"
+            "K ≥ 4 = elevated activity; K ≥ 5 = storm G1.\n"
+            "Set to 0 to disable.")
+        f.addRow("K-index alarm:", self._k_index_alarm)
         self._smeter_cal = QSpinBox()
         self._smeter_cal.setRange(-20, 20)
         self._smeter_cal.setValue(0)

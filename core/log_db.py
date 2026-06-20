@@ -398,6 +398,36 @@ class LogDB:
             "rate_per_hour": self.rate_per_hour(),
         }
 
+    def contest_score(self) -> dict:
+        """Return a simplified contest score breakdown.
+
+        Uses a generic scoring formula:
+          • CW / RTTY / digital (non-SSB/AM/FM) QSOs → 2 points each
+          • SSB / AM / FM QSOs → 1 point each
+        Multipliers = unique DXCC entities worked.
+        Total = points × multipliers.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT band, mode, COUNT(*) n FROM qso "
+                "GROUP BY band, mode").fetchall()
+        cw_digital = {"CW", "RTTY", "FT8", "FT4", "WSPR", "JS8",
+                      "PSK31", "PSK63", "DIGI", "DATA"}
+        by_band: dict[str, int] = {}
+        total_pts = 0
+        for band, mode, cnt in rows:
+            pts_each = 2 if (mode or "").upper() in cw_digital else 1
+            total_pts += cnt * pts_each
+            by_band[band or "?"] = by_band.get(band or "?", 0) + cnt
+        mults = self.dxcc_count()
+        return {
+            "by_band":    by_band,
+            "total_qsos": sum(by_band.values()),
+            "points":     total_pts,
+            "mults":      mults,
+            "score":      total_pts * mults,
+        }
+
     def qsos_by_band(self) -> list[tuple[str, int]]:
         """QSO count per band, descending. Empty band excluded."""
         with self._lock:

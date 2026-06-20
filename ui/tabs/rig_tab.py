@@ -196,6 +196,11 @@ class RigTab(SquelchPanel, QWidget):
                 "scanner_open":  _vis("_scan_body"),
                 "memory_open":   _vis("_mem_body"),
                 "spectrum_open": _vis("_spectrum_widget"),
+                # Persist memory channels as list of [slot, hz, mode, label]
+                "memories": [
+                    [slot, hz, mode, label]
+                    for slot, (hz, mode, label) in self._memories.items()
+                ],
             }
         except Exception:
             return {}
@@ -218,6 +223,20 @@ class RigTab(SquelchPanel, QWidget):
                     body.setVisible(bool(state[key]))
                 if toggle and hasattr(toggle, "setChecked"):
                     toggle.setChecked(bool(state[key]))
+            # Restore memory channels
+            for entry in state.get("memories", []):
+                try:
+                    slot, hz, mode, label = entry
+                    self._memories[slot] = (hz, mode, label)
+                    r = self._mem_table.rowCount()
+                    self._mem_table.insertRow(r)
+                    self._mem_table.setItem(r, 0, QTableWidgetItem(f"M{slot:02d}"))
+                    self._mem_table.setItem(r, 1,
+                        QTableWidgetItem(f"{hz/1e6:.6f} MHz"))
+                    self._mem_table.setItem(r, 2, QTableWidgetItem(mode))
+                    self._mem_table.setItem(r, 3, QTableWidgetItem(label))
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -751,13 +770,17 @@ class RigTab(SquelchPanel, QWidget):
             mem_clear = QPushButton("Clear selected")
             mem_clear.setFixedHeight(24)
             mem_clear.clicked.connect(self._mem_clear)
-            for b in (mem_store, mem_recall_btn, mem_clear):
+            mem_export = QPushButton("Export CSV")
+            mem_export.setFixedHeight(24)
+            mem_export.clicked.connect(self._mem_export_csv)
+            for b in (mem_store, mem_recall_btn, mem_clear, mem_export):
                 b.setStyleSheet(
                     "background:#1a1a1a;border:1px solid #333;"
                     "border-radius:3px;")
             mem_btn_row.addWidget(mem_store)
             mem_btn_row.addWidget(mem_recall_btn)
             mem_btn_row.addWidget(mem_clear)
+            mem_btn_row.addWidget(mem_export)
             mem_btn_row.addStretch()
             mem_layout.addLayout(mem_btn_row)
             self._rig_root.addWidget(self._mem_body)
@@ -1214,6 +1237,33 @@ class RigTab(SquelchPanel, QWidget):
         row = self._mem_table.currentRow()
         if row >= 0:
             self._mem_table.removeRow(row)
+
+    def _mem_export_csv(self):
+        """Export memory channels to a CSV file."""
+        from PyQt6.QtWidgets import QFileDialog
+        import csv
+        from pathlib import Path
+        from core.sanitize import csv_safe
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Memory Channels", "rig_memories.csv",
+            "CSV files (*.csv)")
+        if not path:
+            return
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Slot", "Frequency MHz", "Mode", "Label"])
+                for slot, (hz, mode, label) in sorted(self._memories.items()):
+                    w.writerow([
+                        f"M{slot:02d}",
+                        f"{hz/1e6:.6f}",
+                        csv_safe(mode),
+                        csv_safe(label),
+                    ])
+            log.info(f"Exported {len(self._memories)} memory channels to {path}")
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Export Failed", str(e))
 
     # ── Rig state callback ────────────────────────────────────────────────
 

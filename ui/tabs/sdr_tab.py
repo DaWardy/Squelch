@@ -186,6 +186,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # Noise reduction
         self._nr_enabled      = False
         self._nr_level        = 30    # 0-100 %
+        # IF bandwidth filter lines (updated in _update_axes)
+        self._filter_lo_line  = None
+        self._filter_hi_line  = None
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -487,6 +490,14 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._spec_plot.addItem(self._squelch_line)
         self._spec_plot.scene().sigMouseClicked.connect(self._on_spec_click)
         self._spec_plot.wheelEvent = self._wheel_waterfall
+        # IF filter width indicator — two dashed cyan lines at ±BW/2
+        filter_pen = pg.mkPen("#00cccc", width=1, style=Qt.PenStyle.DashLine)
+        self._filter_lo_line = pg.InfiniteLine(
+            angle=90, movable=False, pen=filter_pen)
+        self._filter_hi_line = pg.InfiniteLine(
+            angle=90, movable=False, pen=filter_pen)
+        self._spec_plot.addItem(self._filter_lo_line)
+        self._spec_plot.addItem(self._filter_hi_line)
 
     def _build_waterfall_plot(self) -> None:
         """Build self._wf_plot with image item and click/wheel handlers."""
@@ -633,6 +644,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "AM", "NFM", "WFM", "USB", "LSB", "CW", "Raw IQ"])
         self._demod_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._demod_combo.currentTextChanged.connect(self._on_demod_mode_change)
         deml.addWidget(self._demod_combo, 0, 1)
         deml.addWidget(QLabel(self.tr("BW:")), 1, 0)
         self._demod_bw = QComboBox()
@@ -1290,6 +1302,39 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         if HAS_PG and self._squelch_enabled:
             self._squelch_line.setValue(self._squelch_db)
 
+    # Mode→default BW mapping (matches _demod_bw addItems order)
+    _DEMOD_DEFAULT_BW = {
+        "AM":     "10 kHz",
+        "NFM":    "10 kHz",
+        "WFM":    "200 kHz",
+        "USB":    "2.5 kHz",
+        "LSB":    "2.5 kHz",
+        "CW":     "500 Hz",
+        "Raw IQ": "200 kHz",
+    }
+
+    def _on_demod_mode_change(self, mode: str) -> None:
+        """Auto-select sensible default BW when the demod mode changes."""
+        default = self._DEMOD_DEFAULT_BW.get(mode)
+        if default and hasattr(self, "_demod_bw"):
+            self._demod_bw.setCurrentText(default)
+
+    @property
+    def _bw_hz(self) -> int:
+        """Current IF bandwidth in Hz from the BW combo."""
+        try:
+            txt = self._demod_bw.currentText().strip()
+            parts = txt.split()
+            val = float(parts[0])
+            unit = parts[1] if len(parts) > 1 else "Hz"
+            if unit == "kHz":
+                return int(val * 1_000)
+            if unit == "MHz":
+                return int(val * 1_000_000)
+            return int(val)
+        except Exception:
+            return 10_000
+
     def _on_nr_toggle(self, enabled: bool):
         self._nr_enabled = enabled
         self._nr_slider.setEnabled(enabled)
@@ -1542,6 +1587,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             QRectF(lo_mhz, 0, hi_mhz - lo_mhz, WF_ROWS))
         self._wf_plot.setXRange(lo_mhz, hi_mhz, padding=0)
         self._cf_line.setValue((self._center_hz + self._lo_hz) / 1e6)
+        # Filter width indicator — ±BW/2 around the centre
+        if self._filter_lo_line is not None:
+            half_bw = self._bw_hz / 2
+            cf_mhz  = (self._center_hz + self._lo_hz) / 1e6
+            self._filter_lo_line.setValue(cf_mhz - half_bw / 1e6)
+            self._filter_hi_line.setValue(cf_mhz + half_bw / 1e6)
 
     def _draw_band_segments(self):
         if not HAS_PG:
@@ -1587,6 +1638,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "squelch_db":      self._squelch_db,
             "nr_enabled":      self._nr_enabled,
             "nr_level":        self._nr_level,
+            "demod_mode":      self._demod_combo.currentText(),
+            "demod_bw":        self._demod_bw.currentText(),
         }
 
     def restore_state(self, state: dict) -> None:
@@ -1615,6 +1668,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._nr_slider.setValue(int(state["nr_level"]))
         if "nr_enabled" in state:
             self._nr_cb.setChecked(bool(state["nr_enabled"]))
+        if "demod_mode" in state:
+            self._demod_combo.setCurrentText(state["demod_mode"])
+        if "demod_bw" in state:
+            self._demod_bw.setCurrentText(state["demod_bw"])
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

@@ -550,6 +550,10 @@ class ModesTab(SquelchPanel, QWidget):
             "selection-background-color:#1a3a1a;}"
             "QHeaderView::section{background:#141414;border:none;padding:3px;}")
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
+        self._decode_table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self._decode_table.customContextMenuRequested.connect(
+            self._decode_context_menu)
         rl.addWidget(self._decode_table, 3)
 
     def _build_activity_log_section(self, rl: "QVBoxLayout") -> None:
@@ -1647,6 +1651,76 @@ class ModesTab(SquelchPanel, QWidget):
                 self._log_activity(f"Calling: {call}")
                 break
 
+
+    def _decode_context_menu(self, pos) -> None:
+        """Right-click context menu on the FT8 decode table."""
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QDesktopServices, QClipboard, QGuiApplication
+        from PyQt6.QtCore import QUrl
+        idx  = self._decode_table.indexAt(pos)
+        row  = idx.row()
+        if row < 0:
+            return
+        call_item = self._decode_table.item(row, COL_CALL)
+        if not call_item:
+            return
+        call = call_item.text().strip()
+        menu = QMenu(self)
+
+        act_call = menu.addAction(f"📡 Call {call}")
+        act_call.triggered.connect(lambda: self._on_decode_dblclick(idx))
+
+        menu.addSeparator()
+
+        act_log = menu.addAction(f"📒 Log QSO with {call}…")
+        act_log.triggered.connect(lambda: self._log_from_decode(row))
+
+        act_qrz = menu.addAction(f"🔍 Open QRZ page for {call}")
+        act_qrz.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.qrz.com/db/{call}")))
+
+        menu.addSeparator()
+
+        act_watch = menu.addAction(f"⚡ Add {call} to FT8 alert watch list")
+        act_watch.triggered.connect(lambda: self._add_to_ft8_watch(call))
+
+        act_copy = menu.addAction(f"📋 Copy callsign")
+        act_copy.triggered.connect(
+            lambda: QGuiApplication.clipboard().setText(call))
+
+        menu.exec(self._decode_table.viewport().mapToGlobal(pos))
+
+    def _log_from_decode(self, row: int) -> None:
+        """Open manual log entry dialog pre-filled from the selected decode."""
+        call_item = self._decode_table.item(row, COL_CALL)
+        if not call_item:
+            return
+        call = call_item.text().strip()
+        try:
+            mw = self.window()
+            log_tab = getattr(mw, "_tab_map", {}).get("log")
+            if log_tab and hasattr(log_tab, "_manual_entry"):
+                # Pre-populate via cfg so the dialog reads it
+                if self.cfg:
+                    self.cfg.set("session.dx_callsign", call)
+                # Switch to log tab then open entry
+                if hasattr(mw, "tabs") and hasattr(mw, "_tab_map"):
+                    mw.tabs.setCurrentWidget(log_tab)
+                log_tab._manual_entry()
+        except Exception as e:
+            self._log_activity(f"Log from decode: {e}")
+
+    def _add_to_ft8_watch(self, call: str) -> None:
+        """Append callsign to the FT8 alert watch list."""
+        if not hasattr(self, "_ft8_watch_edit"):
+            return
+        current = self._ft8_watch_edit.text().strip()
+        terms = [t.strip().upper() for t in current.split(",") if t.strip()]
+        if call.upper() not in terms:
+            terms.append(call.upper())
+            self._ft8_watch_edit.setText(", ".join(terms))
+            self._log_activity(f"Added {call} to FT8 alert watch list")
 
     def _export_decodes(self):
         """Export the current decode table to CSV or ADIF (C-10, Sam/Priya)."""

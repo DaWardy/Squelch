@@ -63,12 +63,22 @@ class _MainWindowNetworkMixin:
             if map_tab and hasattr(
                     map_tab, "set_satellite_positions"):
                 from PyQt6.QtCore import QTimer
-                sats = [{"name":   p.name,
-                         "lat":    p.lat,
-                         "lon":    p.lon,
-                         "alt_km": p.alt_km,
-                         "el_deg": p.el_deg,
-                         "visible": p.is_visible}
+                def _pass_dict(sp):
+                    if sp is None:
+                        return None
+                    return {
+                        "aos": sp.aos_utc.strftime("%H:%M UTC"),
+                        "los": sp.los_utc.strftime("%H:%M UTC"),
+                        "max_el": sp.max_el_deg,
+                        "aos_az": sp.aos_az_deg,
+                    }
+                sats = [{"name":      p.name,
+                         "lat":       p.lat,
+                         "lon":       p.lon,
+                         "alt_km":    p.alt_km,
+                         "el_deg":    p.el_deg,
+                         "visible":   p.is_visible,
+                         "next_pass": _pass_dict(p.next_pass)}
                         for p in positions]
                 QTimer.singleShot(0,
                     lambda s=sats:

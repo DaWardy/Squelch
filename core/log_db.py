@@ -457,6 +457,22 @@ class LogDB:
         return [(r[0], r[1]) for r in rows
                 if r[0] and len(r[0]) == 4 and r[0].isdigit()]
 
+    def qsos_by_hour_dow(self) -> list[tuple[int, int, int]]:
+        """Return (day_of_week 0=Sun, hour 0-23, count) for all QSOs.
+
+        Uses UTC times stored in datetime_on (ISO 8601).
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT CAST(strftime('%w', datetime_on) AS INT) dow,"
+                "       CAST(strftime('%H', datetime_on) AS INT) hr,"
+                "       COUNT(*) n"
+                " FROM qso"
+                " WHERE datetime_on IS NOT NULL"
+                " GROUP BY dow, hr"
+            ).fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+
     def top_entities(self, n: int = 10) -> list[tuple[str, int]]:
         """Top N worked countries by QSO count."""
         with self._lock:

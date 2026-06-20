@@ -45,6 +45,7 @@ class LogStatsDialog(QDialog):
         tabs.addTab(self._chart_tab(self._db.qsos_by_year(),
                                     ascending=True),             self.tr("Year"))
         tabs.addTab(self._chart_tab(self._db.top_entities()),   self.tr("Entity"))
+        tabs.addTab(self._activity_tab(),                        self.tr("Activity"))
         lay.addWidget(tabs)
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -93,3 +94,28 @@ class LogStatsDialog(QDialog):
         cnt.setFixedWidth(50)
         row.addWidget(cnt)
         return row
+
+    def _activity_tab(self) -> QWidget:
+        """Day-of-week × hour-of-day activity heatmap."""
+        from ui.widgets.qso_heatmap import QSOHeatmap
+        w = QWidget()
+        vl = QVBoxLayout(w)
+        vl.setContentsMargins(8, 8, 8, 8)
+        vl.setSpacing(6)
+        note = QLabel(
+            self.tr("QSO activity by day-of-week and UTC hour.  "
+                    "Darker = fewer QSOs, brighter green = more."))
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#888;font-size:9px;")
+        vl.addWidget(note)
+        heatmap = QSOHeatmap()
+        heatmap.setMinimumHeight(160)
+        rows = self._db.qsos_by_hour_dow()
+        heatmap.set_data(rows)
+        vl.addWidget(heatmap, 1)
+        total_label = QLabel(
+            self.tr(f"{sum(n for _, _, n in rows)} QSOs plotted "
+                    f"({len(rows)} unique day/hour slots)"))
+        total_label.setStyleSheet("color:#556677;font-size:9px;")
+        vl.addWidget(total_label)
+        return w

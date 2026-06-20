@@ -1658,9 +1658,27 @@ class RigTab(SquelchPanel, QWidget):
         self._scan_status.setText("Idle")
         self._scan_status.setStyleSheet(" ")
 
+    def _scan_squelch_open(self) -> bool:
+        """Return True when the rig signal exceeds the scan SQL threshold."""
+        try:
+            sql_dbm = self._scan_sql.value()       # dBm threshold (e.g. -80)
+            s_level = self.rig.state.s_meter       # 0-13
+            # Convert S-level to approximate dBm using the standard scale
+            from ui.widgets.smeter import _DBM
+            level_dbm = _DBM[max(0, min(13, s_level))]
+            return level_dbm >= sql_dbm
+        except Exception:
+            return False   # can't read → don't block scanning
+
     def _scan_step(self):
         if not self._scan_running:
             return
+        # Squelch gate: if signal is above threshold, hold on this channel
+        if self.rig.is_connected and self._scan_squelch_open():
+            self._scan_status.setText(
+                self._scan_status.text() + "  🔴 SIGNAL")
+            return  # stay on current frequency
+
         if getattr(self, "_scan_list_mode", False):
             # Memory / Channel-list mode: advance through channel list
             channels = self._scan_channel_list

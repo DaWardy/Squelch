@@ -144,6 +144,9 @@ class ModesTab(SquelchPanel, QWidget):
                 "splitter_sizes": sizes,
                 "dx_watch":      getattr(self._dx_watch_edit, "text",
                                          lambda: "")(),
+                "ft8_watch":     getattr(self, "_ft8_watch_edit",
+                                         type("o", (), {"text": lambda: ""})()
+                                         ).text(),
             }
         except Exception:
             return {}
@@ -154,6 +157,8 @@ class ModesTab(SquelchPanel, QWidget):
                 self._mode_tabs.setCurrentIndex(state["mode_tab"])
             if "dx_watch" in state and hasattr(self, "_dx_watch_edit"):
                 self._dx_watch_edit.setText(state["dx_watch"])
+            if "ft8_watch" in state and hasattr(self, "_ft8_watch_edit"):
+                self._ft8_watch_edit.setText(state["ft8_watch"])
             if "splitter_sizes" in state and hasattr(self, "_main_splitter"):
                 sizes = state["splitter_sizes"]
                 if isinstance(sizes, list) and len(sizes) == 2:
@@ -481,6 +486,20 @@ class ModesTab(SquelchPanel, QWidget):
         hdr = QHBoxLayout()
         hdr.addWidget(QLabel("Decoded Signals"))
         hdr.addStretch()
+        # FT8 decode alert watch-list
+        alert_lbl = QLabel("⚡ Alert:")
+        alert_lbl.setToolTip(
+            "Comma-separated callsigns or prefixes to watch.\n"
+            "When a decoded signal matches, a beep sounds and\n"
+            "the row is highlighted gold.")
+        hdr.addWidget(alert_lbl)
+        self._ft8_watch_edit = QLineEdit()
+        self._ft8_watch_edit.setPlaceholderText("e.g. VK,ZL,P5")
+        self._ft8_watch_edit.setFixedWidth(110)
+        self._ft8_watch_edit.setToolTip(
+            "Callsign/prefix watch list for FT8/FT4 decode alerts.\n"
+            "Separate entries with commas.")
+        hdr.addWidget(self._ft8_watch_edit)
         self._filter_edit = QLineEdit()
         self._filter_edit.setPlaceholderText("Filter callsign…")
         self._filter_edit.setFixedWidth(130)
@@ -959,6 +978,32 @@ class ModesTab(SquelchPanel, QWidget):
             self._dx_spots = self._dx_spots[:100]
         self._filter_dx_spots()
         self._check_dx_alert(spot)
+
+    def _check_ft8_alert(self, decode: "DecodedSignal", row: int) -> None:
+        """Highlight row gold and beep when decoded callsign is on the watch list."""
+        watch_edit = getattr(self, "_ft8_watch_edit", None)
+        if not watch_edit:
+            return
+        raw = watch_edit.text().strip()
+        if not raw:
+            return
+        terms = [t.strip().upper() for t in raw.split(",") if t.strip()]
+        call = (decode.callsign or "").upper()
+        if not call:
+            return
+        matched = any(call == t or call.startswith(t) for t in terms)
+        if matched:
+            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtGui import QBrush, QColor as _QC
+            QApplication.beep()
+            gold = QBrush(_QC("#5a4800"))
+            for col in range(self._decode_table.columnCount()):
+                item = self._decode_table.item(row, col)
+                if item:
+                    item.setBackground(gold)
+            self._log_activity(
+                f"⚡ FT8 ALERT: {call}  {decode.display_freq}  "
+                f"SNR {decode.display_snr}")
 
     def _check_dx_alert(self, spot) -> None:
         """Beep and highlight if the spot matches the watch list."""
@@ -1441,6 +1486,7 @@ class ModesTab(SquelchPanel, QWidget):
             self._decode_table.removeRow(0)
         self._stat_decodes.setText(
             str(int(self._stat_decodes.text()) + 1))
+        self._check_ft8_alert(decode, row)
 
     def _decode_flag(self, decode: DecodedSignal) -> str:
         if decode.worked:

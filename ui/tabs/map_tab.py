@@ -189,6 +189,9 @@ class MapTab(SquelchPanel, QWidget):
             "border-top:1px solid #1a1a1a;")
         root.addWidget(self._gl_bar)
 
+        # APRS message log (collapsible — hidden by default)
+        root.addWidget(self._build_aprs_msg_panel())
+
         # Load initial map
         QTimer.singleShot(500, self._refresh_map)
 
@@ -507,6 +510,56 @@ class MapTab(SquelchPanel, QWidget):
         else:
             # Refresh Leaflet map
             QTimer.singleShot(0, self._refresh_map)
+
+    # ── APRS message panel ────────────────────────────────────────────────
+
+    def _build_aprs_msg_panel(self) -> QWidget:
+        """Collapsible APRS message log below the map view."""
+        from PyQt6.QtWidgets import QToolButton as _TB, QTextEdit as _TE
+        container = QWidget()
+        vl = QVBoxLayout(container)
+        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setSpacing(0)
+
+        toggle = _TB("▶ APRS Messages")
+        toggle.setCheckable(True)
+        toggle.setChecked(False)
+        toggle.setStyleSheet(
+            "QToolButton{background:#0d0d0d;border-top:1px solid #1a1a1a;"
+            "border-bottom:none;font-weight:bold;text-align:left;"
+            "padding:3px 8px;}")
+        vl.addWidget(toggle)
+
+        self._aprs_msg_body = QWidget()
+        self._aprs_msg_body.setMaximumHeight(130)
+        self._aprs_msg_body.setVisible(False)
+        toggle.toggled.connect(self._aprs_msg_body.setVisible)
+        bl = QVBoxLayout(self._aprs_msg_body)
+        bl.setContentsMargins(4, 2, 4, 4)
+        self._aprs_msg_log = _TE()
+        self._aprs_msg_log.setReadOnly(True)
+        self._aprs_msg_log.setStyleSheet(
+            "background:#080808;color:#3fbe6f;"
+            "font-family:'Courier New';font-size:10px;border:none;")
+        bl.addWidget(self._aprs_msg_log)
+        vl.addWidget(self._aprs_msg_body)
+        return container
+
+    def add_aprs_message(self, from_call: str, to_call: str,
+                          message: str, directed_to_us: bool = False) -> None:
+        """Append an APRS message to the log panel."""
+        if not hasattr(self, "_aprs_msg_log"):
+            return
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%H:%M")
+        if directed_to_us:
+            line = (f'<span style="color:#ffcc00">'
+                    f'[{ts}] {from_call} → YOU: {message}</span>')
+            self._aprs_msg_body.setVisible(True)
+        else:
+            line = (f'<span style="color:#3fbe6f">'
+                    f'[{ts}] {from_call} → {to_call}: {message}</span>')
+        self._aprs_msg_log.append(line)
 
     # ── APRS beacon ───────────────────────────────────────────────────────
 

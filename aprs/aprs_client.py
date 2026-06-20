@@ -46,6 +46,33 @@ class APRSPacket:
     def is_position(self) -> bool:
         return bool(self.lat or self.lon)
 
+    def parse_message(self) -> "tuple[str, str, str] | None":
+        """If this is an APRS message packet, return (to_call, message, msg_id).
+
+        APRS message format (info field starts with ::):
+          ::TO_CALLSIG:message text{id}
+        TO_CALLSIG is left-padded to 9 chars.
+        """
+        raw = self.raw
+        # Find "::" after the path (second colon in the packet)
+        try:
+            _, info = raw.split(":", 1)
+            _, info = info.split(":", 1)   # skip path
+        except ValueError:
+            return None
+        if not info.startswith(":"):
+            return None
+        info = info[1:]   # strip leading ':'
+        if len(info) < 10 or info[9] != ":":
+            return None
+        to_call = info[:9].strip()
+        body    = info[10:]
+        msg_id  = ""
+        if "{" in body:
+            body, _, msg_id = body.rpartition("{")
+            msg_id = msg_id.rstrip("}")
+        return to_call, body.strip(), msg_id
+
 
 def _parse_position(packet: str) -> tuple[float, float]:
     m = _LAT_LON_RE.search(packet)

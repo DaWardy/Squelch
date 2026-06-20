@@ -177,6 +177,7 @@ def build_map_html(config,
                    hearing_me: dict | None = None,
                    winlink_gateways: list | None = None,
                    satellites: list | None = None,
+                   wspr_spots: list | None = None,
                    ) -> str:
     """Build self-contained Leaflet map HTML for QWebEngineView."""
     now_utc = datetime.now(timezone.utc)
@@ -208,6 +209,7 @@ def build_map_html(config,
         hearing_me          = _resolve_station_coords(hearing_me or {}),
         winlink_gateways    = _winlink_gateway_data(winlink_gateways),
         satellites          = satellites or [],
+        wspr_spots          = wspr_spots or [],
     )
 
 
@@ -371,6 +373,7 @@ var HEARD        = {json.dumps(ctx['heard_stations'])};
 var HEARING_ME   = {json.dumps(ctx['hearing_me'])};
 var WINLINK_GW   = {json.dumps(ctx['winlink_gateways'])};
 var SATELLITES   = {json.dumps(ctx['satellites'])};
+var WSPR_SPOTS   = {json.dumps(ctx['wspr_spots'])};
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -402,6 +405,7 @@ var lyrHeard       = L.layerGroup().addTo(map);
 var lyrHearingMe   = L.layerGroup().addTo(map);
 var lyrWinlink     = L.layerGroup().addTo(map);
 var lyrSatellites  = L.layerGroup().addTo(map);
+var lyrWspr        = L.layerGroup().addTo(map);
 
 // ── Gray line ─────────────────────────────────────────────────
 if (GRAYLINE) {{
@@ -541,6 +545,37 @@ AIRCRAFT.forEach(function(a) {{
   ).addTo(lyrAircraft);
 }});
 
+// ── WSPR heard stations — propagation path dots ───────────────
+var WSPR_BAND_COLS = {{
+  '2200m':'#cc88ff','630m':'#aa66cc','160m':'#ff8866',
+  '80m':'#ffaa44','60m':'#ffcc44','40m':'#ffee22',
+  '30m':'#ccee22','20m':'#88ee22','17m':'#44ee66',
+  '15m':'#22eebb','12m':'#22ccff','10m':'#22aaff',
+  '6m':'#6688ff','4m':'#aa66ff','2m':'#ff66ff'
+}};
+var WSPR_DEF = '#aaaaff';
+WSPR_SPOTS.forEach(function(s) {{
+  if (!s.lat || !s.lon) return;
+  var col = WSPR_BAND_COLS[s.band] || WSPR_DEF;
+  L.circleMarker([s.lat, s.lon], {{
+    radius: 5, color: col, fillColor: col,
+    fillOpacity: 0.7, weight: 1, opacity: 0.9
+  }}).bindPopup(
+    '<div class="qso-popup">'
+    +'<b style="color:'+col+'">'+s.callsign+'</b><br>'
+    +s.grid+'  '+s.band+'<br>'
+    +'SNR: '+s.snr+' dB  '+s.power_dbm+' dBm<br>'
+    +(s.dist_km ? s.dist_km.toLocaleString()+' km' : '')
+    +'</div>'
+  ).addTo(lyrWspr);
+  // Draw faint great-circle line from station to reporter if we have MY position
+  if (MY_LAT || MY_LON) {{
+    L.polyline([[MY_LAT, MY_LON],[s.lat, s.lon]], {{
+      color: col, weight: 0.8, opacity: 0.4, dashArray: '3 5'
+    }}).addTo(lyrWspr);
+  }}
+}});
+
 // ── Map right-click → propagation path analysis ───────────────
 map.on('contextmenu', function(e) {{
   var lat = e.latlng.lat.toFixed(5);
@@ -673,7 +708,8 @@ L.control.layers(
     "Winlink RMS":    lyrWinlink,
     "Repeaters":      lyrRepeaters,
     "Aircraft":       lyrAircraft,
-    "Satellites":     lyrSatellites
+    "Satellites":     lyrSatellites,
+    "WSPR spots":     lyrWspr
   }},
   {{position:'topright', collapsed:true}}
 ).addTo(map);
@@ -696,7 +732,8 @@ legend.onAdd = function() {{
     +'<span class="leg-tri-up" style="border-bottom:13px solid #cc66ff;"></span>Winlink RMS<br>'
     +'<span style="color:#aaaaff;font-size:13px;vertical-align:middle;margin-right:4px;">✈</span>ADS-B<br>'
     +'<span style="color:#ffd700;font-size:11px;vertical-align:middle;margin-right:4px;">🛰</span>Satellite (visible)<br>'
-    +'<span style="color:#888;font-size:11px;vertical-align:middle;margin-right:4px;">🛰</span>Satellite (below horizon)';
+    +'<span style="color:#888;font-size:11px;vertical-align:middle;margin-right:4px;">🛰</span>Satellite (below horizon)<br>'
+    +'<span class="leg-dot" style="background:#ffee22;"></span>WSPR heard (20m)';
   return d;
 }};
 legend.addTo(map);

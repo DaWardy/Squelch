@@ -135,6 +135,7 @@ class MapTab(SquelchPanel, QWidget):
         self._aprs_stations    = []
         self._satellites       = []
         self._winlink_gateways = []
+        self._wspr_spots:  list = []
         self._build()
         # Debounce timer for callsign search field
         self._cs_timer = QTimer(self)
@@ -378,6 +379,7 @@ class MapTab(SquelchPanel, QWidget):
                 hearing_me          = getattr(self, "_hearing_me", {}),
                 winlink_gateways    = wl_gws,
                 satellites          = list(self._satellites),
+                wspr_spots          = list(self._wspr_spots),
             )
             self._view.setHtml(html)
             self._update_layer_stats(heard, aprs)
@@ -485,6 +487,12 @@ class MapTab(SquelchPanel, QWidget):
                     sats)
         else:
             # Refresh Leaflet map
+            QTimer.singleShot(0, self._refresh_map)
+
+    def set_wspr_spots(self, spots: list) -> None:
+        """Called when a new WSPR spot is decoded; accumulates for map display."""
+        self._wspr_spots = spots
+        if HAS_WEBENGINE:
             QTimer.singleShot(0, self._refresh_map)
 
     def set_aprs_stations(self, stations: list):

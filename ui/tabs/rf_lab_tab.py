@@ -180,6 +180,23 @@ class RFLabTab(SquelchPanel, QWidget):
         self._search_edit.textChanged.connect(self._apply_filter)
         lay.addWidget(self._search_edit)
 
+        # SDR quick-tune — direct frequency entry
+        sdr_lbl = QLabel("SDR:")
+        sdr_lbl.setStyleSheet("color:#aaa;")
+        lay.addWidget(sdr_lbl)
+        from PyQt6.QtWidgets import QDoubleSpinBox as _DSB
+        self._sdr_freq_spin = _DSB()
+        self._sdr_freq_spin.setRange(0.001, 6000.0)
+        self._sdr_freq_spin.setDecimals(4)
+        self._sdr_freq_spin.setSuffix(" MHz")
+        self._sdr_freq_spin.setValue(144.200)
+        self._sdr_freq_spin.setFixedWidth(110)
+        self._sdr_freq_spin.setToolTip(
+            "Type a frequency and press Enter to tune the SDR tab.\n"
+            "Requires the SDR tab to be open and a device connected.")
+        self._sdr_freq_spin.editingFinished.connect(self._quick_tune_sdr)
+        lay.addWidget(self._sdr_freq_spin)
+
         lay.addStretch()
 
         add_btn = QPushButton("+ Add Custom")
@@ -283,6 +300,16 @@ class RFLabTab(SquelchPanel, QWidget):
         self._table.setCellWidget(row, _COL_TUNE, tune_btn)
 
     # ── Actions ───────────────────────────────────────────────────────────
+
+    def _quick_tune_sdr(self) -> None:
+        """Quick-tune SDR from the toolbar frequency spinbox."""
+        try:
+            hz = int(self._sdr_freq_spin.value() * 1_000_000)
+            if hz <= 0:
+                return
+            self._tune(hz)
+        except Exception:
+            pass
 
     def _tune(self, hz: int):
         self.tune_requested.emit(hz)

@@ -370,25 +370,17 @@ class RigTab(SquelchPanel, QWidget):
         stl.setSpacing(4)
         self.status_lbl = QLabel("● Disconnected")
         self.status_lbl.setStyleSheet("  font-weight:bold;")
-        sm_lbl = QLabel("S-Meter")
-        sm_lbl.setStyleSheet(" ")
-        self.smeter_bar = QProgressBar()
-        self.smeter_bar.setRange(0, 13)
-        self.smeter_bar.setValue(0)
-        self.smeter_bar.setTextVisible(False)
-        self.smeter_bar.setFixedHeight(10)
-        self.smeter_bar.setStyleSheet(
-            "QProgressBar{border:1px solid palette(mid);border-radius:2px;}"
-            "QProgressBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-            "stop:0 #3fbe6f,stop:0.6 #aacc22,stop:0.85 #ee8822,stop:1 #ee2222);}")
-        self.smeter_val = QLabel("S0")
-        self.smeter_val.setStyleSheet(" ")
-        sm_row = QHBoxLayout()
-        sm_row.addWidget(self.smeter_bar)
-        sm_row.addWidget(self.smeter_val)
+        from ui.widgets.smeter import SMeterWidget
+        self.smeter = SMeterWidget()
+        self.smeter.setToolTip(
+            "Calibrated signal-strength meter.\n"
+            "S0–S4 green · S5–S7 yellow · S8–S9 amber · S9+ red\n"
+            "S9 = −73 dBm  (standard 50 Ω HF reference)")
+        # Legacy aliases so existing _apply_state code keeps working
+        self.smeter_bar = self.smeter   # same widget
+        self.smeter_val = self.smeter   # same widget
         stl.addWidget(self.status_lbl)
-        stl.addWidget(sm_lbl)
-        stl.addLayout(sm_row)
+        stl.addWidget(self.smeter)
         stl.addStretch()
         return stat_grp
     
@@ -1574,9 +1566,8 @@ class RigTab(SquelchPanel, QWidget):
                 self._spectrum_widget.stop()
 
         s = max(0, min(13, state.s_meter))
-        self.smeter_bar.setValue(s)
-        self.smeter_val.setText(
-            SMETER_LABELS[s] if s < len(SMETER_LABELS) else "S9+")
+        cal = int(self.cfg.get("rig.smeter_cal_db", 0) or 0)
+        self.smeter.set_level(s, cal)
 
         self.ptt_btn.blockSignals(True)
         self.ptt_btn.setChecked(state.ptt)

@@ -2120,6 +2120,54 @@ file in any text editor and copy the relevant lines. Trim out any
 personal information such as your callsign or grid square before
 posting publicly.
 """),
+
+    ("Radio Programming Software", "Reference", """
+Radio programming software lets you read and write memory channels on your
+transceiver — frequencies, names, tones, and modes — from a computer.
+
+━━━ CHIRP (Recommended — free, cross-platform) ━━━
+
+CHIRP works with 200+ radios including Baofeng, Kenwood, Yaesu, Icom, and
+AnyTone. It is the only major option that runs on Linux and macOS.
+
+  → Download: https://chirpmyradio.com/
+  → Squelch can launch CHIRP directly from the Paths & Drivers dialog
+    (Settings → Paths/Executables → Radio Programming)
+
+Workflow:
+  1. Open CHIRP → Radio → Download from Radio (select your model)
+  2. Edit channels in the table
+  3. Radio → Upload to Radio
+
+━━━ Manufacturer Software (Windows only) ━━━
+
+Icom CS series:   CS-7100 (IC-7100), CS-7300 (IC-7300), CS-9700 (IC-9700)
+                  Free from icomamerica.com/support
+Yaesu ADMS:      ADMS-12 (FT-991A), ADMS-14 (FT-70D/FTM-300D)
+                  Free from yaesu.com
+Kenwood MCP:     MCP-2A (handhelds), MCP-5A (HF mobiles/base)
+                  Free from kenwood.com
+RT Systems:      Commercial software, $30-$50, excellent UI, many models
+                  rtsystemsinc.com
+
+All of the above can be launched from Settings → Paths/Executables.
+
+━━━ When to use which ━━━
+
+Use CHIRP if:        You're on Linux or macOS
+                     You have a VHF/UHF radio from any maker
+                     You want a free, open-source solution
+
+Use manufacturer SW: You need advanced features (scan groups, WIRES-X,
+                     D-STAR settings) not yet in CHIRP
+                     Your radio model isn't in CHIRP yet
+
+━━━ Importing channels into RF Lab ━━━
+
+Export a CSV from CHIRP (File → Export) and import it into the RF Lab
+tab (RF Lab → Import CHIRP CSV…) to build a monitoring watchlist from
+your programmed frequencies.
+"""),
 ]
 
 # Build search index

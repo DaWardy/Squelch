@@ -116,6 +116,21 @@ class _SettingsStationTab:
         self._daily_goal.lineEdit().setReadOnly(False)
         f.addRow("Daily QSO goal:", self._daily_goal)
 
+    def _build_station_rig_section(self, f: "QFormLayout") -> None:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        f.addRow(sep)
+        self._smeter_cal = QSpinBox()
+        self._smeter_cal.setRange(-20, 20)
+        self._smeter_cal.setValue(0)
+        self._smeter_cal.setSuffix(" dB")
+        self._smeter_cal.setToolTip(
+            "S-meter calibration offset in dB.\n"
+            "If your rig reads 3 dB high, enter -3.\n"
+            "Applies to the calibrated S-meter display in the Rig tab.\n"
+            "Standard reference: S9 = -73 dBm (50 Ω, HF).")
+        f.addRow("S-meter cal:", self._smeter_cal)
+
     def _tab_station(self) -> "QWidget":
         w = _scrolled()
         f = QFormLayout(w)
@@ -125,5 +140,6 @@ class _SettingsStationTab:
         self._build_station_event_callsign_section(f)
         self._build_station_contest_section(f)
         self._build_station_goals_section(f)
+        self._build_station_rig_section(f)
         return w
 

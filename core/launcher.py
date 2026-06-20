@@ -392,6 +392,102 @@ APPS: list[AppDef] = [
     ),
 
     AppDef(
+        key          = "paths.icom_cs7100",
+        name         = "Icom CS-7100",
+        description  = "Icom IC-7100 HF/VHF/UHF transceiver programmer",
+        category     = "programming",
+        exe_name     = "CS-7100",
+        common_paths = [
+            r"C:\Program Files (x86)\Icom\CS-7100\CS-7100.exe",
+            r"C:\Program Files\Icom\CS-7100\CS-7100.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.icomamerica.com/en/support/",
+        download_note = "Free from Icom America support page. Windows only. CHIRP is the Linux/Mac alternative.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.icom_cs7300",
+        name         = "Icom CS-7300",
+        description  = "Icom IC-7300 HF transceiver programmer",
+        category     = "programming",
+        exe_name     = "CS-7300",
+        common_paths = [
+            r"C:\Program Files (x86)\Icom\CS-7300\CS-7300.exe",
+            r"C:\Program Files\Icom\CS-7300\CS-7300.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.icomamerica.com/en/support/",
+        download_note = "Free from Icom America support page. Windows only.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.yaesu_adms12",
+        name         = "Yaesu ADMS-12",
+        description  = "Yaesu FT-991/FT-991A memory programmer",
+        category     = "programming",
+        exe_name     = "ADMS-12",
+        common_paths = [
+            r"C:\Program Files (x86)\Yaesu\ADMS-12\ADMS-12.exe",
+            r"C:\Program Files\Yaesu\ADMS-12\ADMS-12.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.yaesu.com/indexVS.cfm?cmd=DisplayProducts&ProdCatID=102&encProdID=C9ADCE16C2B2D2E0EB4C5A0D3B493A88",
+        download_note = "Free from Yaesu website. Windows only. CHIRP also supports FT-991A.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.yaesu_adms14",
+        name         = "Yaesu ADMS-14",
+        description  = "Yaesu FT-70D / FTM-300D memory programmer",
+        category     = "programming",
+        exe_name     = "ADMS-14",
+        common_paths = [
+            r"C:\Program Files (x86)\Yaesu\ADMS-14\ADMS-14.exe",
+            r"C:\Program Files\Yaesu\ADMS-14\ADMS-14.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.yaesu.com/indexVS.cfm?cmd=DisplayProducts&ProdCatID=102",
+        download_note = "Free from Yaesu website. CHIRP also supports FT-70D.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.kenwood_mcp2a",
+        name         = "Kenwood MCP-2A",
+        description  = "Kenwood VHF/UHF handheld memory programmer (TH-D72/TH-F6A etc.)",
+        category     = "programming",
+        exe_name     = "MCP-2A",
+        common_paths = [
+            r"C:\Program Files (x86)\Kenwood\MCP-2A\MCP-2A.exe",
+            r"C:\Program Files\Kenwood\MCP-2A\MCP-2A.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.kenwood.com/i/products/info/amateur/software.html",
+        download_note = "Free from Kenwood website. CHIRP is a free cross-platform alternative.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
+        key          = "paths.kenwood_mcp5a",
+        name         = "Kenwood MCP-5A",
+        description  = "Kenwood HF/VHF transceiver programmer (TS-2000, TS-590 etc.)",
+        category     = "programming",
+        exe_name     = "MCP-5A",
+        common_paths = [
+            r"C:\Program Files (x86)\Kenwood\MCP-5A\MCP-5A.exe",
+            r"C:\Program Files\Kenwood\MCP-5A\MCP-5A.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.kenwood.com/i/products/info/amateur/software.html",
+        download_note = "Free from Kenwood website. Windows only.",
+        tab           = "localrf",
+    ),
+
+    AppDef(
         key          = "paths.tqsl",
         name         = "TQSL (LoTW)",
         description  = "ARRL LoTW QSO signing and upload",

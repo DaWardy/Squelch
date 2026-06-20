@@ -118,9 +118,11 @@ class ModesTab(SquelchPanel, QWidget):
         self._active_band   = "20m"
         self._sdr_tune_cb   = None   # set via set_sdr_tune_cb() from MainWindow
         # Band-opening detection: track unique grids decoded per band (rolling 5 min)
-        self._band_grids:   dict = {}  # band → list[(timestamp, grid)]
+        self._band_grids:    dict = {}  # band → list[(timestamp, grid)]
         self._band_prev_cnt: dict = {}  # band → count at last check
         self._band_open_timer = None   # created after build()
+        # Best SNR per band this session: band → (best_snr, callsign)
+        self._best_snr_by_band: dict = {}
         self._cycle_timer   = QTimer(self)
         self._cycle_timer.setInterval(100)
         self._cycle_timer.timeout.connect(self._update_cycle)
@@ -460,7 +462,16 @@ class ModesTab(SquelchPanel, QWidget):
             lbl, val = _stat(label, attr)
             stats_l.addWidget(lbl, row, 0)
             stats_l.addWidget(val, row, 1)
-        
+
+        # Session summary button
+        summary_btn = QPushButton("Session SNR…")
+        summary_btn.setFixedHeight(22)
+        summary_btn.setToolTip(
+            "Show best received SNR per band this session.\n"
+            "Useful for comparing band conditions.")
+        summary_btn.clicked.connect(self._show_session_snr)
+        stats_l.addWidget(summary_btn, 4, 0, 1, 2)
+
         self._left_layout.addWidget(stats_grp)
         self._left_layout.addStretch()
         
@@ -911,6 +922,33 @@ class ModesTab(SquelchPanel, QWidget):
         except Exception:
             pass
 
+    def _show_session_snr(self) -> None:
+        """Show a simple popup with best SNR per band this session."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Session SNR by Band")
+        dlg.setMinimumWidth(260)
+        vl = QVBoxLayout(dlg)
+        if not self._best_snr_by_band:
+            vl.addWidget(QLabel("No decodes yet this session."))
+        else:
+            BAND_ORDER = ["160m","80m","60m","40m","30m","20m",
+                          "17m","15m","12m","10m","6m","2m"]
+            header = QLabel(f"{'Band':<8} {'SNR':>5}  {'Callsign'}")
+            header.setStyleSheet("font-family:'Courier New';font-weight:bold;")
+            vl.addWidget(header)
+            for band in BAND_ORDER:
+                if band not in self._best_snr_by_band:
+                    continue
+                snr, call = self._best_snr_by_band[band]
+                lbl = QLabel(f"{band:<8} {snr:>+5} dB  {call}")
+                lbl.setStyleSheet("font-family:'Courier New';color:#3fbe6f;")
+                vl.addWidget(lbl)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btns.rejected.connect(dlg.accept)
+        vl.addWidget(btns)
+        dlg.exec()
+
     def _start_dx_cluster(self):
         """Auto-connect to DX cluster if configured."""
         if self.cfg.get("dx_cluster.auto_connect", False):
@@ -1349,6 +1387,14 @@ class ModesTab(SquelchPanel, QWidget):
             band = self._active_band
             self._band_grids.setdefault(band, [])
             self._band_grids[band].append((_t.time(), decode.grid))
+        # Track best SNR per band for session stats
+        snr = getattr(decode, "snr", None)
+        call = getattr(decode, "callsign", "")
+        if snr is not None and call and self._active_band:
+            band = self._active_band
+            current_best, _ = self._best_snr_by_band.get(band, (-99, ""))
+            if snr > current_best:
+                self._best_snr_by_band[band] = (snr, call)
         # Push to RF Lab decode monitor (best-effort).
         try:
             mw = self.window()

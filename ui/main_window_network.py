@@ -77,12 +77,19 @@ class _MainWindowNetworkMixin:
                          "lon":       p.lon,
                          "alt_km":    p.alt_km,
                          "el_deg":    p.el_deg,
+                         "az_deg":    p.az_deg,
                          "visible":   p.is_visible,
                          "next_pass": _pass_dict(p.next_pass)}
                         for p in positions]
                 QTimer.singleShot(0,
                     lambda s=sats:
                         map_tab.set_satellite_positions(s))
+                # Route to rig_tab for rotor auto-track
+                rig_tab = self._tab_map.get("rig")
+                if rig_tab and hasattr(rig_tab, "update_from_sat_position"):
+                    QTimer.singleShot(0,
+                        lambda s=sats:
+                            rig_tab.update_from_sat_position(s))
         except Exception:
             pass
 

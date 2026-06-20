@@ -1,4 +1,4 @@
-"""Sprint 54 — Satellite pass prediction + FEAT-09 SSTV image viewer."""
+"""Sprint 54 + 61 — Satellite pass prediction + rotor auto-track."""
 from __future__ import annotations
 import sys
 import pathlib
@@ -82,7 +82,6 @@ class TestNextPassSource:
 
     def test_next_pass_included_in_position(self):
         src = self._src()
-        # next_pass should appear somewhere in the _compute_position method
         idx = src.find("def _compute_position(")
         body = src[idx: src.find("\n    def ", idx + 10)]
         assert "next_pass" in body
@@ -102,6 +101,15 @@ class TestNextPassMainWindowWiring:
     def test_pass_dict_helper_extracts_aos(self):
         src = self._src()
         assert "aos" in src and "los" in src and "max_el" in src
+
+    def test_az_deg_in_sat_dict(self):
+        """Sprint 61: az_deg must be included for rotor auto-track."""
+        src = self._src()
+        assert '"az_deg"' in src
+
+    def test_rig_tab_update_from_sat_position_called(self):
+        src = self._src()
+        assert "update_from_sat_position" in src
 
 
 # ── FEAT-09 SSTV image viewer ─────────────────────────────────────────────────
@@ -148,7 +156,6 @@ class TestSSTVImageViewer:
 
     def test_no_hardcoded_shell_true(self):
         src = self._src()
-        # subprocess calls must not use shell=True
         assert "shell=True" not in src
 
 
@@ -166,3 +173,49 @@ class TestMapSatPopup:
     def test_aos_los_in_popup(self):
         src = self._src()
         assert "AOS" in src and "LOS" in src
+
+
+# ── Sprint 61: Rotor satellite auto-track ─────────────────────────────────────
+
+class TestRotorSatTrack:
+
+    def _src(self):
+        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+
+    def test_sat_combo_defined(self):
+        assert "_rotor_sat_combo" in self._src()
+
+    def test_auto_track_button_defined(self):
+        assert "_rotor_auto_btn" in self._src()
+
+    def test_rotor_auto_toggled_method(self):
+        assert "def _rotor_auto_toggled(" in self._src()
+
+    def test_update_from_sat_position_method(self):
+        assert "def update_from_sat_position(" in self._src()
+
+    def test_set_target_called_on_track(self):
+        src = self._src()
+        idx = src.find("def update_from_sat_position(")
+        body = src[idx: src.find("\n    def ", idx + 10)]
+        assert "set_target(" in body
+
+    def test_tracks_only_above_horizon(self):
+        src = self._src()
+        idx = src.find("def update_from_sat_position(")
+        body = src[idx: src.find("\n    def ", idx + 10)]
+        assert "el < 0" in body
+
+    def test_rotor_set_position_called(self):
+        src = self._src()
+        idx = src.find("def update_from_sat_position(")
+        body = src[idx: src.find("\n    def ", idx + 10)]
+        assert "set_position(" in body
+
+    def test_iss_in_combo_choices(self):
+        src = self._src()
+        assert "ISS (ZARYA)" in src
+
+    def test_update_wired_in_main_window_network(self):
+        net_src = (ROOT / "ui/main_window_network.py").read_text(encoding="utf-8")
+        assert "update_from_sat_position" in net_src

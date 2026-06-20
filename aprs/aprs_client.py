@@ -226,6 +226,35 @@ class APRSClient:
     def on_packet(self, cb: Callable): self._on_packet = cb
     def on_status(self, cb: Callable): self._on_status = cb
 
+    def send_message(self, from_call: str, to_call: str,
+                     message: str) -> bool:
+        """Send an APRS message packet via APRS-IS.
+
+        Formats: ``FROM>APZS09,TCPIP*:::TO_CALL   :message{seqno}``
+        TO_CALL is padded to 9 characters.  Sequence number cycles 001-999.
+        Returns True on success.
+        """
+        if not self.is_connected or not from_call or not to_call:
+            return False
+        message = message.strip()[:67]   # APRS max 67 chars
+        to_padded = to_call.upper()[:9].ljust(9)
+        self._msg_seq = getattr(self, "_msg_seq", 0) + 1
+        if self._msg_seq > 999:
+            self._msg_seq = 1
+        seq = f"{self._msg_seq:03d}"
+        packet = (f"{from_call.upper()}>APZS09,TCPIP*:"
+                  f"::{to_padded}:{message}{{{seq}}}\r\n")
+        try:
+            with self._lock:
+                if self._sock:
+                    self._sock.sendall(packet.encode())
+                    log.info(f"APRS msg → {to_call}: {message}")
+                    return True
+        except OSError as e:
+            log.warning(f"APRS send_message: {e}")
+            self._sock = None
+        return False
+
     @staticmethod
     def compute_passcode(callsign: str) -> int:
         cs = callsign.upper().split("-")[0]

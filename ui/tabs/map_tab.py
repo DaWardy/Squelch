@@ -542,8 +542,52 @@ class MapTab(SquelchPanel, QWidget):
             "background:#080808;color:#3fbe6f;"
             "font-family:'Courier New';font-size:10px;border:none;")
         bl.addWidget(self._aprs_msg_log)
+
+        # Send row
+        send_row = QHBoxLayout()
+        send_row.addWidget(QLabel("To:"))
+        from PyQt6.QtWidgets import QLineEdit as _LE2
+        self._aprs_msg_to = _LE2()
+        self._aprs_msg_to.setPlaceholderText("callsign")
+        self._aprs_msg_to.setFixedWidth(90)
+        send_row.addWidget(self._aprs_msg_to)
+        self._aprs_msg_text = _LE2()
+        self._aprs_msg_text.setPlaceholderText("Message text…")
+        self._aprs_msg_text.setMaxLength(67)
+        self._aprs_msg_text.returnPressed.connect(self._aprs_send_message)
+        send_row.addWidget(self._aprs_msg_text, 1)
+        send_btn = QPushButton("Send")
+        send_btn.setFixedWidth(50)
+        send_btn.setFixedHeight(22)
+        send_btn.clicked.connect(self._aprs_send_message)
+        send_row.addWidget(send_btn)
+        bl.addLayout(send_row)
         vl.addWidget(self._aprs_msg_body)
         return container
+
+    def _aprs_send_message(self) -> None:
+        """Send an APRS message via the connected APRS-IS client."""
+        to   = self._aprs_msg_to.text().strip().upper()
+        text = self._aprs_msg_text.text().strip()
+        if not to or not text:
+            return
+        try:
+            mw = self.window()
+            client = getattr(mw, "_aprs_client", None)
+            if not client or not client.is_connected:
+                self.add_aprs_message("System", "—",
+                    "Not connected to APRS-IS", False)
+                return
+            from core.guest_op import operating_callsign
+            my_call = operating_callsign(self.cfg) or "NOCALL"
+            success = client.send_message(my_call, to, text)
+            if success:
+                self._aprs_msg_text.clear()
+                self.add_aprs_message(my_call, to, text, False)
+            else:
+                self.add_aprs_message("System", "—", "Send failed", False)
+        except Exception as e:
+            self.add_aprs_message("System", "—", f"Error: {e}", False)
 
     def add_aprs_message(self, from_call: str, to_call: str,
                           message: str, directed_to_us: bool = False) -> None:

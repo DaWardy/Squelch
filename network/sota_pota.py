@@ -232,3 +232,65 @@ class POTAClient:
 
     def on_spots(self, cb: Callable):
         self._on_spots = cb
+
+
+# ── Activator self-spot posting ───────────────────────────────────────────────
+
+SOTA_SPOT_POST_URL = "https://api2.sota.org.uk/api/spots"
+POTA_SPOT_POST_URL = "https://api.pota.app/spot"
+
+
+def post_sota_spot(callsign: str, summit: str, freq_mhz: float,
+                   mode: str = "SSB", comment: str = "",
+                   api_key: str = "") -> "tuple[bool, str]":
+    """Post an activator self-spot to SOTAwatch. Returns (success, message)."""
+    if not HAS_REQUESTS:
+        return False, "requests not installed"
+    if not api_key:
+        return False, "No SOTAwatch API key — add in Settings -> APIs -> SOTA"
+    try:
+        from core.netlog import record_connection
+        record_connection("api2.sota.org.uk", purpose="SOTA self-spot",
+                          user_initiated=True)
+        payload = {
+            "associationCode":   summit.split("/")[0] if "/" in summit else "",
+            "summitCode":        summit.upper(),
+            "activatorCallsign": callsign.upper(),
+            "frequency":         str(round(freq_mhz * 1000)),
+            "mode":              mode.upper(),
+            "comments":          comment[:60],
+            "apiKey":            api_key,
+        }
+        resp = __import__("requests").post(SOTA_SPOT_POST_URL, json=payload, timeout=10)
+        if resp.status_code in (200, 201):
+            return True, f"Spotted {callsign.upper()} on {summit.upper()} {freq_mhz:.3f} MHz {mode.upper()}"
+        return False, f"SOTAwatch {resp.status_code}: {resp.text[:80]}"
+    except Exception as e:
+        return False, f"Error: {e}"
+
+
+def post_pota_spot(callsign: str, park: str, freq_mhz: float,
+                   mode: str = "SSB",
+                   comment: str = "") -> "tuple[bool, str]":
+    """Post an activator self-spot to POTA (no key required)."""
+    if not HAS_REQUESTS:
+        return False, "requests not installed"
+    try:
+        from core.netlog import record_connection
+        record_connection("api.pota.app", purpose="POTA self-spot",
+                          user_initiated=True)
+        payload = {
+            "activator": callsign.upper(),
+            "spotter":   callsign.upper(),
+            "reference": park.upper(),
+            "frequency": str(int(freq_mhz * 1000)),
+            "mode":      mode.upper(),
+            "comments":  comment[:140],
+            "source":    "Squelch",
+        }
+        resp = __import__("requests").post(POTA_SPOT_POST_URL, json=payload, timeout=10)
+        if resp.status_code in (200, 201):
+            return True, f"Spotted {callsign.upper()} at {park.upper()} {freq_mhz:.3f} MHz {mode.upper()}"
+        return False, f"POTA {resp.status_code}: {resp.text[:80]}"
+    except Exception as e:
+        return False, f"Error: {e}"

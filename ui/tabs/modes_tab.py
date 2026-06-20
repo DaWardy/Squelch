@@ -992,6 +992,22 @@ class ModesTab(SquelchPanel, QWidget):
         if not call:
             return
         matched = any(call == t or call.startswith(t) for t in terms)
+        # Also alert if decoded DXCC entity is in the needed list
+        # Also alert if decoded DXCC entity is needed (not yet worked)
+        if not matched and decode.dxcc:
+            try:
+                mw = self.window()
+                ldb = getattr(mw, "_tab_map", {}).get("log")
+                if ldb and hasattr(ldb, "log_db") and ldb.log_db:
+                    from core.awards import AwardTracker
+                    tracker = AwardTracker(ldb.log_db)
+                    prog    = tracker.compute_dxcc()
+                    # prog.entities = set of worked entities
+                    if decode.dxcc and decode.dxcc not in prog.entities:
+                        matched = True
+            except Exception:
+                pass
+
         if matched:
             from PyQt6.QtWidgets import QApplication
             from PyQt6.QtGui import QBrush, QColor as _QC
@@ -1001,8 +1017,9 @@ class ModesTab(SquelchPanel, QWidget):
                 item = self._decode_table.item(row, col)
                 if item:
                     item.setBackground(gold)
+            dxcc_tag = f" [{decode.dxcc}]" if decode.dxcc else ""
             self._log_activity(
-                f"⚡ FT8 ALERT: {call}  {decode.display_freq}  "
+                f"⚡ FT8 ALERT: {call}{dxcc_tag}  {decode.display_freq}  "
                 f"SNR {decode.display_snr}")
 
     def _check_dx_alert(self, spot) -> None:

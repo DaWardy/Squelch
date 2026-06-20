@@ -531,12 +531,114 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
         scroll.setWidget(inner)
+        lay.addWidget(self._build_profile_group())
         lay.addWidget(self._build_gain_group())
         lay.addWidget(self._build_display_group())
         lay.addWidget(self._build_span_group())
         lay.addWidget(self._build_demod_group())
         lay.addStretch()
         return scroll
+
+    # ── Built-in demod profiles ───────────────────────────────────────────
+    _BUILTIN_PROFILES: dict = {
+        "SSB / Ham Voice": {"mode": "USB",     "bw": "2.5 kHz", "nr": False, "nr_lvl": 0,  "sq": False, "sq_db": -60.0},
+        "CW Contest":      {"mode": "CW",      "bw": "500 Hz",  "nr": True,  "nr_lvl": 50, "sq": False, "sq_db": -60.0},
+        "AM Broadcast":    {"mode": "AM",       "bw": "10 kHz",  "nr": True,  "nr_lvl": 20, "sq": False, "sq_db": -60.0},
+        "FM Broadcast":    {"mode": "WFM",      "bw": "200 kHz", "nr": False, "nr_lvl": 0,  "sq": False, "sq_db": -60.0},
+        "Digital / FT8":   {"mode": "USB",     "bw": "2.5 kHz", "nr": False, "nr_lvl": 0,  "sq": True,  "sq_db": -80.0},
+        "NFM Comms":       {"mode": "NFM",      "bw": "10 kHz",  "nr": True,  "nr_lvl": 30, "sq": True,  "sq_db": -90.0},
+    }
+
+    def _build_profile_group(self) -> QGroupBox:
+        """Demodulator profile quick-select."""
+        grp = QGroupBox(self.tr("Profile"))
+        gl  = QGridLayout(grp)
+        gl.setSpacing(3)
+        self._profile_combo = QComboBox()
+        self._profile_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._profile_combo.setMinimumWidth(110)
+        self._profile_combo.setToolTip(
+            "Quick-load a demodulator preset.\n"
+            "Sets mode, bandwidth, NR, and squelch in one click.")
+        self._refresh_profile_combo()
+        gl.addWidget(self._profile_combo, 0, 0, 1, 2)
+        load_btn = QPushButton(self.tr("Load"))
+        load_btn.setFixedHeight(22)
+        load_btn.setFixedWidth(48)
+        load_btn.clicked.connect(self._apply_profile)
+        gl.addWidget(load_btn, 1, 0)
+        save_btn = QPushButton(self.tr("Save…"))
+        save_btn.setFixedHeight(22)
+        save_btn.setFixedWidth(48)
+        save_btn.setToolTip("Save current demod settings as a named profile")
+        save_btn.clicked.connect(self._save_profile)
+        gl.addWidget(save_btn, 1, 1)
+        del_btn  = QPushButton(self.tr("Del"))
+        del_btn.setFixedHeight(22)
+        del_btn.setFixedWidth(36)
+        del_btn.setToolTip("Delete the selected custom profile")
+        del_btn.clicked.connect(self._delete_profile)
+        gl.addWidget(del_btn, 1, 2)
+        return grp
+
+    def _refresh_profile_combo(self) -> None:
+        self._profile_combo.clear()
+        for name in self._BUILTIN_PROFILES:
+            self._profile_combo.addItem(name)
+        custom = self.cfg.get("sdr.profiles", {}) if self.cfg else {}
+        for name in sorted(custom.keys()):
+            self._profile_combo.addItem(f"★ {name}")
+
+    def _apply_profile(self) -> None:
+        name = self._profile_combo.currentText()
+        # Strip ★ prefix from custom profile names
+        key = name.lstrip("★ ")
+        prof = self._BUILTIN_PROFILES.get(key)
+        if prof is None and self.cfg:
+            prof = (self.cfg.get("sdr.profiles", {}) or {}).get(key)
+        if not prof:
+            return
+        self._demod_combo.setCurrentText(prof.get("mode", "USB"))
+        self._demod_bw.setCurrentText(prof.get("bw", "2.5 kHz"))
+        self._nr_cb.setChecked(bool(prof.get("nr", False)))
+        self._nr_slider.setValue(int(prof.get("nr_lvl", 0)))
+        self._squelch_cb.setChecked(bool(prof.get("sq", False)))
+        self._squelch_slider.setValue(int(prof.get("sq_db", -60)))
+
+    def _save_profile(self) -> None:
+        from PyQt6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, self.tr("Save Profile"),
+            self.tr("Profile name:"),
+            text="My Profile")
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if name in self._BUILTIN_PROFILES:
+            return   # can't overwrite built-ins
+        prof = {
+            "mode":   self._demod_combo.currentText(),
+            "bw":     self._demod_bw.currentText(),
+            "nr":     self._nr_enabled,
+            "nr_lvl": self._nr_level,
+            "sq":     self._squelch_enabled,
+            "sq_db":  self._squelch_db,
+        }
+        if self.cfg:
+            customs = dict(self.cfg.get("sdr.profiles", {}) or {})
+            customs[name] = prof
+            self.cfg.set("sdr.profiles", customs)
+        self._refresh_profile_combo()
+
+    def _delete_profile(self) -> None:
+        name = self._profile_combo.currentText().lstrip("★ ")
+        if name in self._BUILTIN_PROFILES or not self.cfg:
+            return
+        customs = dict(self.cfg.get("sdr.profiles", {}) or {})
+        customs.pop(name, None)
+        self.cfg.set("sdr.profiles", customs)
+        self._refresh_profile_combo()
 
     def _build_gain_group(self) -> QGroupBox:
         gain_grp = QGroupBox(self.tr("Gain"))
@@ -764,6 +866,41 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._play_bar.setFixedHeight(6)
         self._play_bar.setTextVisible(False)
         rl.addWidget(self._play_bar)
+        # Scheduled recording row
+        sched_row = QHBoxLayout()
+        from PyQt6.QtWidgets import QTimeEdit
+        from PyQt6.QtCore import QTime
+        sched_row.addWidget(QLabel("Sched:"))
+        self._sched_time = QTimeEdit(QTime(0, 0))
+        self._sched_time.setDisplayFormat("HH:mm")
+        self._sched_time.setFixedWidth(52)
+        self._sched_time.setToolTip("UTC start time for scheduled recording")
+        sched_row.addWidget(self._sched_time)
+        sched_row.addWidget(QLabel("for"))
+        self._sched_dur = QSpinBox()
+        self._sched_dur.setRange(1, 1440)
+        self._sched_dur.setValue(10)
+        self._sched_dur.setSuffix(" min")
+        self._sched_dur.setFixedWidth(70)
+        sched_row.addWidget(self._sched_dur)
+        sched_arm = QPushButton("Arm")
+        sched_arm.setFixedWidth(38)
+        sched_arm.setFixedHeight(20)
+        sched_arm.setToolTip("Arm the scheduled recording")
+        sched_arm.clicked.connect(self._arm_scheduled_record)
+        sched_row.addWidget(sched_arm)
+        rl.addLayout(sched_row)
+        self._sched_status = QLabel("")
+        self._sched_status.setStyleSheet("font-size:9px;color:#778899;")
+        rl.addWidget(self._sched_status)
+        # Timer checks schedule every 10 seconds
+        self._sched_armed   = False
+        self._sched_dur_min = 10
+        self._sched_stop_at: "str | None" = None
+        self._sched_timer = QTimer(self)
+        self._sched_timer.setInterval(10_000)
+        self._sched_timer.timeout.connect(self._check_schedule)
+        self._sched_timer.start()
         return rec_grp
 
     def _build_scanner_group(self) -> QGroupBox:
@@ -1334,6 +1471,38 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             return int(val)
         except Exception:
             return 10_000
+
+    # ── Scheduled recording ───────────────────────────────────────────────
+
+    def _arm_scheduled_record(self) -> None:
+        """Arm a timed recording to start at the selected UTC time."""
+        t   = self._sched_time.time()
+        self._sched_armed   = True
+        self._sched_dur_min = self._sched_dur.value()
+        self._sched_stop_at = None
+        hhmm = f"{t.hour():02d}:{t.minute():02d}"
+        self._sched_status.setText(f"Armed → starts {hhmm} UTC")
+
+    def _check_schedule(self) -> None:
+        """Called every 10 s; fires the recording when wall-clock hits target."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if self._sched_armed and not self._recorder.is_recording:
+            t   = self._sched_time.time()
+            if now.hour == t.hour() and now.minute == t.minute():
+                self._sched_armed = False
+                from datetime import timedelta
+                stop = now + timedelta(minutes=self._sched_dur_min)
+                self._sched_stop_at = stop.strftime("%H:%M")
+                self._toggle_record()
+                self._sched_status.setText(
+                    f"Recording → stops ~{self._sched_stop_at} UTC")
+        elif self._sched_stop_at and self._recorder.is_recording:
+            t_str = now.strftime("%H:%M")
+            if t_str >= self._sched_stop_at:
+                self._toggle_record()
+                self._sched_stop_at = None
+                self._sched_status.setText("Scheduled recording complete")
 
     def _on_nr_toggle(self, enabled: bool):
         self._nr_enabled = enabled

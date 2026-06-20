@@ -246,6 +246,7 @@ class ModesTab(SquelchPanel, QWidget):
         # Populate left panel with section sub-methods
         self._build_band_freq_panel(self._left_layout)
         self._build_cycle_panel(self._left_layout)
+        self._build_band_activity_row(self._left_layout)
         self._build_tx_settings(self._left_layout)
         self._build_session_stats(self._left_layout)
         self._left_layout.addStretch()
@@ -446,6 +447,56 @@ class ModesTab(SquelchPanel, QWidget):
         self._dx_only_cb.setChecked(False)
         self._dx_only_cb.toggled.connect(self.ft8_engine.set_dx_only)
         tx_gl.addWidget(self._dx_only_cb, 6, 0, 1, 2)
+
+    def _build_band_activity_row(self, root) -> None:
+        """Compact band-activity row: coloured dot per HF band showing
+        recent FT8/WSPR decode activity (last 90 seconds)."""
+        act_grp = QGroupBox("Band Activity")
+        act_lay = QHBoxLayout(act_grp)
+        act_lay.setContentsMargins(4, 2, 4, 2)
+        act_lay.setSpacing(4)
+        self._band_act_labels: dict[str, QLabel] = {}
+        for band in ["160m", "80m", "40m", "30m", "20m",
+                     "17m", "15m", "12m", "10m", "6m"]:
+            col = QLabel(f"<font color='#333'>●</font>")
+            col.setToolTip(f"{band}: no recent decodes")
+            col.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            short = band.replace("m", "")
+            lbl = QLabel(f"<font style='font-size:8px'>{short}</font>")
+            pair = QVBoxLayout()
+            pair.setSpacing(0)
+            pair.setContentsMargins(0, 0, 0, 0)
+            pair.addWidget(col)
+            pair.addWidget(lbl)
+            act_lay.addLayout(pair)
+            self._band_act_labels[band] = col
+        act_lay.addStretch()
+        self._left_layout.addWidget(act_grp)
+
+    def _update_band_activity(self) -> None:
+        """Refresh band-activity dots based on recent _band_grids data."""
+        import time
+        if not hasattr(self, "_band_act_labels"):
+            return
+        now = time.time()
+        for band, col_lbl in self._band_act_labels.items():
+            entries = self._band_grids.get(band, [])
+            recent  = [e for e in entries if now - e[0] < 90]
+            n       = len(recent)
+            if n == 0:
+                color   = "#333"
+                tooltip = f"{band}: no decodes in last 90s"
+            elif n < 5:
+                color   = "#996600"
+                tooltip = f"{band}: {n} decode(s) (low)"
+            elif n < 15:
+                color   = "#3fbe6f"
+                tooltip = f"{band}: {n} decodes (active)"
+            else:
+                color   = "#00ddff"
+                tooltip = f"{band}: {n} decodes (busy)"
+            col_lbl.setText(f"<font color='{color}'>●</font>")
+            col_lbl.setToolTip(tooltip)
 
     def _build_tx_settings(self, root):
         # ── TX settings ───────────────────────────────────────────────
@@ -1250,6 +1301,11 @@ class ModesTab(SquelchPanel, QWidget):
         self._band_open_timer = QTimer(self)
         self._band_open_timer.setInterval(90_000)
         self._band_open_timer.timeout.connect(self._check_band_openings)
+        # Update activity dots every 15 seconds on the same timer rhythm
+        self._band_act_timer = QTimer(self)
+        self._band_act_timer.setInterval(15_000)
+        self._band_act_timer.timeout.connect(self._update_band_activity)
+        self._band_act_timer.start()
         self._band_open_timer.start()
 
     # ── Mode tab switching ────────────────────────────────────────────────
@@ -1439,6 +1495,7 @@ class ModesTab(SquelchPanel, QWidget):
             band = self._active_band
             self._band_grids.setdefault(band, [])
             self._band_grids[band].append((_t.time(), decode.grid))
+            self._update_band_activity()
         # Track best SNR per band for session stats
         snr = getattr(decode, "snr", None)
         call = getattr(decode, "callsign", "")

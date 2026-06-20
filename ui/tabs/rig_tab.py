@@ -276,6 +276,105 @@ class RigTab(SquelchPanel, QWidget):
         row1.addWidget(self._build_vfo_group(), 3)
         row1.addWidget(self._build_status_group(), 2)
         self._rig_root.addLayout(row1)
+        self._rig_root.addWidget(self._build_quick_dial_row())
+
+    def _build_quick_dial_row(self) -> QWidget:
+        """Row of 8 quick-dial buttons for one-click frequency/mode tuning."""
+        w   = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+        self._qdial_btns = []
+        # Load quick-dials from cfg; default to common digital calling freqs
+        defaults = [
+            {"label": "FT8 20m", "hz": 14_074_000, "mode": "PKTUSB"},
+            {"label": "FT8 40m", "hz": 7_074_000,  "mode": "PKTUSB"},
+            {"label": "FT8 80m", "hz": 3_573_000,  "mode": "PKTUSB"},
+            {"label": "FT4 20m", "hz": 14_080_000, "mode": "PKTUSB"},
+            {"label": "CW 20m",  "hz": 14_020_000, "mode": "CW"},
+            {"label": "SSB 20m", "hz": 14_225_000, "mode": "USB"},
+            {"label": "WSPR 30m", "hz": 10_138_700, "mode": "PKTUSB"},
+            {"label": "WWV",     "hz": 10_000_000, "mode": "AM"},
+        ]
+        saved = self.cfg.get("rig.quick_dials", None)
+        dials = saved if isinstance(saved, list) and len(saved) == 8 else defaults
+        for i, d in enumerate(dials):
+            btn = QPushButton(d.get("label", f"Q{i+1}"))
+            btn.setFixedHeight(22)
+            btn.setToolTip(
+                f"{d.get('label', '')}  {d.get('hz', 0)/1e6:.4f} MHz  "
+                f"{d.get('mode', '')}\nRight-click to edit")
+            btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda _, idx=i: self._qdial_edit(idx))
+            btn.clicked.connect(
+                lambda _, dd=d: self._qdial_tune(dd))
+            btn.setStyleSheet(
+                "QPushButton{background:#1a1a1a;border:1px solid #333;"
+                "border-radius:3px;font-size:9px;padding:0 3px;}"
+                "QPushButton:hover{border-color:#555;}")
+            lay.addWidget(btn)
+            self._qdial_btns.append((btn, d))
+        self._qdial_data = dials
+        return w
+
+    def _qdial_tune(self, d: dict) -> None:
+        """Tune rig to a quick-dial frequency+mode."""
+        hz   = int(d.get("hz", 0))
+        mode = (d.get("mode", "") or "").upper()
+        if hz <= 0:
+            return
+        self._set_freq(hz)
+        if mode and self.rig.is_connected:
+            try:
+                self.rig.set_mode(mode)
+            except Exception:
+                pass
+
+    def _qdial_edit(self, idx: int) -> None:
+        """Right-click → edit a quick-dial entry."""
+        from PyQt6.QtWidgets import (QDialog, QFormLayout, QLineEdit,
+                                     QDialogButtonBox, QDoubleSpinBox)
+        d   = self._qdial_data[idx]
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Edit Quick-Dial Q{idx+1}")
+        f   = QFormLayout(dlg)
+        lbl_e = QLineEdit(d.get("label", ""))
+        lbl_e.setMaxLength(10)
+        hz_e  = QDoubleSpinBox()
+        hz_e.setRange(0.001, 6000.0)
+        hz_e.setDecimals(4)
+        hz_e.setSuffix(" MHz")
+        hz_e.setValue(d.get("hz", 14_074_000) / 1e6)
+        mode_e = QLineEdit(d.get("mode", "USB"))
+        mode_e.setMaxLength(8)
+        f.addRow("Label:", lbl_e)
+        f.addRow("Frequency:", hz_e)
+        f.addRow("Mode:", mode_e)
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        f.addRow(btns)
+        if not dlg.exec():
+            return
+        new_d = {
+            "label": lbl_e.text().strip() or f"Q{idx+1}",
+            "hz":    int(hz_e.value() * 1_000_000),
+            "mode":  mode_e.text().strip().upper() or "USB",
+        }
+        self._qdial_data[idx] = new_d
+        btn, _ = self._qdial_btns[idx]
+        btn.setText(new_d["label"])
+        btn.setToolTip(
+            f"{new_d['label']}  {new_d['hz']/1e6:.4f} MHz  {new_d['mode']}\n"
+            "Right-click to edit")
+        btn.clicked.disconnect()
+        btn.clicked.connect(lambda _, dd=new_d: self._qdial_tune(dd))
+        self._qdial_btns[idx] = (btn, new_d)
+        # Persist
+        self.cfg.set("rig.quick_dials", self._qdial_data)
 
     def _build_vfo_group(self) -> QGroupBox:
         vfo_grp = QGroupBox("VFO A")

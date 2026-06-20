@@ -1519,29 +1519,62 @@ class RigTab(SquelchPanel, QWidget):
             QMessageBox.warning(self, "Scanner",
                                 "Connect the rig before scanning.")
             return
-        try:
-            lo = int(float(self._scan_from.text()) * 1_000_000)
-            hi = int(float(self._scan_to.text()) * 1_000_000)
-        except ValueError:
-            QMessageBox.warning(self, "Scanner",
-                                "Invalid frequency range.")
-            return
+        mode = self._scan_mode.currentText()
 
-        self._scan_lo  = lo
-        self._scan_hi  = hi
-        self._scan_cur = lo
-        # Read step size from the new combo (e.g. "5 kHz" → 5000 Hz)
-        try:
-            step_txt = self._scan_step.currentText()
-            if "kHz" in step_txt:
-                step_hz = int(float(step_txt.replace(" kHz", "")) * 1_000)
-            elif "Hz" in step_txt:
-                step_hz = int(step_txt.replace(" Hz", ""))
-            else:
+        if mode == "Memory":
+            channels = sorted(self._memories.items())   # [(slot, (hz,mode,label))]
+            if not channels:
+                QMessageBox.warning(self, "Scanner",
+                                    "No memory channels stored.\n"
+                                    "Use the Memory Channels section to add some.")
+                return
+            self._scan_channel_list = [(hz, m, lbl)
+                                       for _, (hz, m, lbl) in channels]
+            self._scan_channel_idx  = 0
+            self._scan_list_mode    = True
+
+        elif mode == "Channel list":
+            raw = self._scan_from.text().strip()
+            freqs = []
+            for tok in raw.replace(";", ",").split(","):
+                tok = tok.strip()
+                if not tok:
+                    continue
+                try:
+                    freqs.append((int(float(tok) * 1_000_000), "", tok))
+                except ValueError:
+                    pass
+            if not freqs:
+                QMessageBox.warning(self, "Scanner",
+                                    "Enter comma-separated frequencies in MHz in the 'From' field.")
+                return
+            self._scan_channel_list = freqs
+            self._scan_channel_idx  = 0
+            self._scan_list_mode    = True
+
+        else:  # Sweep / Band
+            try:
+                lo = int(float(self._scan_from.text()) * 1_000_000)
+                hi = int(float(self._scan_to.text()) * 1_000_000)
+            except ValueError:
+                QMessageBox.warning(self, "Scanner", "Invalid frequency range.")
+                return
+            self._scan_lo  = lo
+            self._scan_hi  = hi
+            self._scan_cur = lo
+            self._scan_list_mode = False
+            try:
+                step_txt = self._scan_step.currentText()
+                if "kHz" in step_txt:
+                    step_hz = int(float(step_txt.replace(" kHz", "")) * 1_000)
+                elif "Hz" in step_txt:
+                    step_hz = int(step_txt.replace(" Hz", ""))
+                else:
+                    step_hz = 5_000
+            except Exception:
                 step_hz = 5_000
-        except Exception:
-            step_hz = 5_000
-        self._scan_step_hz = step_hz
+            self._scan_step_hz = step_hz
+
         self._scan_running = True
         interval = int(self._scan_dwell.value() * 1000)
         self._scan_timer.setInterval(interval)
@@ -1563,13 +1596,33 @@ class RigTab(SquelchPanel, QWidget):
     def _scan_step(self):
         if not self._scan_running:
             return
-        step = getattr(self, "_scan_step_hz", self._step_hz)
-        self._scan_cur += step
-        if self._scan_cur > self._scan_hi:
-            self._scan_cur = self._scan_lo
-        self._set_freq(self._scan_cur)
-        self._scan_status.setText(
-            f"Scanning  {self._scan_cur/1e6:.4f} MHz")
+        if getattr(self, "_scan_list_mode", False):
+            # Memory / Channel-list mode: advance through channel list
+            channels = self._scan_channel_list
+            if not channels:
+                self._stop_scan()
+                return
+            idx = getattr(self, "_scan_channel_idx", 0) % len(channels)
+            self._scan_channel_idx = (idx + 1) % len(channels)
+            hz, mode_str, label = channels[idx]
+            self._set_freq(hz)
+            if mode_str and self.rig.is_connected:
+                from core.spot_tune import infer_rig_mode
+                try:
+                    self.rig.set_mode(infer_rig_mode(mode_str, hz))
+                except Exception:
+                    pass
+            self._scan_status.setText(
+                f"Ch {idx+1}/{len(channels)}  {hz/1e6:.4f} MHz"
+                + (f"  {label}" if label and label != str(hz/1e6) else ""))
+        else:
+            step = getattr(self, "_scan_step_hz", self._step_hz)
+            self._scan_cur += step
+            if self._scan_cur > self._scan_hi:
+                self._scan_cur = self._scan_lo
+            self._set_freq(self._scan_cur)
+            self._scan_status.setText(
+                f"Scanning  {self._scan_cur/1e6:.4f} MHz")
 
     # ── Memory channels ───────────────────────────────────────────────────
 

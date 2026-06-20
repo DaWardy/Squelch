@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QSplitter, QFrame, QMessageBox,
     QFileDialog, QDialog, QFormLayout, QDialogButtonBox,
     QProgressBar, QSpinBox, QProgressDialog, QDateEdit,
-    QDateTimeEdit, QCheckBox
+    QDateTimeEdit, QCheckBox, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QDate, QDateTime
 from PyQt6.QtGui import QColor, QBrush, QFont
@@ -167,6 +167,7 @@ class LogTab(SquelchPanel, QWidget):
         self._build_qso_table(root)
         self._build_action_buttons(root)
         self._build_awards_section(root)
+        self._build_contest_score_panel(root)
 
     def _build_stats_bar(self, root):
         """Top row of QSO count / award stat counters."""
@@ -425,6 +426,76 @@ class LogTab(SquelchPanel, QWidget):
         awards_l.addWidget(dxcc_btn, 0, Qt.AlignmentFlag.AlignBottom)
 
         root.addWidget(awards_grp)
+
+    def _build_contest_score_panel(self, root) -> None:
+        """Collapsible live contest score breakdown."""
+        from PyQt6.QtWidgets import QToolButton as _TB
+        from PyQt6.QtWidgets import QTableWidget as _TW, QTableWidgetItem as _TWI
+
+        toggle = _TB("▶ Contest Score (live)")
+        toggle.setCheckable(True)
+        toggle.setChecked(False)
+        toggle.setToolTip(
+            "Expand for live QSO/multiplier/score breakdown.\n"
+            "Scoring: CW/FT8/digital = 2 pts, SSB/AM/FM = 1 pt.\n"
+            "Multipliers = unique DXCC entities worked.")
+        toggle.setStyleSheet(
+            "QToolButton{background:transparent;border:none;"
+            "font-weight:bold;text-align:left;padding:4px 8px;}")
+        root.addWidget(toggle)
+
+        self._cs_body = QWidget()
+        self._cs_body.setVisible(False)
+        toggle.toggled.connect(self._cs_body.setVisible)
+        cs_lay = QVBoxLayout(self._cs_body)
+        cs_lay.setContentsMargins(8, 2, 8, 4)
+        cs_lay.setSpacing(2)
+
+        self._cs_table = _TW(0, 3)
+        self._cs_table.setHorizontalHeaderLabels(["Band", "QSOs", "Points"])
+        self._cs_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
+        self._cs_table.setMaximumHeight(150)
+        self._cs_table.setStyleSheet(
+            "QTableWidget{background:#0a0a0a;gridline-color:#1a1a1a;}"
+            "QHeaderView::section{background:#141414;}")
+        self._cs_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        cs_lay.addWidget(self._cs_table)
+
+        self._cs_summary = QLabel("")
+        self._cs_summary.setStyleSheet(
+            "color:#3fbe6f;font-family:'Courier New';font-size:12px;"
+            "font-weight:bold;padding:4px;")
+        cs_lay.addWidget(self._cs_summary)
+        root.addWidget(self._cs_body)
+
+    def _update_contest_score(self) -> None:
+        """Refresh the contest score panel from LogDB."""
+        if not hasattr(self, "_cs_body") or not self._cs_body.isVisible():
+            return
+        try:
+            cs = self.log_db.contest_score()
+            BAND_ORDER = ["160m","80m","60m","40m","30m","20m",
+                          "17m","15m","12m","10m","6m","2m","?"]
+            self._cs_table.setRowCount(0)
+            by_band = cs["by_band"]
+            for band in BAND_ORDER:
+                if band not in by_band:
+                    continue
+                qsos = by_band[band]
+                r = self._cs_table.rowCount()
+                self._cs_table.insertRow(r)
+                for col, txt in [(0, band), (1, str(qsos)),
+                                  (2, str(qsos * 2))]:
+                    self._cs_table.setItem(r, col, QTableWidgetItem(txt))
+            self._cs_summary.setText(
+                f"QSOs {cs['total_qsos']}  ×  "
+                f"Pts {cs['points']}  ×  "
+                f"Mults {cs['mults']} (DXCC)  "
+                f"= Score {cs['score']:,}")
+        except Exception:
+            pass
 
     def _show_dxcc_needed(self):
         """Open the DXCC entity status dialog."""
@@ -694,6 +765,7 @@ class LogTab(SquelchPanel, QWidget):
 
         except Exception as e:
             log.error(f"Stats update: {e}")
+        self._update_contest_score()
 
     # ── Manual entry ──────────────────────────────────────────────────────
 

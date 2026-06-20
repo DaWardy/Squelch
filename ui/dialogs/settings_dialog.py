@@ -127,6 +127,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._station_call.setText(cfg.get("station.station_callsign", ""))
         self._contest_exchange.setText(cfg.get("station.contest_exchange", ""))
         self._smeter_cal.setValue(int(cfg.get("rig.smeter_cal_db", 0) or 0))
+        self._k_index_alarm.setValue(int(cfg.get("band.k_alarm", 0) or 0))
 
     def _load_modes(self, cfg):
         self._auto_launch_wsjtx.setChecked(cfg.get("modes.auto_launch_wsjtx", True))
@@ -430,6 +431,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
                 self._contest_exchange.text().strip())
         cfg.set("log.daily_goal", self._daily_goal.value())
         cfg.set("rig.smeter_cal_db", self._smeter_cal.value())
+        cfg.set("band.k_alarm", self._k_index_alarm.value())
 
     def _save_audio(self, cfg):
         cfg.set("audio.input",          self._audio_input.currentText())

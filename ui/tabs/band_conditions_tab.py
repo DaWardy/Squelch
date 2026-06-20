@@ -591,6 +591,30 @@ class BandConditionsTab(SquelchPanel, QWidget):
             color = "#3fbe6f"
         self._summary_lbl.setStyleSheet(
             f"font-weight:bold;color:{color};")
+        # K-index audible alarm
+        self._check_k_alarm(solar)
+
+    def _check_k_alarm(self, solar: SolarData) -> None:
+        """Beep when K-index meets or exceeds the user's configured threshold."""
+        try:
+            threshold = int(self.cfg.get("band.k_alarm", 0) or 0)
+            if threshold <= 0:
+                return
+            if solar.k_index >= threshold:
+                # Only beep once per K-index level, not on every refresh
+                last = getattr(self, "_last_k_alarm_level", -1)
+                if solar.k_index > last:
+                    from PyQt6.QtWidgets import QApplication
+                    QApplication.beep()
+                    self._last_k_alarm_level = solar.k_index
+                    self._aurora_lbl.setText(
+                        f"⚡ K-index alarm: K={solar.k_index:.0f} "
+                        f"(threshold {threshold})")
+                    self._aurora_widget.show()
+            else:
+                self._last_k_alarm_level = -1
+        except Exception:
+            pass
 
     def _apply_solar_indices(self, solar: SolarData):
         """Update SFI, SN, K, A, X-ray, storm index widgets."""

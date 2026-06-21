@@ -88,15 +88,18 @@ not commitments.
 ### Phase 1 — Foundation: Unified Signal model + Survey  ·  v0.13–0.14  ·  **P0**
 The prerequisite for correlate / geolocate / query. Without it those
 features have nowhere to write.
-- `core/signal_model.py` — `Signal` record + SQLite store: freq, bandwidth,
-  first/last seen, RSSI/SNR, lat/lon/alt, IQ-capture reference, modulation,
-  classification, decoded payload, emitter-ID, source, confidence, tags.
-- Migrate existing finding sources (FT8 decode, APRS, SDR bookmark, RBN,
-  future DF) to **emit Signal records** instead of living in tab silos.
-- **Spectrum occupancy survey** — long-dwell wideband sweep → energy
-  detection → Signal records with time-stamped occupancy.
-- **Signal Browser** tab — searchable/filterable table across everything
-  captured; export; jump-to-map / jump-to-SDR.
+- ✅ **DONE** `core/signal_model.py` — `Signal` record + thread-safe SQLite
+  `SignalStore`: freq, bandwidth, first/last seen, RSSI/SNR, lat/lon/alt,
+  IQ-capture reference, modulation, classification, decoded payload,
+  emitter-ID, source, confidence, tags. `record()` merges repeat observations
+  of the same emitter (the correlation seed); `add()`/`search()`/`recent()`/
+  `distinct_emitters()`/`delete()`. Parameterized throughout. 31 tests.
+- ⬜ Migrate existing finding sources (FT8 decode, APRS, SDR bookmark, RBN,
+  future DF) to **emit Signal records** instead of living in tab silos (`SIG-MIGRATE`).
+- ⬜ **Spectrum occupancy survey** — long-dwell wideband sweep → energy
+  detection → Signal records with time-stamped occupancy (`SIG-SURVEY`).
+- ⬜ **Signal Browser** tab — searchable/filterable table across everything
+  captured; export; jump-to-map / jump-to-SDR (`SIG-BROWSER`).
 
 ### Phase 2 — Identify  ·  v0.14–0.15  ·  **P1**
 - Write SigID-wiki matches onto Signal records (classification + confidence).

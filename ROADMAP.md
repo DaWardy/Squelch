@@ -147,9 +147,11 @@ Reach URH-class parity for arbitrary digital protocols.
 ### Phase 5 — Transmit chain + Authorization  ·  v0.19–0.21  ·  **P0 for any TX**
 The Authorization layer is a **hard prerequisite** before any encode→TX
 feature ships.
-- `core/authorization.py` — **Authorization Profiles**: per-band TX
-  allow/deny lists, default-safe (deny unless allowed), legal-use
-  acknowledgment, all keyings logged via `core/netlog`.
+- 🟡 **DONE (decision core)** `core/authorization.py` — **Authorization
+  Profiles**: per-band TX allow/deny, default-deny, legal-use acknowledgment
+  gate, buried unrestricted override; `can_transmit()` returns an AuthDecision;
+  18 tests. Remaining: settings UI + wire into AppState FSM / `transmit_iq`
+  (caller logs each keying via `core/netlog`).
 - Wire encode → `transmit_iq()` strictly through the authorization gate,
   integrated with the AppState FSM.
 - **Buried "Unrestricted TX" override** — behind layered disclaimers, for

@@ -219,6 +219,9 @@ A dedicated housekeeping sprint that does:
 - Dead-code / stale-stub review (e.g. retire or implement leftover stubs).
 - Test-count + backlog + roadmap reconciliation.
 - Dependency check (conda-forge win-64 compatibility).
+- **`.gitignore` review** — add any new runtime/cache/user-data paths a sprint
+  introduced (recordings, voice clips, bookmarks, caches); confirm
+  `git ls-files` shows no artifacts (pyc, logs, db, venv, build) tracked.
 
 Rationale: weekly feature sprints erode complexity scores gradually; a fixed
 1-in-5 cadence catches drift before any file drops below 7.0, without the

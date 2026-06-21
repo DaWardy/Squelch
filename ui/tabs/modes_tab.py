@@ -130,6 +130,7 @@ class ModesTab(SquelchPanel, QWidget):
 
         self._build()
         self._build_dx_panel()
+        self._build_rbn_panel()
         self._wire()
         self._start_dx_cluster()
 
@@ -299,7 +300,7 @@ class ModesTab(SquelchPanel, QWidget):
         self._cycle_bar.setTextVisible(False)
         self._cycle_bar.setFixedHeight(8)
         self._cycle_bar.setStyleSheet(
-            "QProgressBar{background:#111;border:1px solid #222;border-radius:2px;}"
+            "QProgressBar{border-radius:2px;}"
             "QProgressBar::chunk{background:#3fbe6f;}")
         self._cycle_label = QLabel("RX  00:00")
         self._cycle_label.setStyleSheet(
@@ -618,10 +619,8 @@ class ModesTab(SquelchPanel, QWidget):
             pass
         self._decode_table.verticalHeader().setVisible(False)
         self._decode_table.setStyleSheet(
-            "QTableWidget{background:#0d0d0d;gridline-color:#1a1a1a;"
-            "font-family:'Courier New';alternate-background-color:#111111;"
-            "selection-background-color:#1a3a1a;}"
-            "QHeaderView::section{background:#141414;border:none;padding:3px;}")
+            "QTableWidget{font-family:'Courier New';}"
+            "QHeaderView::section{border:none;padding:3px;}")
         self._decode_table.doubleClicked.connect(self._on_decode_dblclick)
         self._decode_table.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu)
@@ -642,8 +641,7 @@ class ModesTab(SquelchPanel, QWidget):
         self._activity_log.setReadOnly(True)
         self._activity_log.setMaximumHeight(120)
         self._activity_log.setStyleSheet(
-            "background:#080808;color:#3fbe6f;"
-            "font-family:'Courier New';border:1px solid #1a1a1a;")
+            "color:#3fbe6f;font-family:'Courier New';")
         rl.addWidget(self._activity_log)
 
     def _build_decode_right_panel(self) -> "QWidget":
@@ -721,8 +719,7 @@ class ModesTab(SquelchPanel, QWidget):
         self._sstv_image_lbl = QLabel("No image received yet")
         self._sstv_image_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sstv_image_lbl.setMinimumHeight(120)
-        self._sstv_image_lbl.setStyleSheet(
-            "background:#0a0a0a;border:1px solid #222;")
+        self._sstv_image_lbl.setStyleSheet("")
         sv.addWidget(self._sstv_image_lbl)
 
         btn_row = QHBoxLayout()
@@ -925,6 +922,119 @@ class ModesTab(SquelchPanel, QWidget):
         self._pota_spots = []
         self._sota_client = None
         self._pota_client = None
+
+    # ── RBN "Am I heard?" panel ───────────────────────────────────────────
+
+    def _build_rbn_panel(self) -> None:
+        """Collapsible panel showing which RBN skimmers hear our signal."""
+        rbn_grp = QGroupBox("RBN — Am I Being Heard?")
+        rbn_grp.setMaximumHeight(150)
+        rbn_grp.setCheckable(True)
+        rbn_grp.setChecked(False)
+        rbn_grp.toggled.connect(self._on_rbn_toggle)
+        rl = QVBoxLayout(rbn_grp)
+        rl.setContentsMargins(4, 4, 4, 4)
+        rl.setSpacing(3)
+        rl.addLayout(self._build_rbn_controls_row())
+        rl.addWidget(self._build_rbn_table())
+        self.layout().addWidget(rbn_grp)
+        self._rbn_grp     = rbn_grp
+        self._rbn_client  = None
+        self._rbn_spots: list = []
+
+    def _build_rbn_controls_row(self) -> "QHBoxLayout":
+        ctrl = QHBoxLayout()
+        ctrl.addWidget(QLabel("Call:"))
+        self._rbn_call_edit = QLineEdit()
+        self._rbn_call_edit.setPlaceholderText("your callsign")
+        self._rbn_call_edit.setFixedWidth(90)
+        self._rbn_call_edit.setToolTip(
+            "Callsign to search for in the RBN skimmer feed.\n"
+            "Defaults to your station callsign.")
+        ctrl.addWidget(self._rbn_call_edit)
+        ctrl.addWidget(QLabel("Mode:"))
+        self._rbn_mode = QComboBox()
+        self._rbn_mode.addItems(["CW", "RTTY", "FT8", "FT4"])
+        self._rbn_mode.setFixedWidth(60)
+        ctrl.addWidget(self._rbn_mode)
+        ctrl.addStretch()
+        self._rbn_status = QLabel("Expand to start polling")
+        self._rbn_status.setStyleSheet("font-size:9px;")
+        ctrl.addWidget(self._rbn_status)
+        return ctrl
+
+    def _build_rbn_table(self) -> "QTableWidget":
+        self._rbn_table = QTableWidget(0, 5)
+        self._rbn_table.setHorizontalHeaderLabels(
+            ["Spotter", "Freq", "Mode", "SNR (dB)", "Time"])
+        h = self._rbn_table.horizontalHeader()
+        h.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._rbn_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._rbn_table.setFixedHeight(88)
+        self._rbn_table.setStyleSheet(
+            "QTableWidget{font-family:'Courier New';}"
+            "QHeaderView::section{border:none;}")
+        return self._rbn_table
+
+    def _on_rbn_toggle(self, checked: bool) -> None:
+        from core.guest_op import operating_callsign
+        if checked:
+            call = self._rbn_call_edit.text().strip()
+            if not call:
+                call = operating_callsign(self.cfg) or ""
+                self._rbn_call_edit.setText(call)
+            if call:
+                self._start_rbn(call)
+        else:
+            self._stop_rbn()
+
+    def _start_rbn(self, callsign: str) -> None:
+        from network.dx_cluster import RBNClient
+        from PyQt6.QtCore import QTimer
+        if self._rbn_client:
+            self._rbn_client.stop()
+        self._rbn_client = RBNClient(self.cfg)
+        self._rbn_client.on_spot(
+            lambda s: QTimer.singleShot(0,
+                lambda spot=s: self._on_rbn_spot(spot)))
+        mode = self._rbn_mode.currentText()
+        self._rbn_client.start(callsign, mode)
+        self._rbn_status.setText(f"Polling RBN for {callsign} ({mode}) …")
+
+    def _stop_rbn(self) -> None:
+        if self._rbn_client:
+            self._rbn_client.stop()
+            self._rbn_client = None
+        self._rbn_status.setText("Stopped")
+
+    def _on_rbn_spot(self, spot) -> None:
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+        # Deduplicate by spotter+freq
+        key = (spot.spotter, spot.freq_hz)
+        self._rbn_spots = [s for s in self._rbn_spots
+                           if (s.spotter, s.freq_hz) != key]
+        self._rbn_spots.insert(0, spot)
+        if len(self._rbn_spots) > 40:
+            self._rbn_spots = self._rbn_spots[:40]
+        self._rbn_table.setRowCount(0)
+        for s in self._rbn_spots:
+            row = self._rbn_table.rowCount()
+            self._rbn_table.insertRow(row)
+            snr_str = f"+{s.snr}" if s.snr and s.snr >= 0 else str(s.snr or "—")
+            for col, val in enumerate([
+                    s.spotter, f"{s.freq_hz/1000:.1f}",
+                    s.mode, snr_str, s.time_utc]):
+                item = QTableWidgetItem(val)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._rbn_table.setItem(row, col, item)
+        n = len(self._rbn_spots)
+        best = max((s.snr for s in self._rbn_spots if s.snr), default=None)
+        best_str = f", best SNR +{best} dB" if best is not None else ""
+        self._rbn_status.setText(
+            f"Heard by {n} skimmer{'s' if n != 1 else ''}{best_str}")
 
     def _start_sota_pota(self):
         """Start fetching SOTA/POTA spots."""

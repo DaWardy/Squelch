@@ -1422,6 +1422,46 @@ export from CHIRP, that's CHIRP's authorized data delivered through you,
 your file, your own software. Perfectly clean.
 """),
 
+    ("Voice Keyer (V1–V8)", "Rig Control",
+     """# Voice Keyer — V1 through V8
+
+## Overview
+The Voice Keyer gives phone/SSB operators eight pre-recorded audio clip
+buttons (V1–V8) in the Rig tab's collapsible Voice Keyer section. Click
+any button to play that clip through the default audio output.
+
+Typical uses: CQ call, exchange, "Thank you", QRZ, 73, station info.
+
+## Opening the Voice Keyer
+In the Rig tab, click the ▶ Voice Keyer header to expand the section.
+Eight buttons appear labelled with default names (CQ Call, My Call, etc.).
+
+## Assigning a Clip
+Right-click any V-button to open the options menu:
+  🎙 Record  — records from your default mic for 8 seconds and
+               saves the clip automatically.
+  📂 Load WAV — opens a file browser; choose any WAV file on disk.
+  ✏ Edit label — rename the button (e.g. "Contest Exchange").
+  ✖ Clear — removes the assigned file (does not delete it from disk).
+
+## Playing a Clip
+Left-click any V-button. The status line shows the clip name.
+If no clip is assigned the status reminds you to right-click to set one.
+
+## Stopping Playback
+Click ■ Stop to interrupt any clip mid-play.
+
+## Recording Tips
+- Speak clearly; the default sample rate is 44100 Hz mono WAV.
+- Recording lasts 8 seconds. Stop speaking before the timer ends
+  or the silence will be included.
+- Clips are saved to voice_clips/ inside your configured log directory.
+
+## Requirements
+sounddevice must be installed (it is by default via the Squelch installer).
+Without it, buttons will show an error in the status line.
+"""),
+
     ("TX Macros (F1–F8)", "Digital Modes",
      """# TX Macros — F1 through F8
 

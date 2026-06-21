@@ -529,12 +529,42 @@ class RBNClient:
 
     def fetch_async(self, callsign: str, mode: str = "CW"):
         threading.Thread(
-            target=self.fetch,
+            target=self._fetch_and_notify,
             args=(callsign, mode),
             daemon=True).start()
 
+    def _fetch_and_notify(self, callsign: str, mode: str) -> None:
+        spots = self.fetch(callsign, mode)
+        if self._on_spot and spots:
+            for s in spots:
+                try:
+                    self._on_spot(s)
+                except Exception:
+                    pass
+
     def on_spot(self, cb: Callable):
         self._on_spot = cb
+
+    def start(self, callsign: str, mode: str = "CW") -> None:
+        """Start periodic polling at RBN_INTERVAL (60 s)."""
+        self._poll_call = callsign
+        self._poll_mode = mode
+        self._running   = True
+        self._thread    = threading.Thread(
+            target=self._poll_loop, daemon=True, name="RBNPoll")
+        self._thread.start()
+        log.info("RBN polling started for %s", callsign)
+
+    def stop(self) -> None:
+        self._running = False
+
+    def _poll_loop(self) -> None:
+        while self._running:
+            try:
+                self.fetch_async(self._poll_call, self._poll_mode)
+            except Exception as exc:
+                log.debug("RBN poll: %s", exc)
+            time.sleep(RBN_INTERVAL)
 
 
 class ClubLogClient:

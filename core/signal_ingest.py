@@ -107,6 +107,26 @@ def signal_from_dx_spot(spot) -> Signal:
     )
 
 
+def signal_from_df_estimate(est, freq_hz: int = 0,
+                            emitter_id: str = "") -> Signal:
+    """A direction-finding LocationEstimate (digital/rfdf) → Signal.
+
+    Records the estimated transmitter location with the fix confidence so it
+    appears in the Signal Browser and on the map alongside other captures.
+    """
+    return Signal(
+        freq_hz=int(freq_hz or 0),
+        source="df",
+        classification="DF fix",
+        emitter_id=(emitter_id or ""),
+        lat=float(getattr(est, "lat", 0.0) or 0.0),
+        lon=float(getattr(est, "lon", 0.0) or 0.0),
+        confidence=float(getattr(est, "confidence", 0.0) or 0.0),
+        decoded=f"{getattr(est, 'method', 'df')} "
+                f"({getattr(est, 'n_inputs', 0)} fixes)",
+    )
+
+
 def signal_from_bookmark(d: dict) -> Signal:
     """SDR signal-ID bookmark dict → Signal."""
     freq = d.get("freq_hz") or d.get("hz") or 0

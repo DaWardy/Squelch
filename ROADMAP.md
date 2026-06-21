@@ -115,8 +115,11 @@ features have nowhere to write.
 
 ### Phase 3 — Correlate + Geolocate  ·  v0.15–0.17  ·  **P0 (flagship)**
 The keystone and biggest differentiator. Implement `digital/rfdf.py` for real.
-- **Single-receiver gradient DF** (foxhunt) — RSSI vs. heading from
-  rotor/compass/GPS track; bearing estimate on map.
+- 🟡 **Single-receiver gradient DF** (foxhunt) — math core DONE
+  (`digital/rfdf.py`: `bearing_from_rssi_sweep`, `triangulate` least-squares
+  bearing intersection, `estimate_location_rssi` centroid; DF fixes feed the
+  Signal store via `signal_from_df_estimate`; 22+ tests). Remaining: a foxhunt
+  UI panel + live RSSI/heading/GPS capture (SDR + rotor/compass/GPS, GUI).
 - **Coherent / pseudo-doppler DF** where hardware supports (KrakenSDR-class
   multi-channel).
 - **RSSI→GPS track logging + heatmap** — drive/walk a signal, map strength.

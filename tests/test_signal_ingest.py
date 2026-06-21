@@ -170,6 +170,31 @@ class TestBookmark:
 # ── ingest() into a store ────────────────────────────────────────────────────
 
 
+class TestDfEstimate:
+    def test_from_location_estimate(self):
+        from core.signal_ingest import signal_from_df_estimate
+        from digital.rfdf import LocationEstimate
+        est = LocationEstimate(lat=40.5, lon=-74.2, confidence=0.8,
+                               method="triangulate", n_inputs=3)
+        s = signal_from_df_estimate(est, freq_hz=146_520_000, emitter_id="FOX")
+        assert s.source == "df"
+        assert s.classification == "DF fix"
+        assert s.lat == 40.5 and s.lon == -74.2
+        assert s.confidence == 0.8
+        assert s.emitter_id == "FOX"
+        assert s.freq_hz == 146_520_000
+        assert "triangulate" in s.decoded
+
+    def test_defaults_safe(self):
+        from core.signal_ingest import signal_from_df_estimate
+        from digital.rfdf import LocationEstimate
+        est = LocationEstimate(lat=0.0, lon=0.0, confidence=0.0,
+                               method="rssi-centroid", n_inputs=1)
+        s = signal_from_df_estimate(est)
+        assert s.source == "df"
+        assert s.freq_hz == 0
+
+
 class TestIngest:
     def test_ingest_records(self):
         from core.signal_ingest import ingest, signal_from_aprs

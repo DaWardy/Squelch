@@ -1212,6 +1212,12 @@ class ModesTab(SquelchPanel, QWidget):
             self._dx_spots = self._dx_spots[:100]
         self._filter_dx_spots()
         self._check_dx_alert(spot)
+        # Mirror into the unified Signal store (best-effort, thread-safe).
+        try:
+            from core.signal_ingest import ingest, signal_from_dx_spot
+            ingest(signal_from_dx_spot(spot))
+        except Exception:
+            pass
 
     def _check_ft8_alert(self, decode: "DecodedSignal", row: int) -> None:
         """Highlight row gold and beep when decoded callsign is on the watch list."""
@@ -1637,6 +1643,12 @@ class ModesTab(SquelchPanel, QWidget):
                         snr=float(d.snr), grid=d.grid))
         except Exception:
             pass
+        # Mirror into the unified Signal store (best-effort, thread-safe).
+        try:
+            from core.signal_ingest import ingest, signal_from_ft8
+            ingest(signal_from_ft8(decode))
+        except Exception:
+            pass
         # Also pin the heard station on the Map tab (if we can resolve its
         # location from the grid). Best-effort — never block decode display.
         try:
@@ -1760,6 +1772,12 @@ class ModesTab(SquelchPanel, QWidget):
                             0, lambda s=existing: map_tab.set_wspr_spots(s))
                     except Exception:
                         pass
+        except Exception:
+            pass
+        # Mirror into the unified Signal store (best-effort, thread-safe).
+        try:
+            from core.signal_ingest import ingest, signal_from_wspr
+            ingest(signal_from_wspr(spot))
         except Exception:
             pass
 

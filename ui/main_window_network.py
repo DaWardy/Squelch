@@ -204,6 +204,13 @@ class _MainWindowNetworkMixin:
                 )
         except Exception:
             pass
+        # Mirror into the unified Signal store (best-effort, thread-safe).
+        try:
+            if packet:
+                from core.signal_ingest import ingest, signal_from_aprs
+                ingest(signal_from_aprs(packet))
+        except Exception:
+            pass
         # Route APRS message packets to the map message log
         try:
             if packet:

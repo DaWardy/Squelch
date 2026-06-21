@@ -186,6 +186,43 @@ Squelch is dual-use and (in part) TX-capable and decode-broad. The posture:
 4. The existing safety stack stays: AppState FSM, `operating_callsign()`,
    Demo/Guest modes, no shell/eval/pickle, keyring credentials, pentest suite.
 
+### Security hardening (continuous workstream)
+
+Squelch ingests **untrusted input over the air and from the network** (APRS
+packets, DX-cluster/RBN spots, SDR captures, API responses) and launches
+external tools — so input-handling and process safety are ongoing concerns,
+not a one-time audit.
+
+Baseline (in place): parameterized SQL throughout, `subprocess` list-form with
+`shell=False` (no shell), no `eval`/`exec`/`pickle`, OS-keyring credentials,
+`core/sanitize` (CSV-injection + URL redaction), `core/validator` +
+`api_callsign`/`api_string` for network fields, response-size caps on some
+fetches, `tests/test_security_pentest.py`.
+
+Audited & fixed (2026-06-21):
+- **XSS in the embedded map** — Leaflet popups concatenated RF/network strings
+  (APRS callsign/comment, DX-cluster fields) into HTML. Now HTML-escaped at the
+  render chokepoint in `network/map_data.py` (`_esc_deep` over RF/user data;
+  pre-serialized JSON and numbers untouched). 13 tests in `test_map_xss.py`.
+- **XXE hardening** — `network/pskreporter.py` now uses `defusedxml` (with
+  stdlib fallback), matching `network/qrz_lookup.py`.
+
+Open hardening backlog (`SEC-*`, see CLAUDE.md):
+- **Plugin trust model** — `core/plugins.py` executes code from `plugins/`
+  (RCE by design). Document the trust boundary in UI; future: subprocess
+  sandbox and/or signature/allow-list before load.
+- **Process-launch review** — confirm external-tool paths are validated /
+  absolute (mitigate local PATH-hijack of WSJT-X/DSD+/rigctld launches).
+- **Network input limits** — apply response-size caps and stricter schema
+  validation uniformly across all fetchers.
+- **CI security gates** — Bandit + `pip-audit` in GitHub Actions (v1.0 target).
+- **TX safety is the highest-severity surface** — handled by the Phase 5
+  Authorization layer; no TX path ships before it.
+
+A dedicated security sprint runs as needed and at v1.0 (full audit). Any sprint
+that adds an input parser, a network fetcher, an external-process launch, or a
+TX path includes a security check in its Definition of Done.
+
 ---
 
 ## 7. SDR hardware support

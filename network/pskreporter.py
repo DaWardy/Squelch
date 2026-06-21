@@ -265,7 +265,10 @@ def fetch_hearing_me(callsign: str,
     spots on the "heard stations" layer as ORANGE triangles (distinct
     from green "stations we heard" dots).
     """
-    import xml.etree.ElementTree as ET
+    try:
+        import defusedxml.ElementTree as ET  # hardened against XXE / entity-expansion
+    except ImportError:                       # pragma: no cover
+        import xml.etree.ElementTree as ET    # fallback
     import requests
     import logging
     log = logging.getLogger(__name__)

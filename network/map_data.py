@@ -35,6 +35,7 @@ QWebEngineView renders it inside Squelch.
 """
 
 import json
+import html
 import logging
 from core.constants import PORT_DUMP1090_HTTP
 import time
@@ -314,8 +315,38 @@ def _fetch_adsb() -> list[dict]:
         return []
 
 
+# ctx keys whose string values are concatenated into popup/label HTML by the
+# Leaflet JS. Their values can originate from untrusted RF/network input (APRS
+# comments, DX-cluster callsigns, etc.), so every string inside them is
+# HTML-escaped before embedding to prevent script/markup injection (XSS) in the
+# QWebEngine view. NOTE: deliberately excludes pre-serialized fields such as
+# 'grayline_json' (raw JSON) and numeric fields (my_lat/my_lon).
+_HTML_DATA_KEYS = frozenset({
+    "my_call", "my_grid", "grayline_status", "utc_str",
+    "qso_paths", "aprs_stations", "aircraft", "repeaters",
+    "grid_squares", "worked_grids", "heard_stations", "hearing_me",
+    "winlink_gateways", "satellites", "wspr_spots", "dx_spots",
+})
+
+
+def _esc_deep(obj):
+    """Recursively HTML-escape every string in a JSON-able structure."""
+    if isinstance(obj, str):
+        return html.escape(obj, quote=True)
+    if isinstance(obj, list):
+        return [_esc_deep(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _esc_deep(v) for k, v in obj.items()}
+    return obj
+
+
 def _render_html(**ctx) -> str:
     """Render the Leaflet map HTML with layer groups and layer control."""
+    # Harden against XSS: escape untrusted RF/network strings that the JS
+    # concatenates into popup HTML. Numbers and pre-serialized JSON untouched.
+    for _k in _HTML_DATA_KEYS:
+        if _k in ctx:
+            ctx[_k] = _esc_deep(ctx[_k])
     return f"""<!DOCTYPE html>
 <html>
 <head>

@@ -901,6 +901,32 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._sched_timer.setInterval(10_000)
         self._sched_timer.timeout.connect(self._check_schedule)
         self._sched_timer.start()
+        # Squelch-triggered recording row
+        sqtrig_row = QHBoxLayout()
+        self._sqtrig_cb = QCheckBox(self.tr("Squelch trigger"))
+        self._sqtrig_cb.setToolTip(self.tr(
+            "Automatically start recording when squelch opens\n"
+            "(signal detected) and stop after the tail time when\n"
+            "the channel goes quiet. Requires Squelch enabled."))
+        sqtrig_row.addWidget(self._sqtrig_cb)
+        sqtrig_row.addWidget(QLabel(self.tr("Tail:")))
+        self._sqtrig_tail = QSpinBox()
+        self._sqtrig_tail.setRange(1, 60)
+        self._sqtrig_tail.setValue(5)
+        self._sqtrig_tail.setSuffix(self.tr(" s"))
+        self._sqtrig_tail.setFixedWidth(58)
+        self._sqtrig_tail.setToolTip(
+            "Seconds to keep recording after squelch closes.")
+        sqtrig_row.addWidget(self._sqtrig_tail)
+        sqtrig_row.addStretch()
+        rl.addLayout(sqtrig_row)
+        # Internal squelch-trigger state
+        self._sqtrig_open_ts:  "float | None" = None   # time squelch opened
+        self._sqtrig_close_ts: "float | None" = None   # time squelch closed
+        self._sqtrig_check_timer = QTimer(self)
+        self._sqtrig_check_timer.setInterval(500)
+        self._sqtrig_check_timer.timeout.connect(self._check_sqtrig)
+        self._sqtrig_check_timer.start()
         return rec_grp
 
     def _build_scanner_group(self) -> QGroupBox:
@@ -1473,6 +1499,32 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             return 10_000
 
     # ── Scheduled recording ───────────────────────────────────────────────
+
+    def _check_sqtrig(self) -> None:
+        """Squelch-triggered recording: auto-start/stop based on squelch state."""
+        import time
+        if not (hasattr(self, "_sqtrig_cb") and self._sqtrig_cb.isChecked()):
+            return
+        if not self._squelch_enabled:
+            return
+        now  = time.time()
+        tail = self._sqtrig_tail.value()
+        if self._squelch_open:
+            # Signal present → start recording if not already, clear close ts
+            self._sqtrig_close_ts = None
+            if not self._recorder.is_recording:
+                if self._sqtrig_open_ts is None:
+                    self._sqtrig_open_ts = now
+                self._toggle_record()   # start
+        else:
+            # No signal
+            self._sqtrig_open_ts = None
+            if self._recorder.is_recording:
+                if self._sqtrig_close_ts is None:
+                    self._sqtrig_close_ts = now
+                elif now - self._sqtrig_close_ts >= tail:
+                    self._toggle_record()   # stop after tail
+                    self._sqtrig_close_ts = None
 
     def _arm_scheduled_record(self) -> None:
         """Arm a timed recording to start at the selected UTC time."""

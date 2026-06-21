@@ -3,45 +3,51 @@
 **Amateur Radio Operations Platform**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Version](https://img.shields.io/badge/version-0.11.43--alpha-orange)](https://github.com/dawardy/squelch/releases)
+[![Version](https://img.shields.io/badge/version-0.12.0--alpha-orange)](https://github.com/dawardy/squelch/releases)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 
-Squelch is a unified amateur radio operations platform for Windows
-and Linux. It brings together rig control, digital modes, SDR,
-logging, propagation data, and emergency communications tools
-into a single application.
+Squelch is a unified amateur radio and SDR operations platform for
+Windows and Linux. It brings together rig control, digital modes, SDR
+reception, signal analysis, logging, propagation data, and emergency
+communications into a single application — with a built-in RF education
+mode for classrooms and self-study.
 
 > **Alpha software.** Expect bugs. Report them at
 > [github.com/dawardy/squelch/issues](https://github.com/dawardy/squelch/issues)
 
 ---
 
-## What Works Now (v0.11.43-alpha)
+## What Works Now (v0.12.0-alpha)
 
 | Feature | Status |
 |---------|--------|
-| IC-7100 CAT rig control | Built |
-| FT8/FT4/WSPR decode list (via WSJT-X) | Built |
-| QSO logging with ADIF export | Built |
-| Band conditions (NOAA solar data) | Built |
-| SDR waterfall (requires SoapySDR) | Built |
-| Signal identification (Artemis database) | Built |
-| ADS-B aircraft tracking (requires dump1090-fa) | Built |
-| Themes: Dark / Light / High Contrast / Night | Built |
-| Multi-operator profiles | Built |
-| Credential storage (OS keyring) | Built |
+| CAT rig control (26+ models, IC-7100 verified) | Built |
+| Digital modes — FT8/FT4/WSPR/JS8, PSK31/RTTY/CW, SSTV | Built |
+| Digital voice monitor — P25/DMR/NXDN/YSF/D-STAR (DSD+/OP25) | Built |
+| SDR waterfall with signal ID, squelch, NR, IF bandwidth (SoapySDR) | Built |
+| QSO logging — ADIF/CSV/Cabrillo, 5-service upload, DXCC/WAS/WAZ | Built |
+| Band conditions, propagation side-view, terrain (SRTM) | Built |
+| Map — APRS, FT8/PSKReporter, satellites, ADS-B, Winlink gateways | Built |
+| PSKReporter "who hears me" + Reverse Beacon Network | Built |
+| Winlink (VARA / Pat / ARDOP) + EmComm templates | Built |
+| RF Lab / Education mode + full in-app Help | Built |
+| Voice keyer, CW/WinKeyer keyer, rotor control, memory channels | Built |
+| Themes, multi-operator profiles, OS-keyring credentials | Built |
 
-## Coming Soon
+## Coming Next
 
-| Feature | Target |
-|---------|--------|
-| Digital Monitor (P25/DMR/NXDN) | v0.7 |
-| Local RF (RadioReference + APRS) | v0.7 |
-| Winlink / VARA | v0.8 |
-| Help system | v0.8 |
-| Dockable UI panels | v0.9 |
-| Linux port | v0.9 |
-| **Public release** | **v1.0** |
+The amateur-radio platform is feature-complete. Current development extends
+Squelch into a full RF analysis workflow (see `ROADMAP.md`):
+
+| Area | What it adds |
+|------|--------------|
+| Unified Signal database | One searchable record for every signal seen — freq, time, location, classification |
+| Spectrum occupancy survey | Long-dwell wideband scan with activity-over-time history |
+| Signal classification | Automatic modulation identification (AM/FM/SSB/FSK/PSK/…) |
+| Direction finding | Transmitter location / interference hunting — bearing, RSSI heatmaps |
+| Generic protocol decode/encode | Analyse and rebuild OOK/ASK/FSK/PSK digital signals |
+| Authorized transmit | Encode→transmit on TX-capable SDRs, behind per-band authorization |
+| **Public release** | **v1.0 — signed installer, full security audit** |
 
 ---
 
@@ -369,7 +375,7 @@ Security requirements are the same as core: no `shell=True`, `eval()`,
 ## Contributing
 
 See `CONTRIBUTING.md`. Run `python qa_check.py` before every PR.
-CI must be green (lint, undefined-name scan, 430+ tests, security pentest)
+CI must be green (lint, undefined-name scan, 1900+ tests, security pentest)
 before a pull request will be reviewed.
 
 ---

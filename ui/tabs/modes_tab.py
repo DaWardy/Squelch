@@ -872,9 +872,8 @@ class ModesTab(SquelchPanel, QWidget):
             QTableWidget.EditTrigger.NoEditTriggers)
         self._dx_table.setFixedHeight(90)
         self._dx_table.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;font-family:'Courier New';"
-            "border:1px solid #1a1a1a;}"
-            "QHeaderView::section{background:#141414;border:none;}")
+            "QTableWidget{font-family:'Courier New';}"
+            "QHeaderView::section{border:none;}")
         self._dx_table.doubleClicked.connect(self._tune_to_dx_spot)
         return self._dx_table
 
@@ -907,9 +906,7 @@ class ModesTab(SquelchPanel, QWidget):
         h.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         t.setFixedHeight(88)
-        t.setStyleSheet(
-            "QTableWidget{background:#0a0a0a;border:1px solid #1a1a1a;}"
-            "QHeaderView::section{background:#141414;border:none;}")
+        t.setStyleSheet("QHeaderView::section{border:none;}")
         t.doubleClicked.connect(self._tune_to_sota_pota)
         return t
 
@@ -1163,11 +1160,24 @@ class ModesTab(SquelchPanel, QWidget):
                       for t in terms)
         if matched:
             from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtGui import QBrush, QColor as _QC
             QApplication.beep()
             self._dx_status.setText(
                 f"⚡ ALERT: {spot.dx_call}  "
                 f"{spot.freq_khz/1000:.3f} MHz  {getattr(spot, 'mode', '')}")
             self._dx_status.setStyleSheet("color:#ffcc00;font-weight:bold;")
+            # Highlight the matching row in the DX table amber
+            amber = QBrush(_QC("#5a3800"))
+            tbl = getattr(self, "_dx_table", None)
+            if tbl:
+                for row in range(tbl.rowCount()):
+                    item = tbl.item(row, 0)
+                    if item and item.text().upper() == call_upper:
+                        for col in range(tbl.columnCount()):
+                            cell = tbl.item(row, col)
+                            if cell:
+                                cell.setBackground(amber)
+                        break
 
     def _resolve_dx_band(self) -> str:
         """Return the band filter string: '' = all, otherwise e.g. '20m'."""

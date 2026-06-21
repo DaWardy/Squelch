@@ -1156,6 +1156,12 @@ class RigTab(SquelchPanel, QWidget):
         ctrl_row.addLayout(az_el_col)
         rl.addLayout(ctrl_row)
 
+        self._build_rotor_tracking(rl)
+
+        self._rig_root.addWidget(self._rotor_body)
+
+    def _build_rotor_tracking(self, rl) -> None:
+        """Satellite auto-track, Doppler correction, and next-pass display."""
         # Satellite auto-track row
         sat_row = QHBoxLayout()
         sat_row.addWidget(QLabel("Track:"))
@@ -1218,8 +1224,6 @@ class RigTab(SquelchPanel, QWidget):
             "color:#ffcc00;font-family:'Courier New';font-size:11px;"
             "font-weight:bold;")
         rl.addWidget(self._pass_progress)
-
-        self._rig_root.addWidget(self._rotor_body)
 
     # ── Rotor callbacks ───────────────────────────────────────────────────
 

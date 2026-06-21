@@ -112,9 +112,13 @@ features have nowhere to write.
 
 ### Phase 2 — Identify  ·  v0.14–0.15  ·  **P1**
 - Write SigID-wiki matches onto Signal records (classification + confidence).
-- **Modulation classifier** — heuristic first (energy/bandwidth/symbol-rate
-  features → AM/FM/SSB/OOK/ASK/FSK/PSK/OFDM), optional ML model later.
-  High education value; analyst time-saver.
+- 🟡 **Allocation classifier DONE** (`core/signal_classify.py`): matches
+  freq → known fixed channels (NOAA/aviation/marine/ISS…), amateur band
+  segments, and CB/FRS/GMRS/MURS/ISM service bands → label + suggested mode +
+  confidence; `apply_classification()` enriches generic Signals. 18 tests.
+- ⬜ **Modulation classifier** — heuristic from IQ/spectrum features
+  (energy/bandwidth/symbol-rate → AM/FM/SSB/OOK/FSK/PSK/OFDM); needs real
+  feature extraction (SDR). Optional ML model later.
 
 ### Phase 3 — Correlate + Geolocate  ·  v0.15–0.17  ·  **P0 (flagship)**
 The keystone and biggest differentiator. Implement `digital/rfdf.py` for real.

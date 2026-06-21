@@ -100,8 +100,10 @@ features have nowhere to write.
   one-line bridges in the handlers). Direction-finding feeds in Phase 3.
 - ⬜ **Spectrum occupancy survey** — long-dwell wideband sweep → energy
   detection → Signal records with time-stamped occupancy (`SIG-SURVEY`).
-- ⬜ **Signal Browser** tab — searchable/filterable table across everything
-  captured; export; jump-to-map / jump-to-SDR (`SIG-BROWSER`).
+- 🟡 **Signal Browser** tab (`SIG-BROWSER`) — pure presenter DONE
+  (`core/signal_browser.py`: columns, row formatting, text filter, summary;
+  19 tests). Remaining: the thin Qt table tab + register in tab system —
+  **GUI-capable session** (launch-test the new tab).
 
 ### Phase 2 — Identify  ·  v0.14–0.15  ·  **P1**
 - Write SigID-wiki matches onto Signal records (classification + confidence).

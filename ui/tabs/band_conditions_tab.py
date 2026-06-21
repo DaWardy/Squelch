@@ -479,7 +479,61 @@ class BandConditionsTab(SquelchPanel, QWidget):
 
         self._prop_sideview = PropagationSideView()
         svl.addWidget(self._prop_sideview)
+
+        # Time-of-day slider — preview conditions at a specific UTC hour
+        time_row = QHBoxLayout()
+        time_row.setSpacing(6)
+        time_row.addWidget(QLabel("Time:"))
+        from PyQt6.QtWidgets import QSlider as _QS
+        self._time_slider = _QS(Qt.Orientation.Horizontal)
+        self._time_slider.setRange(0, 23)
+        self._time_slider.setValue(self._current_utc_hour())
+        self._time_slider.setTickPosition(_QS.TickPosition.TicksBelow)
+        self._time_slider.setTickInterval(6)
+        self._time_slider.setToolTip(
+            "Drag to preview propagation conditions at a different UTC hour.\n"
+            "MUF is scaled by a day/night model from current solar indices.")
+        self._time_slider.valueChanged.connect(self._on_time_slider_changed)
+        time_row.addWidget(self._time_slider, 1)
+        self._time_lbl = QLabel("Now")
+        self._time_lbl.setFixedWidth(44)
+        self._time_lbl.setStyleSheet("color:#3fbe6f;font-size:9px;")
+        time_row.addWidget(self._time_lbl)
+        svl.addLayout(time_row)
         return sv_grp
+
+    @staticmethod
+    def _current_utc_hour() -> int:
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).hour
+
+    def _on_time_slider_changed(self, hour: int) -> None:
+        """Recompute MUF for the selected hour and update the sideview."""
+        import math
+        cur_hour = self._current_utc_hour()
+        if hour == cur_hour:
+            self._time_lbl.setText("Now")
+            self._time_lbl.setStyleSheet("color:#3fbe6f;font-size:9px;")
+        else:
+            self._time_lbl.setText(f"{hour:02d}:00Z")
+            self._time_lbl.setStyleSheet("color:#ffcc00;font-size:9px;")
+        try:
+            solar = self._solar_data
+            if solar is None or solar.sfi <= 0:
+                return
+            sfi        = max(70.0, float(solar.sfi or 70))
+            fof2_day   = math.sqrt(sfi / 25.0) * 4.0
+            fof2_night = fof2_day * 0.55
+            day_f = 0.5 + 0.5 * math.sin(math.radians((hour - 6) * 15))
+            fof2  = fof2_night + (fof2_day - fof2_night) * day_f
+            path_km = getattr(self, "_current_path_km", 3000.0) or 3000.0
+            path_factor = max(1.5, min(4.5, path_km / 1000.0 + 1.2))
+            geo_factor  = max(0.3, 1.0 - 0.08 * float(solar.k_index or 0))
+            muf_hz = min(fof2 * geo_factor * path_factor, 35.0)
+            self._prop_sideview._muf_mhz = muf_hz
+            self._prop_sideview.update()
+        except Exception:
+            pass
 
     def _build_pskreporter_group(self) -> QGroupBox:
         spots_grp = QGroupBox(self.tr("PSKReporter — Hearing You"))

@@ -66,6 +66,7 @@ TABS = [
     ("localrf",   "📋  Local RF",       True),
     ("map",       "🗺  Map",            True),
     ("bandcond",  "☀️  Band Cond.",     True),
+    ("signals",   "📶  Signals",        False),
     ("rf_lab",    "🔬  RF Lab",         False),
     ("help",      "❓  Help",           True),
 ]
@@ -73,7 +74,7 @@ TABS = [
 # Tabs hidden in RF Lab / Education mode (no rig required)
 _RF_LAB_HIDDEN = {"rig", "modes", "log", "digital", "winlink", "localrf"}
 # Tabs shown in RF Lab mode (rest inherit their saved visibility)
-_RF_LAB_SHOWN  = {"sdr", "rf_lab", "bandcond", "map", "help"}
+_RF_LAB_SHOWN  = {"sdr", "signals", "rf_lab", "bandcond", "map", "help"}
 
 # Built-in tab visibility presets; None means "show all"
 TAB_PRESETS: dict = {
@@ -510,6 +511,7 @@ class MainWindow(
         "digital":  ("ui.tabs.digital_tab",         "DigitalTab",        lambda s, _: (s.cfg, s.rig)),
         "localrf":  ("ui.tabs.localrf_tab",         "LocalRFTab",        lambda s, _: (s.cfg, s.rig)),
         "winlink":  ("ui.tabs.winlink_tab",         "WinlinkTab",        lambda s, _: (s.cfg, s.rig)),
+        "signals":  ("ui.tabs.signal_browser_tab",  "SignalBrowserTab",  lambda s, _: (s.cfg,)),
         "rf_lab":   ("ui.tabs.rf_lab_tab",          "RFLabTab",          lambda s, _: (s.cfg,)),
         "help":     ("ui.tabs.help_tab",            "HelpTab",           lambda s, _: (s.cfg,)),
     }
@@ -542,6 +544,9 @@ class MainWindow(
                 localrf.set_sdr_tune_cb(sdr._set_freq)
             if modes and sdr and hasattr(modes, "set_sdr_tune_cb"):
                 modes.set_sdr_tune_cb(sdr._set_freq)
+            signals = self._tab_map.get("signals")
+            if signals and sdr and hasattr(signals, "set_sdr_tune_cb"):
+                signals.set_sdr_tune_cb(sdr._set_freq)
         except Exception:
             pass
         # Wire map right-click → Band Conditions path analysis

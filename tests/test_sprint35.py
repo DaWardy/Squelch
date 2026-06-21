@@ -77,11 +77,14 @@ class TestTabNames:
         tabs = {k: v for k, _, v in _tabs_constant()}
         assert tabs["rf_lab"] is False
 
-    def test_all_eleven_tabs_present(self):
-        keys = [k for k, _, _ in _tabs_constant()]
+    def test_core_tabs_present(self):
+        # "signals" (SIG-BROWSER) added in Phase 1 — assert the core set is a
+        # subset rather than pinning an exact count as new pillars land.
+        keys = set(k for k, _, _ in _tabs_constant())
         expected = {"rig", "sdr", "modes", "digital", "winlink",
                     "log", "localrf", "map", "bandcond", "rf_lab", "help"}
-        assert set(keys) == expected
+        assert expected <= keys
+        assert "signals" in keys
 
 
 # ── Privacy & Crash Logs help article ────────────────────────────────────────

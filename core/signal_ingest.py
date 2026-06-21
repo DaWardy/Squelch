@@ -118,7 +118,9 @@ def signal_from_bookmark(d: dict) -> Signal:
         source="sdr",
         classification=(d.get("name") or d.get("label") or "bookmark"),
         modulation=(d.get("mode") or d.get("modulation") or ""),
+        confidence=float(d.get("confidence", 0) or 0),
         decoded=(d.get("notes") or d.get("comment") or "")[:200],
+        tags=(d.get("category") or "")[:100],
     )
 
 

@@ -147,6 +147,25 @@ class TestBookmark:
         s = signal_from_bookmark({"freq_hz": 100})
         assert s.classification == "bookmark"
 
+    def test_full_sigid_entry(self):
+        # Matches the dict shape written by sdr_signal_id._bookmark_signal
+        from core.signal_ingest import signal_from_bookmark
+        entry = {
+            "timestamp": "2026-06-21T00:00:00Z",
+            "freq_hz": 162_550_000, "freq_mhz": 162.55,
+            "name": "NOAA Weather", "modulation": "FM",
+            "bandwidth_hz": 16000, "category": "Weather",
+            "confidence": 0.92, "url": "https://x",
+        }
+        s = signal_from_bookmark(entry)
+        assert s.freq_hz == 162_550_000
+        assert s.classification == "NOAA Weather"
+        assert s.modulation == "FM"
+        assert s.bandwidth_hz == 16000
+        assert s.confidence == 0.92
+        assert s.tags == "Weather"
+        assert s.source == "sdr"
+
 
 # ── ingest() into a store ────────────────────────────────────────────────────
 

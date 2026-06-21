@@ -232,6 +232,13 @@ class _SDRSignalIDMixin:
         except Exception as e:
             log.warning("Bookmark save failed: %s", e)
 
+        # Mirror into the unified Signal store (best-effort).
+        try:
+            from core.signal_ingest import ingest, signal_from_bookmark
+            ingest(signal_from_bookmark(entry))
+        except Exception:
+            pass
+
         # Update panel bookmark log
         panel = getattr(self, "_sigid_panel", None)
         if panel is not None:

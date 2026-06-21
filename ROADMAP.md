@@ -94,10 +94,10 @@ features have nowhere to write.
   emitter-ID, source, confidence, tags. `record()` merges repeat observations
   of the same emitter (the correlation seed); `add()`/`search()`/`recent()`/
   `distinct_emitters()`/`delete()`. Parameterized throughout. 31 tests.
-- 🟡 Migrate finding sources to **emit Signal records** (`SIG-MIGRATE`): DONE
-  for APRS / FT8 / WSPR / DX-cluster via `core/signal_ingest.py` (pure
-  converters + thread-safe `ingest()`; one-line bridges in the handlers).
-  Remaining: SDR bookmarks + future DF.
+- ✅ **DONE** Migrate finding sources to **emit Signal records**
+  (`SIG-MIGRATE`): APRS / FT8 / WSPR / DX-cluster / SDR signal-ID bookmarks,
+  via `core/signal_ingest.py` (pure converters + thread-safe `ingest()`;
+  one-line bridges in the handlers). Direction-finding feeds in Phase 3.
 - ⬜ **Spectrum occupancy survey** — long-dwell wideband sweep → energy
   detection → Signal records with time-stamped occupancy (`SIG-SURVEY`).
 - ⬜ **Signal Browser** tab — searchable/filterable table across everything

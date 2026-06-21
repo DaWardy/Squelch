@@ -374,6 +374,9 @@ Security requirements are the same as core: no `shell=True`, `eval()`,
 
 ## Contributing
 
+New here — human or AI agent? Start with **`AGENTS.md`** (onboarding +
+canonical-docs pointer), then `CONTRIBUTING.md`.
+
 See `CONTRIBUTING.md`. Run `python qa_check.py` before every PR.
 CI must be green (lint, undefined-name scan, 1900+ tests, security pentest)
 before a pull request will be reviewed.

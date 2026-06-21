@@ -2264,22 +2264,16 @@ class HelpTab(SquelchPanel, QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("🔍 Search help…")
         self._search.setStyleSheet(
-            "background:#141414;"
-            "border:1px solid #1a1a1a;border-radius:3px;"
-            "padding:4px 8px;")
+            "border-radius:3px;padding:4px 8px;")
         self._search.textChanged.connect(self._do_search)
         lay.addWidget(self._search)
 
         # Article list
         self._list = QListWidget()
         self._list.setStyleSheet(
-            "QListWidget{background:#0a0a0a;"
-            "border:none;}"
+            "QListWidget{border:none;}"
             "QListWidget::item{padding:4px 6px;}"
-            "QListWidget::item:selected{"
-            "background:#1a3a1a;color:#3fbe6f;}"
-            "QListWidget::item:hover{"
-            "background:#141414;}")
+            "QListWidget::item:selected{color:#3fbe6f;}")
         self._list.currentItemChanged.connect(
             self._on_article_select)
         lay.addWidget(self._list, 1)
@@ -2296,9 +2290,8 @@ class HelpTab(SquelchPanel, QWidget):
         self._content = QTextEdit()
         self._content.setReadOnly(True)
         self._content.setStyleSheet(
-            "background:#0d0d0d;"
             "font-family:'Segoe UI',sans-serif;"
-            "border:none;padding:16px;line-height:1.5;")
+            "border:none;padding:16px;")
         lay.addWidget(self._content, 1)
 
         # Show welcome on first open

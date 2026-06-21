@@ -107,6 +107,22 @@ def signal_from_dx_spot(spot) -> Signal:
     )
 
 
+def signal_from_occupancy(seg) -> Signal:
+    """A spectrum occupancy segment (core.occupancy) → Signal.
+
+    Survey detections carry no emitter id; they correlate by frequency +
+    classification, so repeat hits on the same channel merge into one row.
+    """
+    return Signal(
+        freq_hz=int(getattr(seg, "center_hz", 0) or 0),
+        bandwidth_hz=int(getattr(seg, "bandwidth_hz", 0) or 0),
+        source="survey",
+        classification="occupied",
+        rssi_dbm=float(getattr(seg, "peak_db", 0.0) or 0.0),
+        snr_db=float(getattr(seg, "snr_db", 0.0) or 0.0),
+    )
+
+
 def signal_from_df_estimate(est, freq_hz: int = 0,
                             emitter_id: str = "") -> Signal:
     """A direction-finding LocationEstimate (digital/rfdf) → Signal.

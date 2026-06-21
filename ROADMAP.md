@@ -98,8 +98,11 @@ features have nowhere to write.
   (`SIG-MIGRATE`): APRS / FT8 / WSPR / DX-cluster / SDR signal-ID bookmarks,
   via `core/signal_ingest.py` (pure converters + thread-safe `ingest()`;
   one-line bridges in the handlers). Direction-finding feeds in Phase 3.
-- ⬜ **Spectrum occupancy survey** — long-dwell wideband sweep → energy
-  detection → Signal records with time-stamped occupancy (`SIG-SURVEY`).
+- 🟡 **Spectrum occupancy survey** (`SIG-SURVEY`): detection core DONE
+  (`core/occupancy.py`: robust noise floor, `detect_segments` →
+  OccupancySegment, `occupancy_fraction`; feeds the store via
+  `signal_from_occupancy`; 18 tests). Remaining: the live wideband sweep loop
+  (tune SDR across a range, accumulate frames) — needs SDR streaming + GUI.
 - ✅ **DONE (pending launch-test)** **Signal Browser** tab (`SIG-BROWSER`):
   presenter (`core/signal_browser.py`) + Qt tab (`ui/tabs/signal_browser_tab.py`,
   read-only table, search + source filter, CSV export, double-click→SDR tune,

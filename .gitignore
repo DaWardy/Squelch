@@ -19,11 +19,13 @@ build/
 config.json
 logs/
 recordings/
+voice_clips/
 profiles/
 offline_packages/
 assets/artemis_signals.json
 assets/cty.dat
 assets/squelch.ico
+assets/signal_bookmarks.json
 
 # OS
 .DS_Store
@@ -45,6 +47,19 @@ desktop.ini
 .coverage
 htmlcov/
 .tox/
+.mypy_cache/
+.ruff_cache/
+
+# Patch / merge leftovers
+*.orig
+*.rej
+*.bak
+
+# PyInstaller
+*.spec
+
+# Local agent / editor settings (machine-specific)
+.claude/settings.local.json
 
 # AI agent context — internal working docs, not for public repo
 CLAUDE.md

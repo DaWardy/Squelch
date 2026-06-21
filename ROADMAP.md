@@ -233,7 +233,66 @@ overhead of housekeeping every sprint.
 
 ---
 
-## 9. Deferred / out of scope (for now)
+## 9. UX, UI & installation — first-class standard
+
+UX and UI are **not** a polish-at-the-end concern; they are a continuous,
+P0-quality bar that every feature is held to. A capable tool that is
+confusing or ugly fails its users — especially educators, students, and
+first-time operators.
+
+### Guiding principles
+- **Clean, functional, consistent.** Theme tokens everywhere (no hardcoded
+  hex), consistent spacing/typography, discoverable controls, sensible
+  defaults, no dead-end states.
+- **Don't silo by habit.** Put information where the task lives, not where the
+  org chart says. If two things are used together, show them together; if a
+  tab only exists to hold one widget, fold it. Challenge every tab boundary —
+  consolidate when siloing adds clicks without adding clarity.
+- **Progressive disclosure.** Beginners see a clean surface; power features
+  (filters, raw IQ, authorization override) are reachable but not in the way.
+- **Forgiving.** Clear errors with next steps, undo where possible, nothing
+  destructive without confirmation.
+
+### Custom tabs & layout (largely built — polish + extend)
+The user must be able to **build any number of custom tabs, fill them with any
+applet/panel they want, rearrange them, then lock/unlock as desired.** Most of
+this exists today and must be kept first-class:
+- `ui/tabs/custom_tab.py` `CustomLayoutTab` — add panels as cards
+  (`＋ Add panel`), reorder/remove in `🔓 Rearrange` unlock mode.
+- `main_window` — `_add_custom_tab` / `_rename_custom_tab` /
+  `_remove_custom_tab` / `_assign_panel_to_custom_tab`; movable tab bar
+  (`setMovable(not locked)`); `🔒 Lock / 🔓 Unlock tab order`; Tab Presets +
+  `ui.saved_tab_layouts`; custom-tab state persisted across sessions.
+
+Forward work (backlog `UX-*`):
+- **Any applet, including plugins.** Let custom tabs host plugin-provided
+  panels (`plugins/` `register()` widgets), not only built-in panels — turns
+  custom tabs into a true dashboard builder.
+- **Drag-and-drop card reorder** (today uses ◀ ▶ buttons) and drag-between-tabs.
+- **Per-tab layout polish** — grid/free placement, resizable cards, save named
+  dashboards.
+- **Lock affordance clarity** — make the lock state obvious; tooltip already
+  notes it controls tab order, not in-tab section order.
+
+### Installation experience
+The first five minutes decide adoption. The installer must be **pleasant, not a
+hazing ritual.**
+- One obvious entry point; plain-language progress; clear success/failure with
+  remediation (the `installer.py --check` self-diagnostic is the model).
+- Detect what's present (Python, SoapySDR, rig drivers, optional apps) and tell
+  the user exactly what's missing and how to get it — no silent failures.
+- Offline install path (`--cache` / `--offline`) stays first-class.
+- AV-exclusion guidance up front (already in README) so Defender/Armor don't
+  derail a new user.
+- Backlog `UX-INSTALL`: friendlier installer output / optional GUI installer,
+  guided first-run that flows straight into a working layout per user class.
+
+> Definition of Done (§8) includes the UX bar: no hardcoded dark hex, theme
+> tokens used, controls discoverable, no new siloed single-widget tabs.
+
+---
+
+## 10. Deferred / out of scope (for now)
 
 | Item | Reason |
 |------|--------|
@@ -245,7 +304,7 @@ overhead of housekeeping every sprint.
 
 ---
 
-## 10. Appendix — legacy version targets (historical)
+## 11. Appendix — legacy version targets (historical)
 
 The original v0.7–v1.0 targets (digital monitor, Winlink, help system,
 map system, settings, Linux port) are **complete or in-tree** as of

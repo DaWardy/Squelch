@@ -147,6 +147,7 @@ class LogTab(SquelchPanel, QWidget):
         self.log_db = get_log_db()
         self._all_qsos: list[QSO] = []
         self._current_filtered: list[QSO] = []
+        self._session_start = datetime.now(timezone.utc)
         self._build()
         self._build_awards_panel()
         self._load_log()
@@ -347,6 +348,13 @@ class LogTab(SquelchPanel, QWidget):
         stats_btn.setToolTip("Band, mode, year and entity breakdown")
         stats_btn.clicked.connect(self._show_analytics)
         btn_row.addWidget(stats_btn)
+
+        sess_btn = QPushButton(self.tr("📋 Session…"))
+        sess_btn.setToolTip(
+            "Summary for this operating session\n"
+            "(QSOs, bands, new DXCC, best DX distance)")
+        sess_btn.clicked.connect(self._show_session_summary)
+        btn_row.addWidget(sess_btn)
 
         lotw_btn = QPushButton(self.tr("Upload LoTW queue"))
         lotw_btn.setToolTip(
@@ -1348,6 +1356,10 @@ class LogTab(SquelchPanel, QWidget):
         from ui.dialogs.log_stats_dialog import LogStatsDialog
         dlg = LogStatsDialog(self.log_db, self)
         dlg.exec()
+
+    def _show_session_summary(self) -> None:
+        from ui.dialogs.session_summary_dialog import show_session_summary
+        show_session_summary(self, self.log_db, self._session_start)
 
     # ── ADIF / CSV export ─────────────────────────────────────────────────
 

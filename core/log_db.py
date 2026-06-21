@@ -483,6 +483,61 @@ class LogDB:
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
+    def session_stats(self, since_iso: str) -> dict:
+        """Return operating stats for QSOs added on or after `since_iso`.
+
+        `since_iso` is an ISO 8601 UTC string, e.g. '2026-06-21T14:00:00Z'.
+        Returns a dict with: total, bands (name→count), modes (name→count),
+        new_dxcc (count of DXCC entities not in log before since_iso),
+        best_dist_km, best_dist_call, best_dist_band.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM qso WHERE datetime_on >= ? ORDER BY datetime_on",
+                (since_iso,)).fetchall()
+        if not rows:
+            return {"total": 0, "bands": {}, "modes": {},
+                    "new_dxcc": 0, "best_dist_km": None,
+                    "best_dist_call": None, "best_dist_band": None}
+        qsos = [_row_to_qso(r) for r in rows]
+        bands: dict[str, int] = {}
+        modes: dict[str, int] = {}
+        session_dxcc: set[str] = set()
+        best_km: float = 0.0
+        best_call: str = ""
+        best_band: str = ""
+        for q in qsos:
+            if q.band:
+                bands[q.band] = bands.get(q.band, 0) + 1
+            if q.mode:
+                modes[q.mode] = modes.get(q.mode, 0) + 1
+            if q.dxcc:
+                session_dxcc.add(q.dxcc)
+            d = q.dist_km
+            if d and d > best_km:
+                best_km = d
+                best_call = q.call or ""
+                best_band = q.band or ""
+        # New DXCC: entities in this session NOT in log before since_iso
+        with self._lock:
+            pre_rows = self._conn.execute(
+                "SELECT DISTINCT dxcc FROM qso "
+                "WHERE datetime_on < ? AND dxcc != ''",
+                (since_iso,)).fetchall()
+        pre_dxcc = {r[0] for r in pre_rows}
+        new_dxcc = len(session_dxcc - pre_dxcc)
+        return {
+            "total":          len(qsos),
+            "bands":          dict(sorted(bands.items(),
+                                         key=lambda x: -x[1])),
+            "modes":          dict(sorted(modes.items(),
+                                         key=lambda x: -x[1])),
+            "new_dxcc":       new_dxcc,
+            "best_dist_km":   best_km if best_km else None,
+            "best_dist_call": best_call or None,
+            "best_dist_band": best_band or None,
+        }
+
     # ── ADIF export ───────────────────────────────────────────────────────
 
     def delete_qso(self, qso) -> bool:

@@ -494,6 +494,21 @@ class SoapyManager:
             except Exception:
                 pass
 
+    def set_agc(self, enabled: bool) -> None:
+        """Enable/disable the device's hardware automatic gain control.
+
+        AGC is disabled by default (so the manual gain slider works); enabling
+        it lets the device ride gain automatically. When AGC is on the manual
+        gain setting is ignored by most drivers. Not all drivers support AGC —
+        guarded. For weak-signal / digital work, keep AGC OFF (manual gain).
+        """
+        self._agc = bool(enabled)
+        if self._device:
+            try:
+                self._device.setGainMode(SOAPY_SDR_RX, 0, bool(enabled))
+            except Exception as e:
+                log.debug(f"Set AGC: {e}")
+
     # ── Streaming ─────────────────────────────────────────────────────────
 
     def start_rx(self):

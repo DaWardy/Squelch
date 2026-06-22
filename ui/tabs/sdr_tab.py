@@ -186,6 +186,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # Noise reduction
         self._nr_enabled      = False
         self._nr_level        = 30    # 0-100 %
+        # Noise blanker (time-domain impulse removal on IQ)
+        self._nb_enabled      = False
+        self._nb_strength     = 0.5   # 0.0-1.0
         # IF bandwidth filter lines (updated in _update_axes)
         self._filter_lo_line  = None
         self._filter_hi_line  = None
@@ -655,6 +658,14 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "color:#3fbe6f;font-family:'Courier New';")
         self._gain_lbl.setFixedWidth(45)
         gl.addWidget(self._gain_lbl, 0, 2)
+        self._agc_cb = QCheckBox(self.tr("AGC"))
+        self._agc_cb.setToolTip(self.tr(
+            "Hardware automatic gain control.\n"
+            "OFF (default) = manual gain — recommended for weak-signal and\n"
+            "digital decode/TX. ON lets the device ride gain automatically\n"
+            "(manual gain is then ignored)."))
+        self._agc_cb.toggled.connect(self._on_agc_toggle)
+        gl.addWidget(self._agc_cb, 0, 3)
         gl.addWidget(QLabel(self.tr("PPM Corr:")), 1, 0)
         self._ppm_spin = QSpinBox()
         self._ppm_spin.setRange(-100, 100)
@@ -811,6 +822,25 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._nr_slider.setEnabled(False)
         self._nr_slider.valueChanged.connect(self._on_nr_slider)
         deml.addWidget(self._nr_slider, 6, 0, 1, 2)
+        # Noise blanker row (time-domain impulse removal on IQ)
+        self._nb_cb = QCheckBox(self.tr("NB"))
+        self._nb_cb.setToolTip(self.tr(
+            "Noise blanker — removes short impulsive noise (ignition,\n"
+            "power-line arcs) from the IQ before demod. Higher = more\n"
+            "aggressive. Leave off if it distorts strong signals."))
+        self._nb_cb.toggled.connect(self._on_nb_toggle)
+        deml.addWidget(self._nb_cb, 7, 0)
+        self._nb_lbl = QLabel(f"{int(self._nb_strength * 100)}%")
+        self._nb_lbl.setFixedWidth(36)
+        self._nb_lbl.setAlignment(Qt.AlignmentFlag.AlignRight |
+                                  Qt.AlignmentFlag.AlignVCenter)
+        deml.addWidget(self._nb_lbl, 7, 1)
+        self._nb_slider = QSlider(Qt.Orientation.Horizontal)
+        self._nb_slider.setRange(0, 100)
+        self._nb_slider.setValue(int(self._nb_strength * 100))
+        self._nb_slider.setEnabled(False)
+        self._nb_slider.valueChanged.connect(self._on_nb_slider)
+        deml.addWidget(self._nb_slider, 8, 0, 1, 2)
         # TX sub-group — hidden until TX-capable hardware is detected
         self._tx_grp = QGroupBox(self.tr("Transmit"))
         txl = QVBoxLayout(self._tx_grp)
@@ -1589,6 +1619,23 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._nr_level = value
         self._nr_lbl.setText(f"{value}%")
 
+    def _on_nb_toggle(self, enabled: bool):
+        self._nb_enabled = enabled
+        self._nb_slider.setEnabled(enabled)
+
+    def _on_nb_slider(self, value: int):
+        self._nb_strength = value / 100.0
+        self._nb_lbl.setText(f"{value}%")
+
+    def _on_agc_toggle(self, enabled: bool):
+        """Enable/disable hardware AGC; manual gain is inert while AGC is on."""
+        try:
+            self._manager.set_agc(enabled)
+        except Exception:
+            pass
+        if hasattr(self, "_gain_slider"):
+            self._gain_slider.setEnabled(not enabled)
+
     @property
     def _lo_hz(self) -> int:
         """LO offset in Hz — read live from config so Settings changes apply immediately."""
@@ -1719,6 +1766,13 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         """Called from SDR RX thread with IQ samples."""
         self._sample_rate = sample_rate
         self._center_hz   = center_hz
+        # Noise blanker — clamp impulsive samples in the time domain first.
+        if self._nb_enabled:
+            try:
+                from core.dsp_nb import noise_blank
+                iq = noise_blank(iq, self._nb_strength)
+            except Exception:
+                pass
         # FFT
         window  = np.hanning(len(iq))
         fft_out = np.fft.fftshift(
@@ -1884,6 +1938,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "squelch_db":      self._squelch_db,
             "nr_enabled":      self._nr_enabled,
             "nr_level":        self._nr_level,
+            "nb_enabled":      self._nb_enabled,
+            "nb_strength":     self._nb_strength,
+            "agc":             self._agc_cb.isChecked(),
             "demod_mode":      self._demod_combo.currentText(),
             "demod_bw":        self._demod_bw.currentText(),
             "demod_auto":      self._auto_demod_cb.isChecked(),
@@ -1921,6 +1978,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._demod_bw.setCurrentText(state["demod_bw"])
         if "demod_auto" in state:
             self._auto_demod_cb.setChecked(bool(state["demod_auto"]))
+        if "nb_strength" in state:
+            self._nb_slider.setValue(int(float(state["nb_strength"]) * 100))
+        if "nb_enabled" in state:
+            self._nb_cb.setChecked(bool(state["nb_enabled"]))
+        if "agc" in state:
+            self._agc_cb.setChecked(bool(state["agc"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

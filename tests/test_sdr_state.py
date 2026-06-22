@@ -455,3 +455,51 @@ class TestSDRRFLabExportQt:
         added2, skipped2 = tab.add_custom_freqs_batch(entries)
         assert added2 == 0
         assert skipped2 == 2
+
+
+# ---------------------------------------------------------------------------
+# Auto demod/bandwidth on tune (FEAT — auto modulation selection)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+class TestAutoDemod:
+
+    def test_auto_checkbox_present(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        assert hasattr(tab, "_auto_demod_cb")
+
+    def test_off_by_default_no_change(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._demod_combo.setCurrentText("USB")
+        tab._auto_demod_cb.setChecked(False)
+        tab._set_freq(98_500_000)          # FM broadcast
+        assert tab._demod_combo.currentText() == "USB"   # unchanged
+
+    def test_auto_sets_wfm_on_fm_broadcast(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        tab._set_freq(98_500_000)
+        assert tab._demod_combo.currentText() == "WFM"
+        assert tab._demod_bw.currentText() == "200 kHz"
+
+    def test_auto_sets_am_on_airband(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        tab._set_freq(124_000_000)
+        assert tab._demod_combo.currentText() == "AM"
+
+    def test_auto_sets_cw_narrow_on_40m_cw(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        tab._set_freq(7_030_000)
+        assert tab._demod_combo.currentText() == "CW"
+        assert tab._demod_bw.currentText() == "500 Hz"
+
+    def test_auto_state_saved_and_restored(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        st = tab.save_state()
+        assert st["demod_auto"] is True
+        tab2, _ = _make_sdr_tab(qt_app)
+        tab2.restore_state(st)
+        assert tab2._auto_demod_cb.isChecked() is True

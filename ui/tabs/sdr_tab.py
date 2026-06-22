@@ -748,6 +748,13 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._demod_combo.currentTextChanged.connect(self._on_demod_mode_change)
         deml.addWidget(self._demod_combo, 0, 1)
+        self._auto_demod_cb = QCheckBox(self.tr("Auto"))
+        self._auto_demod_cb.setToolTip(self.tr(
+            "Auto-pick demod mode + bandwidth from the tuned frequency\n"
+            "(WFM broadcast, AM airband/SW, NFM voice, SSB/CW on HF)"))
+        self._auto_demod_cb.toggled.connect(
+            lambda c: self._apply_auto_demod(self._center_hz) if c else None)
+        deml.addWidget(self._auto_demod_cb, 0, 2)
         deml.addWidget(QLabel(self.tr("BW:")), 1, 0)
         self._demod_bw = QComboBox()
         self._demod_bw.addItems([
@@ -1388,6 +1395,24 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._manager.set_frequency(hz)
         self._update_axes()
         self._draw_band_segments()
+        self._apply_auto_demod(hz)
+
+    def _apply_auto_demod(self, hz: int) -> None:
+        """When Auto is enabled, set demod mode + IF bandwidth for `hz`."""
+        cb = getattr(self, "_auto_demod_cb", None)
+        if not (cb and cb.isChecked()):
+            return
+        try:
+            from core.auto_demod import suggest_demod, nearest_bw_label
+            s = suggest_demod(hz)
+            self._demod_combo.setCurrentText(s.mode)   # sets a default BW
+            labels = [self._demod_bw.itemText(i)
+                      for i in range(self._demod_bw.count())]
+            bw = nearest_bw_label(s.bandwidth_hz, labels)
+            if bw:
+                self._demod_bw.setCurrentText(bw)
+        except Exception:
+            pass
 
     def _set_step(self, idx: int):
         self._step_idx = idx
@@ -1861,6 +1886,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "nr_level":        self._nr_level,
             "demod_mode":      self._demod_combo.currentText(),
             "demod_bw":        self._demod_bw.currentText(),
+            "demod_auto":      self._auto_demod_cb.isChecked(),
         }
 
     def restore_state(self, state: dict) -> None:
@@ -1893,6 +1919,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._demod_combo.setCurrentText(state["demod_mode"])
         if "demod_bw" in state:
             self._demod_bw.setCurrentText(state["demod_bw"])
+        if "demod_auto" in state:
+            self._auto_demod_cb.setChecked(bool(state["demod_auto"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

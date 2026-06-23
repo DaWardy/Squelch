@@ -85,6 +85,44 @@ class TestServiceBands:
         assert c.category == "Amateur"
 
 
+class TestBroadcastRanges:
+    def test_fm_broadcast(self):
+        from core.signal_classify import classify_by_allocation
+        c = classify_by_allocation(98_500_000)
+        assert c.label == "FM Broadcast"
+        assert c.modulation == "WFM"
+        assert c.confidence >= 0.7
+
+    def test_am_broadcast(self):
+        from core.signal_classify import classify_by_allocation
+        c = classify_by_allocation(1_010_000)
+        assert c.label == "AM Broadcast"
+        assert c.modulation == "AM"
+
+    def test_shortwave_broadcast(self):
+        from core.signal_classify import classify_by_allocation
+        c = classify_by_allocation(9_500_000)
+        assert c.label == "Shortwave Broadcast"
+
+    def test_airband(self):
+        from core.signal_classify import classify_by_allocation
+        c = classify_by_allocation(127_000_000)
+        assert c.label == "Airband"
+        assert c.modulation == "AM"
+
+    def test_known_channel_beats_broadcast(self):
+        # NOAA WX (162.550) should get specific label, not generic "FM Broadcast"
+        from core.signal_classify import classify_by_allocation
+        c = classify_by_allocation(162_550_000)
+        assert c.label == "NOAA WX-7"   # specific beats broadcast range
+
+    def test_amateur_beats_broadcast(self):
+        # 50 MHz (6m amateur) overlaps with nothing but confirm amateur wins
+        from core.signal_classify import classify_by_allocation
+        c = classify_by_allocation(50_125_000)
+        assert c.category == "Amateur"
+
+
 class TestUnknownAndEdge:
     def test_unknown_hf(self):
         from core.signal_classify import classify_by_allocation

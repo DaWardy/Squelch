@@ -112,8 +112,12 @@ def signal_from_occupancy(seg) -> Signal:
 
     Survey detections carry no emitter id; they correlate by frequency +
     classification, so repeat hits on the same channel merge into one row.
+    apply_classification() enriches the generic "occupied" label with the
+    allocation name ("NOAA WX-7", "20m amateur", "FM Broadcast", …) so the
+    Signal Browser shows human-readable labels instead of raw "occupied".
     """
-    return Signal(
+    from core.signal_classify import apply_classification
+    sig = Signal(
         freq_hz=int(getattr(seg, "center_hz", 0) or 0),
         bandwidth_hz=int(getattr(seg, "bandwidth_hz", 0) or 0),
         source="survey",
@@ -121,6 +125,7 @@ def signal_from_occupancy(seg) -> Signal:
         rssi_dbm=float(getattr(seg, "peak_db", 0.0) or 0.0),
         snr_db=float(getattr(seg, "snr_db", 0.0) or 0.0),
     )
+    return apply_classification(sig)
 
 
 def signal_from_df_estimate(est, freq_hz: int = 0,

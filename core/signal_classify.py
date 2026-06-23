@@ -49,6 +49,33 @@ _SERVICE_MOD = {
     "ISM/Unlicensed": "",
 }
 
+# Broadcast / airband / utility ranges not in band_plan (checked after
+# specific fixed channels and before amateur-band lookup).
+# (freq_lo, freq_hi, label, category, modulation)
+_BROADCAST_RANGES = [
+    (148_000,    530_000,   "LF / MF utilities",   "Utility",    "AM"),
+    (530_000,  1_710_000,   "AM Broadcast",        "Broadcast",  "AM"),
+    (1_710_000, 2_300_000,  "MF utilities",        "Utility",    "USB"),
+    (2_300_000, 2_495_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (3_200_000, 3_400_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (3_900_000, 4_000_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (4_750_000, 5_060_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (5_900_000, 6_200_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (7_200_000, 7_450_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (9_400_000, 9_900_000,  "Shortwave Broadcast", "Broadcast",  "AM"),
+    (11_600_000, 12_100_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (13_570_000, 13_870_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (15_100_000, 15_800_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (17_480_000, 17_900_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (18_900_000, 19_020_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (21_450_000, 21_850_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (25_600_000, 26_100_000, "Shortwave Broadcast", "Broadcast", "AM"),
+    (108_000_000, 137_000_000, "Airband",           "Aviation",  "AM"),
+    (137_000_000, 138_000_000, "Weather satellite", "Utility",   "NFM"),
+    (88_000_000, 108_000_000,  "FM Broadcast",      "Broadcast", "WFM"),
+    (76_000_000, 88_000_000,   "FM Broadcast (JP)", "Broadcast", "WFM"),
+]
+
 # Classifications considered "generic" — safe to overwrite on enrichment.
 _GENERIC = {"", "occupied", "bookmark", "DX", "unknown"}
 
@@ -113,7 +140,16 @@ def classify_by_allocation(freq_hz: int, bandwidth_hz: int = 0, *,
             modulation=suggested_mode(freq_hz),
             confidence=0.6 if seg else 0.4)
 
-    # 3) Service / unlicensed band (CB / FRS / GMRS / MURS / ISM). First
+    # 3) Broadcast / airband / utility ranges (FM broadcast, SW broadcast,
+    # airband). Checked before SERVICE_BANDS since airband (108-137 MHz)
+    # overlaps no service band but FM (88-108 MHz) overlaps nothing amateur.
+    for lo, hi, label, category, mod in _BROADCAST_RANGES:
+        if lo <= freq_hz <= hi:
+            return Classification(
+                label=label, category=category,
+                modulation=mod, confidence=0.7)
+
+    # 4) Service / unlicensed band (CB / FRS / GMRS / MURS / ISM). First
     # containing match in SERVICE_BANDS order wins (CB before overlapping ISM).
     for sb in SERVICE_BANDS:
         if sb.freq_lo <= freq_hz <= sb.freq_hi:

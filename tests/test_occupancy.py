@@ -136,18 +136,42 @@ class TestOccupancyFraction:
 
 
 class TestSurveyIngest:
-    def test_signal_from_occupancy(self):
+    def test_signal_from_occupancy_unknown_freq(self):
+        """Unclassified frequency stays 'occupied'."""
         from core.occupancy import detect_segments
         from core.signal_ingest import signal_from_occupancy
         p = [-100] * 20
         p[10] = -40
-        seg = detect_segments(p, 100_000_000, 1000)[0]
+        # 139 MHz is between airband (108-137) and 2m amateur (144-148) — no allocation
+        seg = detect_segments(p, 138_990_000, 1000)[0]
         s = signal_from_occupancy(seg)
         assert s.source == "survey"
         assert s.classification == "occupied"
-        assert s.freq_hz == 100_010_000
         assert s.rssi_dbm == -40
         assert s.snr_db == 60
+
+    def test_signal_from_occupancy_fm_broadcast(self):
+        """FM broadcast frequency gets enriched to 'FM Broadcast'."""
+        from core.occupancy import detect_segments
+        from core.signal_ingest import signal_from_occupancy
+        p = [-100] * 20
+        p[10] = -40
+        # 98.504 MHz — clearly inside FM broadcast (88-108 MHz)
+        seg = detect_segments(p, 98_494_000, 1000)[0]
+        s = signal_from_occupancy(seg)
+        assert s.classification == "FM Broadcast"
+        assert s.modulation == "WFM"
+
+    def test_signal_from_occupancy_noaa(self):
+        """NOAA WX channel gets specific label, not generic 'occupied'."""
+        from core.occupancy import detect_segments
+        from core.signal_ingest import signal_from_occupancy
+        p = [-100] * 20
+        p[10] = -40
+        # 162.55 MHz = NOAA WX-7
+        seg = detect_segments(p, 162_540_000, 1000)[0]
+        s = signal_from_occupancy(seg)
+        assert s.classification == "NOAA WX-7"
 
     def test_survey_merges_same_channel(self):
         from core.occupancy import detect_segments
@@ -157,7 +181,8 @@ class TestSurveyIngest:
         for _ in range(3):
             p = [-100] * 20
             p[10] = -40
-            seg = detect_segments(p, 100_000_000, 1000)[0]
+            # Use an unclassified frequency so classification stays stable
+            seg = detect_segments(p, 138_990_000, 1000)[0]
             ingest(signal_from_occupancy(seg), store=st)
         # Same freq + classification + no emitter → merged into one row
         assert st.count_total() == 1

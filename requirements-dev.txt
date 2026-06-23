@@ -1,6 +1,9 @@
 # Development and testing dependencies
 # Install with: pip install -r requirements-dev.txt
 pytest>=8.0.0
+pytest-timeout>=2.4      # per-test timeout so a hang/crash is pinpointed
+pytest-cov>=4.0          # coverage (also used in CI)
 pyflakes>=3.0
 PyQt6>=6.6
 pyqtgraph
+numpy>=1.26              # DSP tests (noise blanker, NR) need it

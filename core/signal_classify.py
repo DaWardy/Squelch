@@ -22,11 +22,14 @@ classifier. Pure and unit-tested. `apply_classification()` enriches a Signal
 in place when its classification is still generic.
 """
 
+import logging
 from dataclasses import dataclass
 
 from core.band_plan import (
     band_at_freq, segment_at_freq, suggested_mode, SERVICE_BANDS,
 )
+
+log = logging.getLogger(__name__)
 
 # RF Lab category → a reasonable default modulation for known fixed channels.
 _CATEGORY_MOD = {
@@ -139,6 +142,7 @@ def apply_classification(sig, *, known_tol_hz: int = _KNOWN_TOL_HZ):
             sig.classification = c.label
             if not getattr(sig, "modulation", ""):
                 sig.modulation = c.modulation
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("apply_classification failed on %s: %s",
+                  getattr(sig, "freq_hz", "?"), exc)
     return sig

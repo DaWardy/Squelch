@@ -114,6 +114,42 @@ def _prefer_venv() -> None:
             sys.exit(r.returncode)
 
 
+def check_silent_excepts() -> None:
+    """Count 'except Exception: pass' (silent swallowing) and warn when the
+    total exceeds the baseline. Non-blocking — warns, does not fail the gate.
+    New code should use 'except Exception: log.debug(...)' instead."""
+    _hdr("4. Silent except Exception: pass audit")
+    import re
+    # Pattern: except Exception: followed by optional whitespace then pass on
+    # the same or next line.
+    pattern = re.compile(r"except\s+Exception\s*:\s*\n\s*pass\b", re.MULTILINE)
+    BASELINE = 253    # count as of 2026-06-22 — do not let this grow
+    total = 0
+    hot: list[tuple[int, str]] = []
+    for f in ROOT.rglob("*.py"):
+        if any(x in str(f) for x in ("__pycache__", "venv", "tests/")):
+            continue
+        src = f.read_text(encoding="utf-8", errors="replace")
+        count = len(pattern.findall(src))
+        if count:
+            total += count
+            rel = f.relative_to(ROOT)
+            hot.append((count, str(rel)))
+    hot.sort(reverse=True)
+    status = "OK" if total <= BASELINE else f"ABOVE BASELINE ({total} > {BASELINE})"
+    print(f"Total: {total}  Baseline: {BASELINE}  {status}")
+    if total > BASELINE:
+        print("  New silent excepts added — convert to log.debug() or justify:")
+        for cnt, path in hot[:10]:
+            print(f"    {cnt:3}  {path}")
+    elif total < BASELINE:
+        print(f"  Improved by {BASELINE - total} — update BASELINE in qa_check.py")
+    else:
+        print("  Top files:")
+        for cnt, path in hot[:5]:
+            print(f"    {cnt:3}  {path}")
+
+
 def main() -> int:
     _prefer_venv()
     problems = []
@@ -121,6 +157,7 @@ def main() -> int:
     problems += check_undefined()
     check_qt_available()
     tests_ok = check_tests()
+    check_silent_excepts()   # informational — never blocks the gate
 
     print("\n" + "=" * 50)
     if problems:

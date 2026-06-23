@@ -12,8 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # 3.12 is the primary target (LTS, validated in venv).
+        # 3.13 is a smoke check — all tests run, coverage uploaded on 3.12 only.
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     steps:
     - uses: actions/checkout@v4
@@ -29,28 +31,32 @@ jobs:
 
     - name: Install Mesa OpenGL (Windows only)
       if: runner.os == 'Windows'
-      run: |
-        pip install pyopengl
+      run: pip install pyopengl
 
     - name: Cache pip
       uses: actions/cache@v4
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: ${{ runner.os }}-pip-
+        key: ${{ runner.os }}-${{ matrix.python-version }}-pip-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+        restore-keys: ${{ runner.os }}-${{ matrix.python-version }}-pip-
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-cov
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Run pyflakes (undefined names)
+      run: |
+        python -m pyflakes core/ ui/ network/ modes/ aprs/ winlink/ sdr/ digital/ dsp/
 
     - name: Run tests
       env:
         QT_QPA_PLATFORM: offscreen
         QT_OPENGL: software
       run: |
-        python -m pytest tests/ -v --tb=short \
+        python -m pytest tests/ -q --tb=short \
+          --timeout=120 \
           --cov=core --cov=network --cov=modes \
           --cov=aprs --cov=winlink \
           --cov-report=term-missing \
@@ -73,16 +79,22 @@ jobs:
       with:
         python-version: "3.12"
 
-    - name: Install bandit
-      run: pip install bandit
+    - name: Install security tools
+      run: pip install bandit pip-audit
 
-    - name: Run security scan
+    - name: Run bandit (SAST)
       run: |
         bandit -r . \
           --exclude ./.git,./venv,./offline_packages \
           --severity-level high \
           -f txt
-        echo "Security scan complete"
+        echo "Bandit scan complete"
+
+    - name: Run pip-audit (dependency vulnerabilities)
+      run: |
+        pip install -r requirements.txt
+        pip-audit --desc on
+        echo "pip-audit complete"
 
   lint:
     runs-on: ubuntu-latest
@@ -108,7 +120,6 @@ jobs:
             except SyntaxError as e:
                 print(f'SYNTAX ERROR {f}: {e}')
                 errors += 1
-        print(f'Checked {len(list(Path(\".\").rglob(\"*.py\")))} files, {errors} errors')
         sys.exit(errors)
         "
 

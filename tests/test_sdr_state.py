@@ -503,3 +503,18 @@ class TestAutoDemod:
         tab2, _ = _make_sdr_tab(qt_app)
         tab2.restore_state(st)
         assert tab2._auto_demod_cb.isChecked() is True
+
+    def test_manual_pick_disables_auto(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        tab._on_manual_demod_pick()        # simulate a user mode/BW pick
+        assert tab._auto_demod_cb.isChecked() is False
+
+    def test_auto_apply_does_not_self_disable(self, qt_app):
+        # Programmatic auto-apply must NOT trip the manual-override (it uses
+        # activated[], which setCurrentText does not emit).
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        tab._set_freq(98_500_000)          # auto applies WFM via setCurrentText
+        assert tab._auto_demod_cb.isChecked() is True
+        assert tab._demod_combo.currentText() == "WFM"

@@ -27,6 +27,7 @@ class DemodSuggestion:
     bandwidth_hz: int
     label:        str        # human description, e.g. "FM Broadcast"
     confidence:   float      # 0..1
+    submode:      str = ""   # "voice" | "data" for SSB segments, else ""
 
 
 # Default IF bandwidth (Hz) per demod mode.
@@ -85,7 +86,8 @@ def suggest_demod(freq_hz: int) -> DemodSuggestion:
         return DemodSuggestion("AM", 9_000, "Shortwave Broadcast", 0.5)
     if freq_hz < 30_000_000:
         mode = "USB" if freq_hz >= 10_000_000 else "LSB"
-        return DemodSuggestion(mode, _MODE_BW[mode], "HF (SSB)", 0.3)
+        return DemodSuggestion(mode, _MODE_BW[mode], "HF (SSB)", 0.3,
+                               submode="voice")
     return DemodSuggestion("NFM", _MODE_BW["NFM"], "VHF/UHF (NFM)", 0.3)
 
 
@@ -96,8 +98,18 @@ def _amateur_suggestion(freq_hz: int, band) -> DemodSuggestion:
     # CW segments are narrow regardless of what suggested_mode says.
     if seg is not None and seg.seg_type == SegType.CW:
         mode = "CW"
-    label = f"{band.name} amateur"
-    return DemodSuggestion(mode, _MODE_BW[mode], label, 0.6)
+    submode = ""
+    bw = _MODE_BW[mode]
+    if mode in ("USB", "LSB"):
+        # Distinguish a data/digital sub-band from voice SSB. Data passbands
+        # are a touch wider (~3 kHz) than the 2.5 kHz SSB-voice default.
+        is_data = ((seg is not None and seg.seg_type == SegType.DIGITAL)
+                   or rig_mode.startswith("PKT"))
+        submode = "data" if is_data else "voice"
+        bw = 3_000 if is_data else _MODE_BW[mode]
+    suffix = f" {submode}" if submode else ""
+    label = f"{band.name} amateur{suffix}"
+    return DemodSuggestion(mode, bw, label, 0.6, submode=submode)
 
 
 def _service_suggestion(freq_hz: int):

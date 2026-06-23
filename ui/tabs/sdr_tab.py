@@ -775,6 +775,11 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._demod_bw.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         deml.addWidget(self._demod_bw, 1, 1)
+        # Manual override: hand-picking a mode/BW pauses Auto. activated[] fires
+        # only on user interaction, not on programmatic setCurrentText, so
+        # auto-applied changes don't trip it.
+        self._demod_combo.activated.connect(self._on_manual_demod_pick)
+        self._demod_bw.activated.connect(self._on_manual_demod_pick)
         self._route_cb = QCheckBox(self.tr("Route to Digital tab"))
         self._route_cb.setToolTip(self.tr(
             "Pipe demodulated audio to the Digital "
@@ -1426,6 +1431,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._update_axes()
         self._draw_band_segments()
         self._apply_auto_demod(hz)
+
+    def _on_manual_demod_pick(self, *_args) -> None:
+        """User hand-picked a demod mode or bandwidth → pause Auto."""
+        cb = getattr(self, "_auto_demod_cb", None)
+        if cb and cb.isChecked():
+            cb.setChecked(False)
 
     def _apply_auto_demod(self, hz: int) -> None:
         """When Auto is enabled, set demod mode + IF bandwidth for `hz`."""

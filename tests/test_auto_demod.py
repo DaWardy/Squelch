@@ -64,6 +64,42 @@ class TestAmateur:
         assert suggest_demod(446_000_000).mode == "NFM"
 
 
+class TestSubmode:
+    def test_ft8_is_data(self):
+        from core.auto_demod import suggest_demod
+        s = suggest_demod(14_074_000)
+        assert s.mode == "USB"
+        assert s.submode == "data"
+        assert s.bandwidth_hz == 3_000
+        assert "data" in s.label
+
+    def test_ssb_voice(self):
+        from core.auto_demod import suggest_demod
+        s = suggest_demod(14_230_000)      # 20m SSB voice segment
+        assert s.mode == "USB"
+        assert s.submode == "voice"
+        assert s.bandwidth_hz == 2_500
+        assert "voice" in s.label
+
+    def test_lsb_voice_submode(self):
+        from core.auto_demod import suggest_demod
+        s = suggest_demod(3_900_000)
+        assert s.mode == "LSB"
+        assert s.submode == "voice"
+
+    def test_fm_has_no_submode(self):
+        from core.auto_demod import suggest_demod
+        assert suggest_demod(146_520_000).submode == ""
+
+    def test_cw_has_no_submode(self):
+        from core.auto_demod import suggest_demod
+        assert suggest_demod(7_030_000).submode == ""
+
+    def test_broadcast_no_submode(self):
+        from core.auto_demod import suggest_demod
+        assert suggest_demod(98_500_000).submode == ""
+
+
 class TestServiceAndKnown:
     def test_noaa_nfm(self):
         from core.auto_demod import suggest_demod

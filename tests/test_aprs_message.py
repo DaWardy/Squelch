@@ -107,7 +107,10 @@ class TestAPRSSendUI:
 class TestDopplerCorrection:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        # Doppler/rotor code lives in rig_rotor_mixin.py (HOUSE-CS extraction).
+        return (
+            (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8") + "\n" +
+            (ROOT / "ui/tabs/rig_rotor_mixin.py").read_text(encoding="utf-8"))
 
     def test_doppler_cb_defined(self):
         assert "_doppler_cb" in self._src()

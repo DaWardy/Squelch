@@ -108,7 +108,14 @@ class TestRotorCompassSource:
 class TestRotorRigTabWiring:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        # Rotor control was extracted to rig_rotor_mixin.py (HOUSE-CS).
+        # Concatenate both so these checks track the implementation wherever
+        # it lives (rig_tab wires + builds; the mixin holds the methods).
+        return (
+            (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+            + "\n"
+            + (ROOT / "ui/tabs/rig_rotor_mixin.py").read_text(encoding="utf-8")
+        )
 
     def test_build_rotor_section_called(self):
         src = self._src()

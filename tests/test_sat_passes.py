@@ -91,7 +91,9 @@ class TestNextPassMainWindowWiring:
 class TestRotorSatTrack:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        return (
+            (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8") + "\n" +
+            (ROOT / "ui/tabs/rig_rotor_mixin.py").read_text(encoding="utf-8"))
 
     def test_sat_combo_defined(self):
         assert "_rotor_sat_combo" in self._src()
@@ -118,7 +120,9 @@ class TestRotorSatTrack:
 class TestPassCountdownPanel:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        return (
+            (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8") + "\n" +
+            (ROOT / "ui/tabs/rig_rotor_mixin.py").read_text(encoding="utf-8"))
 
     def test_pass_lbl_widget_defined(self):
         assert "_pass_lbl" in self._src()

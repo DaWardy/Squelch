@@ -78,7 +78,44 @@ def check_qt_available() -> None:
               "NOT caught.")
 
 
+def _prefer_venv() -> None:
+    """Re-run the gate under the project venv when the current interpreter
+    lacks PyQt6 but the venv has it.
+
+    Without this, `python qa_check.py` on a system interpreter silently SKIPS
+    every Qt/numpy test — which is exactly how real tab-build bugs shipped.
+    Guarded by an env flag so we never loop.
+    """
+    import os
+    if os.environ.get("SQUELCH_QA_REEXEC"):
+        return
+    try:
+        import PyQt6  # noqa: F401
+        return                      # current interpreter already has Qt
+    except ImportError:
+        pass
+    for py in (ROOT / "venv" / "Scripts" / "python.exe",
+               ROOT / "venv" / "bin" / "python"):
+        if not py.exists():
+            continue
+        try:
+            ok = subprocess.run([str(py), "-c", "import PyQt6"],
+                                capture_output=True).returncode == 0
+        except Exception:
+            ok = False
+        if ok:
+            env = dict(os.environ)
+            env["SQUELCH_QA_REEXEC"] = "1"
+            print(f"[qa] current interpreter lacks PyQt6 — re-running under "
+                  f"venv: {py}")
+            r = subprocess.run(
+                [str(py), str(Path(__file__).resolve()), *sys.argv[1:]],
+                env=env)
+            sys.exit(r.returncode)
+
+
 def main() -> int:
+    _prefer_venv()
     problems = []
     problems += check_syntax()
     problems += check_undefined()

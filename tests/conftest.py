@@ -18,8 +18,32 @@ from __future__ import annotations
 # Public License along with this program. If not, see
 # <https://www.gnu.org/licenses/>.
 # Squelch test configuration
+import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Ensure squelch root is on the path for all tests
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Run Qt fully headless by default (no display needed).
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_qapplication():
+    """Guarantee a single QApplication exists for the whole test session.
+
+    Constructing any QWidget without a live QApplication is undefined behaviour
+    and segfaults under the offscreen platform (it took down the entire run when
+    a widget-building test executed with no app). This autouse session fixture
+    makes every test safe; it is a no-op when PyQt6 is absent (those tests skip).
+    """
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except Exception:
+        yield None
+        return
+    app = QApplication.instance() or QApplication(sys.argv)
+    yield app

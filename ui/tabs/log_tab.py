@@ -443,7 +443,7 @@ class LogTab(SquelchPanel, QWidget):
         from PyQt6.QtWidgets import QToolButton as _TB
         from PyQt6.QtWidgets import QTableWidget as _TW, QTableWidgetItem as _TWI
 
-        toggle = _TB("▶ Contest Score (live)")
+        toggle = _TB(); toggle.setText("▶ Contest Score (live)")
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setToolTip(
@@ -513,7 +513,7 @@ class LogTab(SquelchPanel, QWidget):
         from PyQt6.QtWidgets import QToolButton as _TB, QComboBox as _CB
         from datetime import datetime, timezone
 
-        toggle = _TB("▶ SOTA/POTA Activation")
+        toggle = _TB(); toggle.setText("▶ SOTA/POTA Activation")
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setStyleSheet(
@@ -640,7 +640,7 @@ class LogTab(SquelchPanel, QWidget):
     def _build_contest_timer_panel(self, root) -> None:
         """Collapsible contest operating timer — elapsed + countdown."""
         from PyQt6.QtWidgets import QToolButton as _TB
-        toggle = _TB("▶ Contest Timer")
+        toggle = _TB(); toggle.setText("▶ Contest Timer")
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setStyleSheet(
@@ -740,7 +740,7 @@ class LogTab(SquelchPanel, QWidget):
     def _build_session_notes_panel(self, root) -> None:
         """Collapsible scratch pad for session notes, callsigns, exchanges."""
         from PyQt6.QtWidgets import QToolButton as _TB, QTextEdit as _TE
-        toggle = _TB("▶ Session Notes")
+        toggle = _TB(); toggle.setText("▶ Session Notes")
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setStyleSheet(

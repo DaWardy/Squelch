@@ -170,7 +170,14 @@ class TestNRSmoothing:
             import numpy as np
         except ImportError:
             pytest.skip("numpy not installed")
-        data = np.array([0.0, 100.0] * 50, dtype=float)
-        r_low  = self._apply_nr(data, 10)
-        r_high = self._apply_nr(data, 90)
-        assert float(np.std(r_high)) < float(np.std(r_low))
+        # Broadband noise is the right signal to show smoothing: a moving
+        # average reduces noise std by ~1/sqrt(window), so a wider (level-90)
+        # kernel must leave less interior variance than a narrow (level-10) one.
+        # (An alternating 0/100 signal is degenerate — any even window → flat 50.)
+        # Compare the INTERIOR only; mode='same' edges have partial-window ramps.
+        rng = np.random.default_rng(42)
+        data = rng.standard_normal(512) * 10.0
+        r_low  = self._apply_nr(data, 10)   # win = 2
+        r_high = self._apply_nr(data, 90)   # win = 14
+        m = 16   # trim wider than the largest kernel (win <= 14)
+        assert float(np.std(r_high[m:-m])) < float(np.std(r_low[m:-m]))

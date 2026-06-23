@@ -117,13 +117,13 @@ def _make_sdr_tab(qt_app):
     rig.is_connected = False
     rig.state = MagicMock()
 
-    # SDRTab imports SoapySDR at import time — patch it out
-    import unittest.mock as mock
-    with mock.patch.dict("sys.modules", {
-        "sdr.soapy_device": mock.MagicMock(),
-    }):
-        from ui.tabs.sdr_tab import SDRTab
-        tab = SDRTab(cfg, rig)
+    # NOTE: do NOT mock sdr.soapy_device via patch.dict("sys.modules", ...) —
+    # its clear-on-exit evicts numpy's C submodules, after which numpy 2.x
+    # refuses to re-import ("cannot load module more than once per process"),
+    # breaking every later test in the file. soapy_device imports fine without
+    # SoapySDR (it degrades to zero devices), so import the tab directly.
+    from ui.tabs.sdr_tab import SDRTab
+    tab = SDRTab(cfg, rig)
     return tab, cfg
 
 

@@ -531,7 +531,7 @@ class MapTab(SquelchPanel, QWidget):
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(0)
 
-        toggle = _TB("▶ APRS Messages")
+        toggle = _TB(); toggle.setText("▶ APRS Messages")
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setStyleSheet(

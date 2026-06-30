@@ -82,7 +82,13 @@ class TestInferRigMode:
 class TestAutoTuneWiring:
 
     def _modes_src(self):
-        return (ROOT / "ui/tabs/modes_tab.py").read_text(encoding="utf-8")
+        # Concatenate ModesTab + its extracted mixins so source checks find the
+        # method wherever it now lives (HOUSE-CS split moved SOTA/POTA, RBN,
+        # SSTV out of modes_tab.py).
+        parts = ["ui/tabs/modes_tab.py", "ui/tabs/modes_sota_mixin.py",
+                 "ui/tabs/modes_rbn_mixin.py", "ui/tabs/modes_sstv_mixin.py"]
+        return "\n".join(
+            (ROOT / p).read_text(encoding="utf-8") for p in parts)
 
     def _mw_src(self):
         return (ROOT / "ui/main_window.py").read_text(encoding="utf-8")

@@ -30,11 +30,12 @@ from PyQt6.QtWidgets import (
     QComboBox, QTextEdit, QLineEdit, QFormLayout,
     QTabWidget, QTableWidget, QTableWidgetItem,
     QHeaderView, QMessageBox, QSizePolicy, QCheckBox, QTreeWidget, QTreeWidgetItem)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 
 from ui.widgets.launch_bar import LaunchBar
 from winlink.vara import VARAModem, VARAState
+from winlink.ardop import ARDOPModem, ARDOPState
 from winlink.templates import (
     TEMPLATE_LIST, TEMPLATE_CATEGORIES,
     ics213, ics214, winlink_wednesday,
@@ -49,6 +50,13 @@ STATE_COLORS = {
     VARAState.CONNECTED:    "#44aaff",
     VARAState.BUSY:         "#ff8844",
     VARAState.ERROR:        "#cc4444",
+    # ARDOP mirrors the VARA state palette (matched by .value below).
+    ARDOPState.DISCONNECTED: "#555555",
+    ARDOPState.IDLE:         "#3fbe6f",
+    ARDOPState.CONNECTING:   "#eeaa22",
+    ARDOPState.CONNECTED:    "#44aaff",
+    ARDOPState.BUSY:         "#ff8844",
+    ARDOPState.ERROR:        "#cc4444",
 }
 
 
@@ -65,12 +73,20 @@ class WinlinkTab(SquelchPanel, QWidget):
     panel_id    = "winlink"
     panel_title = "Winlink"
 
+    # Emitted from the ARDOP modem's read thread; the queued connection
+    # marshals the ARDOPState onto the GUI thread (project rule: never call
+    # QTimer.singleShot from a worker).
+    _ardop_state_sig = pyqtSignal(object)
+
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)
         self.cfg    = config
         self.rig    = rig
         self._vara_hf  = VARAModem(is_fm=False)
         self._vara_fm  = VARAModem(is_fm=True)
+        ardop_host = self.cfg.get("winlink.ardop_host", "127.0.0.1")
+        ardop_port = int(self.cfg.get("winlink.ardop_port", 8515))
+        self._ardop    = ARDOPModem(host=ardop_host, port=ardop_port)
         self._running  = True
         self._compose_msg: WinlinkMessage = None
 
@@ -81,6 +97,8 @@ class WinlinkTab(SquelchPanel, QWidget):
         self._vara_fm.on_state(
             lambda s: QTimer.singleShot(0,
                 lambda st=s: self._on_vara_state(st, "FM")))
+        self._ardop_state_sig.connect(self._on_ardop_state)
+        self._ardop.on_state(self._ardop_state_sig.emit)
 
         self._build()
         QTimer.singleShot(1000, self._check_vara_status)
@@ -107,6 +125,7 @@ class WinlinkTab(SquelchPanel, QWidget):
         tabs = self._tabs
         tabs.addTab(self._build_compose_tab(),  "✉  Compose")
         tabs.addTab(self._build_vara_tab(),     "📡  VARA Status")
+        tabs.addTab(self._build_ardop_tab(),    "📻  ARDOP Status")
         tabs.addTab(self._build_gateway_tab(),  "🗼  Gateways")
         tabs.addTab(self._build_templates_tab(),"📋  Templates")
         root.addWidget(tabs, 1)
@@ -470,6 +489,97 @@ class WinlinkTab(SquelchPanel, QWidget):
 
         lay.addStretch()
         return w
+
+    def _build_ardop_tab(self) -> QWidget:
+        """ARDOP TNC status — connect button + live state label.
+
+        ARDOP (ardopcf/ardopc) is an open soundcard TNC; it complements VARA
+        as a no-licence-required HF/VHF modem for Winlink and P2P.
+        """
+        w   = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(8)
+
+        grp = QGroupBox("ARDOP TNC")
+        gl  = QFormLayout(grp)
+        self._ardop_state_lbl = QLabel("● Disconnected")
+        self._ardop_state_lbl.setStyleSheet(
+            f"color:{STATE_COLORS[ARDOPState.DISCONNECTED]};"
+            "font-family:'Courier New';")
+        self._ardop_ver_lbl   = QLabel("—")
+        self._ardop_bw_combo  = QComboBox()
+        self._ardop_bw_combo.addItems(
+            ["200 Hz", "500 Hz", "1000 Hz", "2000 Hz"])
+        self._ardop_bw_combo.setCurrentText("500 Hz")
+        host = getattr(self._ardop, "_host", "127.0.0.1")
+        port = getattr(self._ardop, "_cmd_port", 8515)
+        gl.addRow("Status:",    self._ardop_state_lbl)
+        gl.addRow("Version:",   self._ardop_ver_lbl)
+        gl.addRow("Bandwidth:", self._ardop_bw_combo)
+        gl.addRow("Host:port:", QLabel(f"{host}:{port}"))
+
+        btns = QHBoxLayout()
+        conn = QPushButton("Connect")
+        conn.setToolTip(
+            "Connect to the ARDOP TNC control port\n"
+            "ardopcf / ardopc must be running first\n"
+            "TCP port 8515 (control) / 8516 (data)")
+        conn.clicked.connect(self._connect_ardop)
+        disc = QPushButton("Disconnect")
+        disc.clicked.connect(self._ardop.disconnect)
+        btns.addWidget(conn)
+        btns.addWidget(disc)
+        gl.addRow("", btns)
+        lay.addWidget(grp)
+
+        lay.addWidget(QLabel(
+            "ARDOP must be launched first (e.g. ardopcf).\n"
+            "Control: TCP port 8515    Data: TCP port 8516"))
+
+        lay.addStretch()
+        return w
+
+    def _connect_ardop(self):
+        """Connect to the ARDOP TNC, applying callsign and bandwidth."""
+        try:
+            ok = self._ardop.connect()
+            if not ok:
+                self._set_status(
+                    "ARDOP connect failed — is the TNC running on "
+                    "port 8515?", "#ee4444")
+                return
+            cs = operating_callsign(self.cfg) if self.cfg else ""
+            if cs:
+                self._ardop.set_callsign(cs)
+            try:
+                bw = int(self._ardop_bw_combo.currentText().split()[0])
+                self._ardop.set_bandwidth(bw)
+            except Exception as e:
+                log.debug(f"ARDOP bandwidth set: {e}")
+            self._set_status("ARDOP connecting…", "#ee8822")
+        except Exception as e:
+            self._set_status(f"ARDOP connect failed: {e}", "#ee4444")
+
+    def _on_ardop_state(self, state):
+        """ARDOP modem reported a state change (GUI thread via signal)."""
+        state_str = state.value if hasattr(state, "value") else str(state)
+        color     = STATE_COLORS.get(state, "#888888")
+        lbl = getattr(self, "_ardop_state_lbl", None)
+        if lbl is not None:
+            try:
+                lbl.setText(f"● {state_str}")
+                lbl.setStyleSheet(
+                    f"color:{color};font-family:'Courier New';")
+            except RuntimeError:
+                pass
+        ver = getattr(self, "_ardop_ver_lbl", None)
+        if ver is not None:
+            try:
+                ver.setText(self._ardop.version or "—")
+            except RuntimeError:
+                pass
+        self._set_status(f"ARDOP: {state_str}", color)
 
     def _build_gateway_tab(self) -> QWidget:
         w   = QWidget()

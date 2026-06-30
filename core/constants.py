@@ -41,6 +41,8 @@ PORT_VARA_HF_CMD    = 8300      # VARA HF control
 PORT_VARA_HF_DATA   = 8301      # VARA HF data
 PORT_VARA_FM_CMD    = 8400      # VARA FM control
 PORT_VARA_FM_DATA   = 8401      # VARA FM data
+PORT_ARDOP_CMD      = 8515      # ARDOP (ardopcf) control
+PORT_ARDOP_DATA     = 8516      # ARDOP (ardopcf) data
 PORT_PAT_HTTP       = 8080      # Pat Winlink HTTP API
 PORT_DIREWOLF_AGWPE = 8000      # Direwolf AGWPE
 

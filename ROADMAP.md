@@ -67,7 +67,8 @@ The original amateur-radio platform requirements are **complete**:
 - ✅ Logging (ADIF/CSV/Cabrillo), 5-service upload (LoTW/QRZ/ClubLog/eQSL/HRDLog), DXCC/WAS/WAZ tracking
 - ✅ Band conditions, propagation side-view, terrain (SRTM), PSKReporter "who hears me", RBN
 - ✅ Map (APRS/FT8/PSKReporter/satellites/ADS-B/Winlink), VOACAP path analysis
-- ✅ Winlink (VARA/Pat/ARDOP), EmComm templates
+- ✅ Winlink (VARA HF/FM, Pat, ARDOP soundcard-TNC — `winlink/ardop.py`,
+  control port 8515/data 8516, mocked-socket tests), EmComm templates
 - ✅ Education mode (RF Lab), guided first-run, full Help system
 - ✅ Security baseline (no shell/eval/pickle, keyring creds, netlog, CSV sanitize, pentest suite)
 - ✅ TX safety (AppState FSM, `operating_callsign()`, Demo/Guest modes)

@@ -102,7 +102,11 @@ class TestDXSpotAlert:
     """DX cluster watch-list and alert logic."""
 
     def _src(self):
-        return (ROOT / "ui/tabs/modes_tab.py").read_text(encoding="utf-8")
+        # DX cluster code moved to modes_dx_mixin.py (HOUSE-CS split); save_state
+        # / restore_state stay on ModesTab, so concatenate both files.
+        return (
+            (ROOT / "ui/tabs/modes_tab.py").read_text(encoding="utf-8") + "\n" +
+            (ROOT / "ui/tabs/modes_dx_mixin.py").read_text(encoding="utf-8"))
 
     def test_watch_edit_widget_defined(self):
         assert "_dx_watch_edit" in self._src()

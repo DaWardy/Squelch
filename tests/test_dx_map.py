@@ -56,7 +56,8 @@ class TestDXSpotsMapHTML:
         assert "dx_spots" in body
 
     def test_modes_tab_pushes_to_map(self):
-        src = (ROOT / "ui/tabs/modes_tab.py").read_text(encoding="utf-8")
+        # DX cluster code moved to modes_dx_mixin.py (HOUSE-CS split).
+        src = (ROOT / "ui/tabs/modes_dx_mixin.py").read_text(encoding="utf-8")
         idx = src.find("def _filter_dx_spots(")
         body = src[idx: src.find("\n    def ", idx + 10)]
         assert "set_dx_spots" in body

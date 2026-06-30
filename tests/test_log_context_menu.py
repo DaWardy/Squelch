@@ -62,13 +62,23 @@ class TestNoDuplicateMethods:
 
     def test_export_csv_defined_once(self):
         import ast
-        src = Path(__file__).parent.parent / "ui" / "tabs" / "log_tab.py"
-        tree = ast.parse(src.read_bytes().decode("utf-8", errors="replace"))
-        names = [
-            n.name for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == "_export_csv"
-        ]
-        assert len(names) == 1, (
-            f"_export_csv defined {len(names)} times in log_tab.py — "
+        # _export_csv was extracted from log_tab.py into _LogIOMixin
+        # (HOUSE-CS split). It must exist exactly once across both files,
+        # and no longer in log_tab.py itself.
+        base = Path(__file__).parent.parent / "ui" / "tabs"
+        counts = {}
+        for fname in ("log_tab.py", "log_io_mixin.py"):
+            tree = ast.parse(
+                (base / fname).read_bytes().decode("utf-8", errors="replace"))
+            counts[fname] = [
+                n.name for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef) and n.name == "_export_csv"
+            ]
+        total = sum(len(v) for v in counts.values())
+        assert total == 1, (
+            f"_export_csv defined {total} times across {list(counts)} — "
             "stale duplicate must be removed"
+        )
+        assert not counts["log_tab.py"], (
+            "_export_csv should live in log_io_mixin.py, not log_tab.py"
         )

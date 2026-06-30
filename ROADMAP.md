@@ -128,6 +128,14 @@ The keystone and biggest differentiator. Implement `digital/rfdf.py` for real.
   bearing intersection, `estimate_location_rssi` centroid; DF fixes feed the
   Signal store via `signal_from_df_estimate`; 22+ tests). Remaining: a foxhunt
   UI panel + live RSSI/heading/GPS capture (SDR + rotor/compass/GPS, GUI).
+  - 🟡 **Live position source DONE (DF-RSSI-GPS prerequisite)**:
+    `core/gps.py` — pure NMEA (`$GPGGA`/`$GPRMC`) parsing → `GPSFix`,
+    Windows Location API one-shot (WinRT, graceful when absent), and a
+    threaded NMEA-over-serial `SerialGPSReader` delivering fixes via
+    `pyqtSignal`. Feeds `LocationManager.apply_gps_fix()` / `start_gps_serial()`;
+    Settings → Station has a source selector (Manual / Windows / GPS serial),
+    port+baud, "Get fix", and auto-update-grid. This is the live lat/lon feed
+    the foxhunt RSSI→GPS track logging below will consume.
 - **Coherent / pseudo-doppler DF** where hardware supports (KrakenSDR-class
   multi-channel).
 - **RSSI→GPS track logging + heatmap** — drive/walk a signal, map strength.

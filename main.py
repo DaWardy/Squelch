@@ -430,6 +430,12 @@ def main():
         log.info("Guest Operator mode active")
 
     location.load_from_config()
+    if config.get("location.gps_source", "manual") == "serial":
+        try:
+            if location.start_gps_serial():
+                log.info("GPS serial reader started")
+        except Exception as _e:
+            log.debug(f"GPS serial autostart: {_e}")
     safety = get_safety()
     safety.set_rig(rig)
     safety.start_watchdog()

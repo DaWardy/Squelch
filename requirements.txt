@@ -49,6 +49,10 @@ scipy>=1.11.0
 # Windows COM port access
 pywin32>=306; sys_platform == "win32"
 
+# Windows Location API (one-shot OS position for the station grid).
+# Optional — GPS-serial and manual entry work without it.
+winsdk>=1.0.0b10; sys_platform == "win32"
+
 # ── Development / Testing ───────────────────────────────────────────────────
 
 sgp4>=2.22      # satellite orbit prediction

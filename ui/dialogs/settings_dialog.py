@@ -128,6 +128,21 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._contest_exchange.setText(cfg.get("station.contest_exchange", ""))
         self._smeter_cal.setValue(int(cfg.get("rig.smeter_cal_db", 0) or 0))
         self._k_index_alarm.setValue(int(cfg.get("band.k_alarm", 0) or 0))
+        self._load_station_location(cfg)
+
+    def _load_station_location(self, cfg):
+        si = self._gps_source.findData(cfg.get("location.gps_source", "manual"))
+        if si >= 0:
+            self._gps_source.setCurrentIndex(si)
+        port = cfg.get("location.gps_serial_port", "")
+        if port:
+            self._gps_port.setCurrentText(port)
+        bi = self._gps_baud.findData(
+            int(cfg.get("location.gps_serial_baud", 4800) or 4800))
+        if bi >= 0:
+            self._gps_baud.setCurrentIndex(bi)
+        self._gps_auto_grid.setChecked(cfg.get("location.gps_auto_grid", True))
+        self._gps_source_changed()
 
     def _load_modes(self, cfg):
         self._auto_launch_wsjtx.setChecked(cfg.get("modes.auto_launch_wsjtx", True))
@@ -433,6 +448,12 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         cfg.set("log.daily_goal", self._daily_goal.value())
         cfg.set("rig.smeter_cal_db", self._smeter_cal.value())
         cfg.set("band.k_alarm", self._k_index_alarm.value())
+        cfg.set("location.gps_source", self._gps_source.currentData() or "manual")
+        cfg.set("location.gps_serial_port",
+                self._gps_port.currentText().strip())
+        cfg.set("location.gps_serial_baud",
+                int(self._gps_baud.currentData() or 4800))
+        cfg.set("location.gps_auto_grid", self._gps_auto_grid.isChecked())
 
     def _save_audio(self, cfg):
         cfg.set("audio.input",          self._audio_input.currentText())

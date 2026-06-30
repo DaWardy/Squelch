@@ -107,7 +107,8 @@ def reverse_geocode_state(lat: float, lon: float) -> str:
 
 class LocationSource(Enum):
     RIG_GPS    = "IC-7100 GPS"
-    SYSTEM_GPS = "System GPS"
+    SYSTEM_GPS = "Windows location"
+    GPS_SERIAL = "GPS (serial)"
     MANUAL     = "Manual"
     IP_GEO     = "IP Geolocation"
     UNKNOWN    = "Unknown"
@@ -151,6 +152,8 @@ class LocationManager:
         self._last_rr_grid = ""
         self._history: list[dict] = list(
             config.get("location.search_history") or [])
+        self.last_fix = None          # last GPSFix from a live source
+        self._gps_reader = None       # background SerialGPSReader, if running
 
     # ── Load saved ────────────────────────────────────────────────────────
 
@@ -237,6 +240,59 @@ class LocationManager:
                 self._notify(rr_refresh=False)
         except Exception as e:
             log.warning(f"IP geolocation failed: {e}")
+
+    # ── GPS / live position source ────────────────────────────────────────
+
+    def apply_gps_fix(self, fix, source: LocationSource = LocationSource.GPS_SERIAL,
+                      notify: bool = True) -> str:
+        """Apply a GPSFix (from serial or the OS) as the station location.
+
+        Derives the Maidenhead grid via set_from_latlon and returns it.
+        """
+        self.last_fix = fix
+        self.set_from_latlon(float(fix.lat), float(fix.lon),
+                             source=source, notify=notify)
+        return self.location.grid
+
+    def start_gps_serial(self, port: str = "", baud: int = 0) -> bool:
+        """Start a background NMEA serial reader that feeds apply_gps_fix().
+
+        Reads port/baud from config when not given. Returns False if pyserial
+        or a port is unavailable. Safe to call repeatedly (restarts cleanly).
+        """
+        try:
+            from core import gps
+        except Exception as e:
+            log.debug(f"GPS serial unavailable: {e}")
+            return False
+        port = port or self.cfg.get("location.gps_serial_port", "") or ""
+        baud = int(baud or self.cfg.get("location.gps_serial_baud",
+                                        gps.DEFAULT_BAUD) or gps.DEFAULT_BAUD)
+        if not port:
+            return False
+        self.stop_gps_serial()
+        reader = gps.SerialGPSReader()
+        reader.fix_received.connect(self._on_gps_fix)
+        if reader.start(port, baud):
+            self._gps_reader = reader
+            return True
+        return False
+
+    def stop_gps_serial(self) -> None:
+        """Stop the background serial reader if one is running."""
+        if self._gps_reader is not None:
+            try:
+                self._gps_reader.stop()
+            except Exception as e:
+                log.debug(f"GPS serial stop: {e}")
+            self._gps_reader = None
+
+    def _on_gps_fix(self, fix) -> None:
+        """Slot for live GPS fixes — update grid only when the user opted in."""
+        if self.cfg.get("location.gps_auto_grid", True):
+            self.apply_gps_fix(fix)
+        else:
+            self.last_fix = fix
 
     # ── Search ────────────────────────────────────────────────────────────
 

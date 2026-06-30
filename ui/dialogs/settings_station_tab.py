@@ -116,6 +116,61 @@ class _SettingsStationTab:
         self._daily_goal.lineEdit().setReadOnly(False)
         f.addRow("Daily QSO goal:", self._daily_goal)
 
+    def _build_station_location_section(self, f: "QFormLayout") -> None:
+        from core import gps
+        f.addRow(_sep())
+        _section(f, "Location source")
+        self._gps_source = QComboBox()
+        self._gps_source.addItem("Manual entry", "manual")
+        self._gps_source.addItem("Windows location", "windows")
+        self._gps_source.addItem("GPS serial (NMEA)", "serial")
+        self._gps_source.setToolTip(
+            "Where the station grid/lat-lon comes from.\n"
+            "Manual: type it above.  Windows: ask the OS for a one-shot fix.\n"
+            "GPS serial: read NMEA sentences from a connected receiver.")
+        self._gps_source.currentIndexChanged.connect(self._gps_source_changed)
+        f.addRow("Source:", self._gps_source)
+
+        port_row = QHBoxLayout()
+        self._gps_port = QComboBox()
+        self._gps_port.setEditable(True)
+        self._gps_port.setMinimumWidth(120)
+        self._gps_port.setToolTip("Serial port of the GPS receiver (e.g. COM5).")
+        port_refresh = QPushButton("↻")
+        port_refresh.setFixedWidth(32)
+        port_refresh.setToolTip("Rescan serial ports")
+        port_refresh.clicked.connect(self._gps_refresh_ports)
+        port_row.addWidget(self._gps_port, 1)
+        port_row.addWidget(port_refresh)
+        f.addRow("Serial port:", port_row)
+
+        self._gps_baud = QComboBox()
+        for b in gps.COMMON_BAUDS:
+            self._gps_baud.addItem(str(b), b)
+        self._gps_baud.setCurrentText(str(gps.DEFAULT_BAUD))
+        f.addRow("Baud rate:", self._gps_baud)
+
+        self._gps_auto_grid = QCheckBox("Auto-update grid from GPS fixes")
+        self._gps_auto_grid.setChecked(True)
+        self._gps_auto_grid.setToolTip(
+            "When on, a new fix updates the station grid/lat-lon automatically.")
+        f.addRow("", self._gps_auto_grid)
+
+        fix_row = QHBoxLayout()
+        self._gps_getfix_btn = QPushButton("Get fix")
+        self._gps_getfix_btn.setToolTip(
+            "Read a single position now from the selected source.")
+        self._gps_getfix_btn.clicked.connect(self._gps_get_fix)
+        fix_row.addWidget(self._gps_getfix_btn)
+        fix_row.addStretch()
+        f.addRow("", fix_row)
+
+        self._gps_status = QLabel("No fix yet.")
+        self._gps_status.setWordWrap(True)
+        self._gps_status.setStyleSheet("font-size:11px;")
+        f.addRow("", self._gps_status)
+        self._gps_refresh_ports()
+
     def _build_station_rig_section(self, f: "QFormLayout") -> None:
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -146,9 +201,83 @@ class _SettingsStationTab:
         f.setSpacing(10)
         f.setContentsMargins(16, 16, 16, 16)
         self._build_station_identity_section(f)
+        self._build_station_location_section(f)
         self._build_station_event_callsign_section(f)
         self._build_station_contest_section(f)
         self._build_station_goals_section(f)
         self._build_station_rig_section(f)
         return w
+
+    # ── Location source handlers ──────────────────────────────────────────
+
+    def _gps_refresh_ports(self) -> None:
+        from core import gps
+        cur = self._gps_port.currentText().strip()
+        self._gps_port.clear()
+        ports = gps.list_serial_ports()
+        self._gps_port.addItems(ports)
+        if cur:
+            self._gps_port.setCurrentText(cur)
+        if not ports and not cur:
+            self._gps_port.setEditText("")
+
+    def _gps_source_changed(self, *_a) -> None:
+        is_serial = self._gps_source.currentData() == "serial"
+        self._gps_port.setEnabled(is_serial)
+        self._gps_baud.setEnabled(is_serial)
+        src = self._gps_source.currentData()
+        self._gps_getfix_btn.setEnabled(src in ("serial", "windows"))
+
+    def _gps_set_status(self, text: str, ok: bool = True) -> None:
+        from core.themes import get_theme
+        t = get_theme(self.cfg.get("ui.theme", "Dark"))
+        color = t.accent if ok else t.fg_muted
+        self._gps_status.setStyleSheet(f"font-size:11px;color:{color};")
+        self._gps_status.setText(text)
+
+    def _gps_get_fix(self) -> None:
+        src = self._gps_source.currentData()
+        self._gps_set_status("Requesting a fix…")
+        if src == "windows":
+            from core.gps import WindowsLocationWorker
+            self._gps_worker = WindowsLocationWorker(self)
+            self._gps_worker.fix_received.connect(self._on_gps_settings_fix)
+            self._gps_worker.error_occurred.connect(self._on_gps_settings_error)
+            self._gps_worker.request_fix(timeout_s=10.0)
+        elif src == "serial":
+            from core.gps import SerialGPSReader
+            port = self._gps_port.currentText().strip()
+            baud = self._gps_baud.currentData() or 4800
+            self._gps_tmp_reader = SerialGPSReader(self)
+            self._gps_tmp_reader.fix_received.connect(self._on_gps_settings_fix)
+            self._gps_tmp_reader.error_occurred.connect(
+                self._on_gps_settings_error)
+            if not self._gps_tmp_reader.start(port, int(baud)):
+                self._on_gps_settings_error("Could not open serial port")
+
+    def _on_gps_settings_fix(self, fix) -> None:
+        """Slot (main thread) — write a one-shot fix into config + the grid box."""
+        reader = getattr(self, "_gps_tmp_reader", None)
+        if reader is not None:
+            reader.stop()
+            self._gps_tmp_reader = None
+        try:
+            from core.location import _latlon_to_grid
+            grid = _latlon_to_grid(fix.lat, fix.lon)
+            self.cfg.set("location.lat", float(fix.lat))
+            self.cfg.set("location.lon", float(fix.lon))
+            self.cfg.grid = grid
+            self.cfg.save()
+            self._grid.setText(grid)
+            self._gps_set_status(
+                f"Fix: {fix.lat:.5f}, {fix.lon:.5f}  →  {grid}")
+        except Exception as e:
+            self._on_gps_settings_error(f"Fix handling failed: {e}")
+
+    def _on_gps_settings_error(self, msg: str) -> None:
+        reader = getattr(self, "_gps_tmp_reader", None)
+        if reader is not None:
+            reader.stop()
+            self._gps_tmp_reader = None
+        self._gps_set_status(msg, ok=False)
 

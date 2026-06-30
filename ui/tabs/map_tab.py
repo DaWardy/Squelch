@@ -147,6 +147,48 @@ class MapTab(SquelchPanel, QWidget):
         _QT.singleShot(15000, self._start_psk_timer)
         self._start_psk_timer()
 
+    # ── State persistence ─────────────────────────────────────
+    # Layer toggles + QSO/band filters survive restart so the user's chosen
+    # map view (e.g. ADS-B and APRS turned off to cut clutter) is remembered.
+    # hasattr-guarded so the Qt fallback toolbar (fewer widgets) is safe.
+    _STATE_CHECKS = (
+        "_show_gl", "_show_qso", "_show_rep", "_show_adsb",
+        "_show_aprs", "_show_aprs_labels", "_show_wl_gw",
+    )
+    _STATE_COMBOS = ("_qso_filter", "_band_combo")
+
+    def save_state(self) -> dict:
+        st: dict = {}
+        for name in self._STATE_CHECKS:
+            cb = getattr(self, name, None)
+            if cb is not None:
+                st[name] = cb.isChecked()
+        for name in self._STATE_COMBOS:
+            combo = getattr(self, name, None)
+            if combo is not None:
+                st[name] = combo.currentText()
+        return st
+
+    def restore_state(self, state: dict) -> None:
+        if not isinstance(state, dict):
+            return
+        for name in self._STATE_CHECKS:
+            cb = getattr(self, name, None)
+            if cb is not None and name in state:
+                cb.blockSignals(True)
+                cb.setChecked(bool(state[name]))
+                cb.blockSignals(False)
+        for name in self._STATE_COMBOS:
+            combo = getattr(self, name, None)
+            if combo is not None and name in state:
+                idx = combo.findText(str(state[name]))
+                if idx >= 0:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
+        # The build's initial singleShot(500, _refresh_map) renders with the
+        # restored toggles — no forced refresh needed here.
+
     # ── Build ─────────────────────────────────────────────────
 
     def _build(self):

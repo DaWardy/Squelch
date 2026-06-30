@@ -8,6 +8,14 @@ Source-level assertions for the small fixes batched together:
 from __future__ import annotations
 import pathlib
 
+import pytest
+
+try:
+    from PyQt6.QtWidgets import QCheckBox, QComboBox  # noqa: F401
+    HAS_QT = True
+except Exception:
+    HAS_QT = False
+
 ROOT = pathlib.Path(__file__).parent.parent
 
 
@@ -83,3 +91,62 @@ class TestRigTuneArrows:
         src = _src("ui/tabs/rig_tab.py")
         assert "Fine tune down (− 1 Hz)" in src
         assert "Fine tune up (+ 1 Hz)" in src
+
+
+class TestMapStatePersistence:
+    """#9 — the Map tab never persisted its layer/filter choices, so toggling
+    off clutter (ADS-B/APRS) was forgotten every restart. It now implements the
+    SquelchPanel save_state/restore_state lifecycle.
+    """
+
+    def test_methods_defined(self):
+        src = _src("ui/tabs/map_tab.py")
+        assert "def save_state(self)" in src
+        assert "def restore_state(self, state" in src
+
+    @pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+    def test_roundtrip_with_real_widgets(self):
+        # Drive save_state/restore_state against a holder carrying real Qt
+        # widgets — avoids constructing MapTab (which needs QtWebEngine).
+        from ui.tabs.map_tab import MapTab
+
+        class _Holder:
+            _STATE_CHECKS = MapTab._STATE_CHECKS
+            _STATE_COMBOS = MapTab._STATE_COMBOS
+
+        src = _Holder()
+        src._show_gl = QCheckBox(); src._show_gl.setChecked(True)
+        src._show_adsb = QCheckBox(); src._show_adsb.setChecked(True)
+        src._qso_filter = QComboBox(); src._qso_filter.addItems(["All", "Last 50"])
+        src._qso_filter.setCurrentText("All")
+
+        # User turns ADS-B off and narrows the QSO filter, then we persist.
+        src._show_adsb.setChecked(False)
+        src._qso_filter.setCurrentText("Last 50")
+        state = MapTab.save_state(src)
+        assert state["_show_adsb"] is False
+        assert state["_qso_filter"] == "Last 50"
+
+        # Fresh widgets (defaults) → restore should reapply the saved view.
+        dst = _Holder()
+        dst._show_gl = QCheckBox(); dst._show_gl.setChecked(True)
+        dst._show_adsb = QCheckBox(); dst._show_adsb.setChecked(True)
+        dst._qso_filter = QComboBox(); dst._qso_filter.addItems(["All", "Last 50"])
+        MapTab.restore_state(dst, state)
+        assert dst._show_adsb.isChecked() is False
+        assert dst._qso_filter.currentText() == "Last 50"
+
+    @pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+    def test_restore_tolerates_missing_widgets(self):
+        # Fallback toolbar has fewer widgets — restore must not raise.
+        from ui.tabs.map_tab import MapTab
+
+        class _Holder:
+            _STATE_CHECKS = MapTab._STATE_CHECKS
+            _STATE_COMBOS = MapTab._STATE_COMBOS
+
+        dst = _Holder()
+        dst._show_gl = QCheckBox()
+        MapTab.restore_state(dst, {"_show_gl": False, "_show_adsb": True,
+                                   "_qso_filter": "Last 50"})
+        assert dst._show_gl.isChecked() is False

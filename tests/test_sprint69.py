@@ -100,7 +100,8 @@ class TestAddToFT8WatchLogic:
 class TestCHIRPMemoryImport:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        # Memory channels live in rig_memory_mixin.py (HOUSE-CS split).
+        return (ROOT / "ui/tabs/rig_memory_mixin.py").read_text(encoding="utf-8")
 
     def test_import_chirp_method_defined(self):
         assert "def _mem_import_chirp(" in self._src()

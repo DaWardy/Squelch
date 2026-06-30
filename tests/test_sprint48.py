@@ -19,6 +19,11 @@ def _rig_src() -> str:
     return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
 
 
+def _rig_mem_src() -> str:
+    # Memory channel methods live in rig_memory_mixin.py (HOUSE-CS split).
+    return (ROOT / "ui/tabs/rig_memory_mixin.py").read_text(encoding="utf-8")
+
+
 # ── FEAT-17: IF BW per mode ───────────────────────────────────────────────────
 
 class TestIFBandwidthPerMode:
@@ -126,16 +131,16 @@ class TestMemoryChannelPersistence:
         assert "_mem_table.insertRow" in body
 
     def test_export_csv_method_exists(self):
-        assert "def _mem_export_csv(" in _rig_src()
+        assert "def _mem_export_csv(" in _rig_mem_src()
 
     def test_export_uses_csv_safe(self):
-        src = _rig_src()
+        src = _rig_mem_src()
         idx = src.find("def _mem_export_csv(")
         body = src[idx: src.find("\n    def ", idx + 10)]
         assert "csv_safe" in body
 
     def test_export_button_added(self):
-        assert "Export CSV" in _rig_src()
+        assert "Export CSV" in _rig_mem_src()
 
     def test_memories_dict_initialized(self):
         src = _rig_src()

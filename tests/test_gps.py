@@ -206,7 +206,22 @@ class TestSerialGPSReader:
         reader = SerialGPSReader()
         reader.fix_received.connect(lambda f: (got.append(f), done.set()))
         assert reader.start("COMTEST", 4800) is True
-        assert done.wait(timeout=2.0), "no fix delivered"
+        # Under real PyQt6 the fix is delivered from the daemon read-thread via a
+        # queued cross-thread signal, so the receiving slot only runs when an
+        # event loop is pumped. Headless (_FallbackSignal) delivery is synchronous,
+        # so this loop simply returns immediately. Production has a live loop.
+        import time as _t
+        try:
+            from PyQt6.QtCore import QCoreApplication
+            _app = QCoreApplication.instance()
+        except Exception:
+            _app = None
+        _deadline = _t.time() + 2.0
+        while not done.is_set() and _t.time() < _deadline:
+            if _app is not None:
+                _app.processEvents()
+            _t.sleep(0.01)
+        assert done.is_set(), "no fix delivered"
         reader.stop()
         assert abs(got[0].lat - 48.1173) < 1e-3
 

@@ -59,12 +59,14 @@ class TestWinKeyerClient:
         assert val == 99
 
 
-# ── rig_tab.py CW section source checks ──────────────────────────────────────
+# ── CW section source checks ─────────────────────────────────────────────────
+# The CW keyer / WinKeyer code was extracted from rig_tab.py to
+# ui/tabs/rig_cw_mixin.py (_RigCWMixin) in the HOUSE-CS complexity split.
 
 class TestCWMacroPanel:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        return (ROOT / "ui/tabs/rig_cw_mixin.py").read_text(encoding="utf-8")
 
     def test_macro_buttons_built(self):
         src = self._src()

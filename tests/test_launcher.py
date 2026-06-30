@@ -55,6 +55,19 @@ class TestAppDefs:
         keys = [a.key for a in APPS]
         assert "paths.chirp" in keys
 
+    def test_sdruno_present(self):
+        keys = [a.key for a in APPS]
+        assert "paths.sdruno" in keys
+
+    def test_hdsdr_present(self):
+        keys = [a.key for a in APPS]
+        assert "paths.hdsdr" in keys
+
+    def test_added_sdr_apps_are_sdr_category(self):
+        by_key = {a.key: a for a in APPS}
+        assert by_key["paths.sdruno"].category == "sdr"
+        assert by_key["paths.hdsdr"].category == "sdr"
+
     def test_no_duplicate_keys(self):
         keys = [a.key for a in APPS]
         assert len(keys) == len(set(keys)), \

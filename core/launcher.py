@@ -573,6 +573,38 @@ APPS: list[AppDef] = [
     ),
 
     AppDef(
+        key          = "paths.sdruno",
+        name         = "SDRuno",
+        description  = "SDRplay's official Windows SDR receiver (RSP series)",
+        category     = "sdr",
+        exe_name     = "SDRuno",
+        args         = None,
+        common_paths = [
+            r"C:\Program Files\SDRplay\SDRuno\SDRuno.exe",
+            r"C:\Program Files (x86)\SDRplay\SDRuno\SDRuno.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.sdrplay.com/sdruno/",
+        tab          = "sdr",
+    ),
+
+    AppDef(
+        key          = "paths.hdsdr",
+        name         = "HDSDR",
+        description  = "Free Windows SDR receiver — wideband RX, many front-ends",
+        category     = "sdr",
+        exe_name     = "HDSDR",
+        args         = None,
+        common_paths = [
+            r"C:\Program Files (x86)\HDSDR\HDSDR.exe",
+            r"C:\Program Files\HDSDR\HDSDR.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "http://www.hdsdr.de/",
+        tab          = "sdr",
+    ),
+
+    AppDef(
         key          = "paths.gnuradio",
         name         = "GNU Radio Companion",
         description  = "Visual flowgraph builder for signal processing and SDR",

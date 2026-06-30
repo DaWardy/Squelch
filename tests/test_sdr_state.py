@@ -570,3 +570,80 @@ class TestPassbandAndLegend:
         tab._legend.set_range(-90, -10)
         assert tab._legend._lo_db == -90.0
         assert tab._legend._hi_db == -10.0
+
+
+class TestWheelScrollSource:
+    """Source-scan: the wheel handler reads both axes; toggle + persistence."""
+
+    def _src(self) -> str:
+        root = __import__("pathlib").Path(__file__).parent.parent
+        return (root / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+
+    def test_handler_reads_both_axes(self):
+        src = self._src()
+        idx = src.find("def _wheel_waterfall(")
+        body = src[idx: src.find("\n    def ", idx + 10)]
+        assert "angleDelta().x()" in body
+        assert "angleDelta().y()" in body
+
+    def test_step_bandwidth_method_defined(self):
+        assert "def _step_bandwidth(" in self._src()
+
+    def test_wheel_toggle_widget_present(self):
+        src = self._src()
+        assert "_wheel_bw_cb" in src
+        assert "_scroll_vert_bw" in src
+
+    def test_wheel_toggle_persisted(self):
+        src = self._src()
+        assert '"wheel_vert_bw"' in src
+
+
+@pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+class TestWheelScrollQt:
+    """Qt behavioural tests for the spectrum/waterfall wheel mapping."""
+
+    class _FakeWheel:
+        def __init__(self, dx, dy, ctrl=False):
+            from PyQt6.QtCore import QPoint
+            self._d = QPoint(dx, dy)
+            self._ctrl = ctrl
+
+        def angleDelta(self):
+            return self._d
+
+        def modifiers(self):
+            from PyQt6.QtCore import Qt
+            return (Qt.KeyboardModifier.ControlModifier if self._ctrl
+                    else Qt.KeyboardModifier.NoModifier)
+
+        def accept(self):
+            pass
+
+    def test_scroll_right_increases_freq(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        f0 = tab._center_hz
+        tab._wheel_waterfall(self._FakeWheel(120, 0))
+        assert tab._center_hz > f0
+
+    def test_scroll_left_decreases_freq(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        f0 = tab._center_hz
+        tab._wheel_waterfall(self._FakeWheel(-120, 0))
+        assert tab._center_hz < f0
+
+    def test_scroll_up_increases_freq_by_default(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._scroll_vert_bw = False
+        f0 = tab._center_hz
+        tab._wheel_waterfall(self._FakeWheel(0, 120))
+        assert tab._center_hz > f0
+
+    def test_vertical_changes_bw_when_toggled(self, qt_app):
+        tab, _ = _make_sdr_tab(qt_app)
+        tab._wheel_bw_cb.setChecked(True)
+        tab._demod_bw.setCurrentIndex(2)
+        f0 = tab._center_hz
+        tab._wheel_waterfall(self._FakeWheel(0, 120))   # up = wider
+        assert tab._demod_bw.currentIndex() == 3
+        assert tab._center_hz == f0   # frequency untouched in BW mode

@@ -214,6 +214,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._auto_range = True
         self._palette    = "Jet"
         self._peak_hold  = False
+        self._scroll_vert_bw = False   # wheel ↕ pans freq; True → adjusts IF BW
         self._y_ref_db   = 0.0   # reference level offset: 0 = dBFS, non-zero = approx dBm
         self._wf_data    = np.full((WF_ROWS, FFT_SIZE // 2), -100.0)
         self._peak_data  = np.full(FFT_SIZE, -100.0)
@@ -590,8 +591,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "QScrollArea{border:none;background:transparent;}")
         inner = QWidget()
         lay   = QVBoxLayout(inner)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(6)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(10)
         scroll.setWidget(inner)
         lay.addWidget(self._build_profile_group())
         lay.addWidget(self._build_gain_group())
@@ -803,6 +804,17 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._span_combo.currentIndexChanged.connect(self._on_span)
         sl.addWidget(self._span_combo)
+        self._wheel_bw_cb = QCheckBox(self.tr("↕=BW"))
+        self._wheel_bw_cb.setToolTip(self.tr(
+            "Mouse-wheel mapping on the spectrum / waterfall:\n"
+            "  • Horizontal scroll: pan frequency (right = up, left = down)\n"
+            "  • Vertical scroll: pan frequency (up = higher)\n"
+            "  • Ctrl + scroll: zoom the span\n"
+            "When checked, vertical scroll instead changes the IF bandwidth\n"
+            "(up = wider, down = narrower)."))
+        self._wheel_bw_cb.toggled.connect(
+            lambda c: setattr(self, "_scroll_vert_bw", c))
+        sl.addWidget(self._wheel_bw_cb)
         return span_grp
 
     def _build_demod_group(self) -> QGroupBox:
@@ -929,13 +941,13 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # The IQ Recorder group grew to ~6 rows (transport, status, play bar,
         # scheduled record, squelch-trigger); a fixed 90px clipped everything
         # below it.  Let the bar size to its contents with a safe minimum.
-        bar.setMinimumHeight(158)
+        bar.setMinimumHeight(174)
         bar.setStyleSheet(
             "background:#0d0d0d;"
             "border-top:1px solid #1a1a1a;")
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(8, 4, 8, 4)
-        lay.setSpacing(8)
+        lay.setContentsMargins(10, 6, 10, 6)
+        lay.setSpacing(12)
         lay.addWidget(self._build_recorder_group())
         lay.addWidget(self._build_scanner_group())
         lay.addWidget(self._build_recordings_group())
@@ -946,7 +958,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
     def _build_recorder_group(self) -> QGroupBox:
         rec_grp = QGroupBox(self.tr("IQ Recorder"))
         rl = QVBoxLayout(rec_grp)
-        rl.setSpacing(2)
+        rl.setSpacing(5)
         rec_btn_row = QHBoxLayout()
         self._rec_btn = QPushButton("⏺ Record")
         self._rec_btn.setFixedHeight(26)
@@ -1773,21 +1785,44 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
     # ── Wheel events ──────────────────────────────────────────────────────
 
     def _wheel_waterfall(self, event: QWheelEvent):
-        delta = event.angleDelta().y()
-        mods  = event.modifiers()
+        # Read BOTH axes: a tilt-wheel / trackpad reports horizontal scroll on
+        # x() with y()==0, which previously fell through to the "scroll down"
+        # branch and always *decreased* frequency. Now horizontal scroll pans
+        # frequency in the natural direction (right = higher, left = lower).
+        dx   = event.angleDelta().x()
+        dy   = event.angleDelta().y()
+        mods = event.modifiers()
         if mods & Qt.KeyboardModifier.ControlModifier:
-            # Ctrl+scroll = zoom span
-            if delta > 0:
+            # Ctrl+scroll = zoom span (either axis)
+            d = dy if dy != 0 else dx
+            if d > 0:
                 self._zoom_in()
-            else:
+            elif d < 0:
                 self._zoom_out()
-        else:
-            # Scroll = pan frequency
-            if delta > 0:
-                self._step_freq(1)
+            event.accept()
+            return
+        # Horizontal scroll always pans frequency: right = up, left = down.
+        if dx > 0:
+            self._step_freq(1)
+        elif dx < 0:
+            self._step_freq(-1)
+        # Vertical scroll: pan frequency (up = higher), or adjust IF bandwidth
+        # when the "↕=BW" toggle is on (up = wider, down = narrower).
+        if dy != 0:
+            if getattr(self, "_scroll_vert_bw", False):
+                self._step_bandwidth(1 if dy > 0 else -1)
             else:
-                self._step_freq(-1)
+                self._step_freq(1 if dy > 0 else -1)
         event.accept()
+
+    def _step_bandwidth(self, direction: int):
+        """Step the demod IF bandwidth combo (up = wider; combo is ascending)."""
+        combo = getattr(self, "_demod_bw", None)
+        if combo is None:
+            return
+        new = combo.currentIndex() + (1 if direction > 0 else -1)
+        if 0 <= new < combo.count():
+            combo.setCurrentIndex(new)
 
     def _zoom_in(self):
         idx = self._span_combo.currentIndex()
@@ -2062,6 +2097,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "demod_mode":      self._demod_combo.currentText(),
             "demod_bw":        self._demod_bw.currentText(),
             "demod_auto":      self._auto_demod_cb.isChecked(),
+            "wheel_vert_bw":   getattr(self, "_scroll_vert_bw", False),
         }
 
     def restore_state(self, state: dict) -> None:
@@ -2102,6 +2138,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._nb_cb.setChecked(bool(state["nb_enabled"]))
         if "agc" in state:
             self._agc_cb.setChecked(bool(state["agc"]))
+        if "wheel_vert_bw" in state:
+            self._wheel_bw_cb.setChecked(bool(state["wheel_vert_bw"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

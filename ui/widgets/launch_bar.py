@@ -51,7 +51,10 @@ class LaunchButton(QPushButton):
         self._app    = app
         self._cfg    = config
         self._avail  = False
-        self.setText(f"▶ {app.name}")
+        # Wrench icon for radio-programming tools so they don't read as rigs
+        # (e.g. "Icom CS-7100" is cloning software for the IC-7100, not a radio).
+        _icon = "🛠" if getattr(app, "category", "") == "programming" else "▶"
+        self.setText(f"{_icon} {app.name}")
         self.setFixedHeight(26)
         self.setToolTip(app.description)
         self.clicked.connect(self._launch)

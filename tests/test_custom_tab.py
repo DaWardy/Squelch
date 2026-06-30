@@ -83,6 +83,15 @@ class TestCustomTabSource:
         assert "_unlock_btn" in src, \
             "Rearrange/unlock button must be present in toolbar"
 
+    def test_edit_done_labels(self):
+        # Batch 2 fix: the old "🔓 Rearrange" / "🔒 Lock" labels read inverted
+        # (🔒 Lock showed while removal was possible).  Use a clear Edit/Done
+        # toggle instead so the actionable state is unambiguous.
+        src = _src("ui/tabs/custom_tab.py")
+        assert "Edit Layout" in src
+        assert "Done" in src
+        assert "🔒 Lock" not in src
+
 
 # ── main_window.py wiring checks ──────────────────────────────────────────
 

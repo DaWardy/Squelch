@@ -26,6 +26,14 @@ class TestAppDefs:
         for app in APPS:
             assert app.name, f"App missing name"
 
+    def test_launch_bar_marks_programming_with_wrench(self):
+        # Batch 2 fix: programming software (Icom CS-7100 etc.) read as rigs
+        # in the Local RF launch bar; LaunchButton prefixes them with 🛠.
+        src = (Path(__file__).parent.parent
+               / "ui/widgets/launch_bar.py").read_text(encoding="utf-8")
+        assert "🛠" in src
+        assert 'category", "") == "programming"' in src
+
     def test_each_app_has_download_url(self):
         for app in APPS:
             assert app.download_url, \

@@ -1214,7 +1214,7 @@ Enter the number in Squelch → Rig tab → Model (manual)
 
 ## View / Layout
   Ctrl+Shift+W  Enter Workspace Mode (floating panel layout)
-  Ctrl+Shift+R  Toggle RF Lab / Education Mode
+  Ctrl+Shift+R  Toggle Monitor / Education Mode
   Ctrl+W        Toggle Spectrum / Waterfall (SDR/Rig tab)
   Ctrl+Shift+1  Workspace preset 1
   Ctrl+Shift+2  Workspace preset 2
@@ -1615,11 +1615,11 @@ All anomaly events are written to the Squelch activity log.
 Open Help → Network Activity to see recent events with timestamps.
 """),
 
-    ("RF Lab / Education Mode", "SDR",
-     """# RF Lab / Education Mode
+    ("Monitor / Education Mode", "SDR",
+     """# Monitor / Education Mode
 
 ## What It Is
-RF Lab mode reconfigures the interface for SDR-only use —
+Monitor mode reconfigures the interface for SDR-only use —
 ideal for students, instructors, and RF professionals who do
 not need ham radio rig control or CAT. A ham radio licence
 is not required in this mode.
@@ -1627,27 +1627,27 @@ is not required in this mode.
 TX capability for USRP and HackRF remains available via the
 SDR tab's transmit controls.
 
-## Enabling RF Lab Mode
+## Enabling Monitor Mode
   Option 1 — First-run wizard:
-    On first launch, select "RF Lab / Education" from the
+    On first launch, select "Monitor / Education" from the
     Usage mode dropdown. Callsign and radio fields are
     disabled; only location is needed.
 
   Option 2 — After initial setup:
-    View → RF Lab / Education Mode (checkable menu item)
+    View → Monitor / Education Mode (checkable menu item)
 
 The mode choice is saved across restarts. Toggle at any time.
 
 ## What Changes
-In RF Lab mode, ham-specific tabs are hidden:
-  Hidden: Rig Control, Modes, Log, Digital, Winlink, Local RF
-  Visible: SDR, RF Lab, Band Conditions, Map, Help
+In Monitor mode, ham-specific tabs are hidden:
+  Hidden: Rig Control, Weak Signal, Log, Digital Voice, Winlink, Repeaters
+  Visible: SDR, Monitor, Propagation, Map, Help
 
-To restore all tabs: View → RF Lab / Education Mode
+To restore all tabs: View → Monitor / Education Mode
 (uncheck) to return to full Ham Radio layout.
 
-## Emergency Monitor (RF Lab tab)
-The RF Lab tab provides a frequency watchlist with 21
+## Emergency Monitor (Monitor tab)
+The Monitor tab provides a frequency watchlist with 21
 pre-loaded emergency and education frequencies:
 
   NOAA Weather Radio (7 channels: 162.400–162.550 MHz)
@@ -1678,7 +1678,7 @@ The SDR tab then shows the spectrum and waterfall at that
 frequency (requires a connected SDR device).
 
 ## Adding Custom Frequencies
-  RF Lab tab toolbar → + Add Custom
+  Monitor tab toolbar → + Add Custom
   Enter frequency (MHz), name, category, and description.
   Custom frequencies appear at the bottom of the list and
   survive restarts (saved in profile state).
@@ -1691,8 +1691,8 @@ frequency (requires a connected SDR device).
     EMS / Space / Broadcast / Custom entries.
   Search box: filter by name prefix or frequency string.
 
-## TX in RF Lab Mode
-Transmitting is NOT available in RF Lab mode for traditional
+## TX in Monitor Mode
+Transmitting is NOT available in Monitor mode for traditional
 rigs (no CAT connection). However, SDR devices with TX
 capability (USRP B200/B210, HackRF One) can transmit via:
   SDR tab → TX controls (when hardware is detected)
@@ -2202,10 +2202,10 @@ Use manufacturer SW: You need advanced features (scan groups, WIRES-X,
                      D-STAR settings) not yet in CHIRP
                      Your radio model isn't in CHIRP yet
 
-━━━ Importing channels into RF Lab ━━━
+━━━ Importing channels into Monitor ━━━
 
-Export a CSV from CHIRP (File → Export) and import it into the RF Lab
-tab (RF Lab → Import CHIRP CSV…) to build a monitoring watchlist from
+Export a CSV from CHIRP (File → Export) and import it into the Monitor
+tab (Monitor → Import CHIRP CSV…) to build a monitoring watchlist from
 your programmed frequencies.
 """),
 ]

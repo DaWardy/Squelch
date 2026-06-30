@@ -50,7 +50,7 @@ MODE_COLORS = {
 
 class LocalRFTab(SquelchPanel, QWidget):
     panel_id    = "localrf"
-    panel_title = "Local RF"
+    panel_title = "Repeaters"
 
     def __init__(self, config, rig=None, parent=None):
         super().__init__(parent)

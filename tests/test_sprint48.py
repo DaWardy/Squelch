@@ -37,17 +37,26 @@ class TestIFBandwidthPerMode:
     def test_bw_hz_property_defined(self):
         assert "def _bw_hz" in _sdr_src()
 
-    def test_filter_lines_created(self):
+    def test_passband_indicator_created(self):
+        # The two ±BW/2 hairlines were replaced by a single draggable shaded
+        # passband region (visible + drag-to-resize).
         src = _sdr_src()
-        assert "_filter_lo_line" in src
-        assert "_filter_hi_line" in src
+        assert "_passband" in src
+        assert "LinearRegionItem" in src
 
-    def test_filter_lines_updated_in_axes(self):
+    def test_passband_updated_in_axes(self):
         src = _sdr_src()
         idx = src.find("def _update_axes(")
         body = src[idx: src.find("\n    def ", idx + 10)]
-        assert "_filter_lo_line" in body
-        assert "_filter_hi_line" in body
+        assert "_passband" in body
+
+    def test_bw_change_redraws_passband(self):
+        # Changing the BW combo must trigger a redraw (previously the indicator
+        # only moved on tune, so BW changes were invisible).
+        src = _sdr_src()
+        assert "self._demod_bw.currentTextChanged.connect(self._on_bw_change)" \
+            in src
+        assert "def _on_passband_drag(" in src
 
     def test_demod_mode_in_save_state(self):
         src = _sdr_src()

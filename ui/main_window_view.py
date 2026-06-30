@@ -106,8 +106,8 @@ class _MainWindowViewMixin:
                 if key in getattr(self, "_tab_actions", {}):
                     self._tab_actions[key].setChecked(True)
             self.statusBar().showMessage(
-                "RF Lab mode active — Rig/Log/Digital tabs hidden; "
-                "SDR + RF Lab + Map visible", 5000)
+                "Monitor mode active — Rig/Log/Digital Voice tabs hidden; "
+                "SDR + Monitor + Map visible", 5000)
         else:
             self.cfg.set("ui.mode", "ham")
             for key in _RF_LAB_HIDDEN:

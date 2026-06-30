@@ -159,18 +159,18 @@ class _MainWindowFirstrunMixin:
         intro = QLabel(
             f"<b>Welcome to {APP_NAME} v{VERSION}</b><br><br>"
             "Choose your usage mode, then enter your location to get started.<br>"
-            "You can switch modes at any time via <b>View → RF Lab / Education Mode</b>.")
+            "You can switch modes at any time via <b>View → Monitor / Education Mode</b>.")
         intro.setWordWrap(True)
         lay.addWidget(intro)
         form = QFormLayout()
 
         mode_combo = QComboBox()
         mode_combo.addItem("🎙  Ham Radio Operator  (full rig + log + digital modes)", "ham")
-        mode_combo.addItem("🔬  RF Lab / Education  (SDR-only, no callsign required)", "rf_lab")
+        mode_combo.addItem("🔬  Monitor / Education  (SDR-only, no callsign required)", "rf_lab")
         form.addRow("Usage mode:", mode_combo)
 
         cs_edit = QLineEdit()
-        cs_edit.setPlaceholderText("e.g. W4XYZ  (leave blank for RF Lab mode)")
+        cs_edit.setPlaceholderText("e.g. W4XYZ  (leave blank for Monitor mode)")
         cs_edit.setMaxLength(12)
         loc_edit = QLineEdit()
         loc_edit.setPlaceholderText("Maidenhead grid (DM79rr), ZIP, city, or MGRS")
@@ -199,8 +199,8 @@ class _MainWindowFirstrunMixin:
             cs_edit.setEnabled(not is_rf_lab)
             rig_combo.setEnabled(not is_rf_lab)
             cs_edit.setPlaceholderText(
-                "Not needed in RF Lab mode" if is_rf_lab
-                else "e.g. W4XYZ  (leave blank for RF Lab mode)")
+                "Not needed in Monitor mode" if is_rf_lab
+                else "e.g. W4XYZ  (leave blank for Monitor mode)")
         mode_combo.currentIndexChanged.connect(_on_mode_change)
 
         hint = QLabel(

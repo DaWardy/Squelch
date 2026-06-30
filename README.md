@@ -30,7 +30,7 @@ mode for classrooms and self-study.
 | Map — APRS, FT8/PSKReporter, satellites, ADS-B, Winlink gateways | Built |
 | PSKReporter "who hears me" + Reverse Beacon Network | Built |
 | Winlink (VARA / Pat / ARDOP) + EmComm templates | Built |
-| RF Lab / Education mode + full in-app Help | Built |
+| Monitor / Education mode + full in-app Help | Built |
 | Voice keyer, CW/WinKeyer keyer, rotor control, memory channels | Built |
 | Themes, multi-operator profiles, OS-keyring credentials | Built |
 

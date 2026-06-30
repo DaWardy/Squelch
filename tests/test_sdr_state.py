@@ -430,8 +430,8 @@ class TestSDRRFLabExportQt:
         from PyQt6.QtWidgets import QPushButton
         tab, _ = _make_sdr_tab(qt_app)
         btns = [w for w in tab.findChildren(QPushButton)
-                if "RF Lab" in (w.text() or "")]
-        assert len(btns) >= 1, "→ RF Lab button must be present in SDR toolbar"
+                if "Monitor" in (w.text() or "")]
+        assert len(btns) >= 1, "→ Monitor button must be present in SDR toolbar"
 
     def test_export_to_rf_lab_method_exists(self, qt_app):
         tab, _ = _make_sdr_tab(qt_app)
@@ -518,3 +518,55 @@ class TestAutoDemod:
         tab._set_freq(98_500_000)          # auto applies WFM via setCurrentText
         assert tab._auto_demod_cb.isChecked() is True
         assert tab._demod_combo.currentText() == "WFM"
+
+
+@pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
+class TestPassbandAndLegend:
+    """SDR spectral-view UX: visible draggable IF passband + colour legend."""
+
+    def _tab(self, qt_app):
+        from ui.tabs.sdr_tab import HAS_PG
+        if not HAS_PG:
+            pytest.skip("pyqtgraph not installed")
+        return _make_sdr_tab(qt_app)[0]
+
+    def test_passband_and_legend_built(self, qt_app):
+        tab = self._tab(qt_app)
+        assert tab._passband is not None
+        assert tab._legend is not None
+
+    def test_bw_change_widens_passband(self, qt_app):
+        tab = self._tab(qt_app)
+        tab._demod_bw.setCurrentText("2.5 kHz")
+        lo, hi = tab._passband.getRegion()
+        narrow = abs(hi - lo)
+        tab._demod_bw.setCurrentText("200 kHz")
+        lo, hi = tab._passband.getRegion()
+        wide = abs(hi - lo)
+        assert wide > narrow
+
+    def test_passband_drag_snaps_bandwidth(self, qt_app):
+        tab = self._tab(qt_app)
+        cf_mhz = (tab._center_hz + tab._lo_hz) / 1e6
+        half   = (5_000 / 2) / 1e6           # a ~5 kHz wide drag
+        tab._passband.setRegion((cf_mhz - half, cf_mhz + half))
+        tab._on_passband_drag()
+        assert tab._demod_bw.currentText() == "5 kHz"
+
+    def test_drag_pauses_auto_demod(self, qt_app):
+        tab = self._tab(qt_app)
+        tab._auto_demod_cb.setChecked(True)
+        cf_mhz = (tab._center_hz + tab._lo_hz) / 1e6
+        half   = (10_000 / 2) / 1e6
+        tab._passband.setRegion((cf_mhz - half, cf_mhz + half))
+        tab._on_passband_drag()
+        assert tab._auto_demod_cb.isChecked() is False
+
+    def test_legend_tracks_palette_and_range(self, qt_app):
+        tab = self._tab(qt_app)
+        tab._on_palette("Viridis")
+        assert tab._legend._colors == __import__(
+            "ui.tabs.sdr_tab", fromlist=["PALETTES"]).PALETTES["Viridis"]
+        tab._legend.set_range(-90, -10)
+        assert tab._legend._lo_db == -90.0
+        assert tab._legend._hi_db == -10.0

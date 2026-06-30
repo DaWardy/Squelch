@@ -171,10 +171,11 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         hl.addWidget(self._add_btn)
 
         self._unlock_btn = QToolButton()
-        self._unlock_btn.setText("🔓 Rearrange")
+        self._unlock_btn.setText("✏️ Edit Layout")
         self._unlock_btn.setCheckable(True)
         self._unlock_btn.setToolTip(
-            "Unlock card order — use ◀ ▶ to reorder, ✕ to remove")
+            "Edit this custom tab — reorder cards with ◀ ▶, remove with ✕.\n"
+            "Click again (✔ Done) when finished.")
         self._unlock_btn.toggled.connect(self._on_unlock_toggled)
         hl.addWidget(self._unlock_btn)
 
@@ -271,7 +272,7 @@ class CustomLayoutTab(SquelchPanel, QWidget):
 
     def _on_unlock_toggled(self, unlocked: bool) -> None:
         self._unlocked = unlocked
-        self._unlock_btn.setText("🔒 Lock" if unlocked else "🔓 Rearrange")
+        self._unlock_btn.setText("✔ Done" if unlocked else "✏️ Edit Layout")
         for card in self._cards.values():
             card.set_unlock_mode(unlocked)
 

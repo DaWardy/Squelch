@@ -48,7 +48,7 @@ class RFLabTab(SquelchPanel, QWidget):
     """Emergency Monitor / RF Education frequency watchlist panel."""
 
     panel_id    = "rf_lab"
-    panel_title = "RF Lab"
+    panel_title = "Monitor"
 
     # Emitted when user clicks Tune — receiver wires this to SDR tab
     tune_requested = pyqtSignal(int)   # Hz
@@ -144,7 +144,7 @@ class RFLabTab(SquelchPanel, QWidget):
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(12, 6, 12, 6)
 
-        title = QLabel("🔬  RF Lab — Emergency Monitor")
+        title = QLabel("🔬  Monitor — Emergency Frequency Watchlist")
         title.setStyleSheet("font-weight:bold;font-size:13px;")
         lay.addWidget(title)
 

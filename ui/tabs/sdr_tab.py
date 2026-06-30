@@ -115,6 +115,53 @@ def _make_colormap(palette_name: str):
     return pg.ColorMap(pos, rgba)
 
 
+class _PaletteLegend(QWidget):
+    """Horizontal colour key for the waterfall.
+
+    Shows the active palette as a left-to-right gradient (weak → strong) with
+    the current floor/ceiling dB values at each end, so the colours on the
+    waterfall have a legible meaning — the way other SDR programs do.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(22)
+        self.setToolTip("Waterfall colour key — left = weak, right = strong")
+        self._colors = PALETTES["Jet"]
+        self._lo_db  = -100.0
+        self._hi_db  = -20.0
+
+    def set_palette(self, name: str) -> None:
+        self._colors = PALETTES.get(name, PALETTES["Jet"])
+        self.update()
+
+    def set_range(self, lo_db: float, hi_db: float) -> None:
+        self._lo_db, self._hi_db = float(lo_db), float(hi_db)
+        self.update()
+
+    def paintEvent(self, _ev):
+        from PyQt6.QtGui import QPainter, QLinearGradient, QColor, QPen
+        p = QPainter(self)
+        try:
+            w, h  = self.width(), self.height()
+            bar_h = 11
+            grad  = QLinearGradient(0, 0, w, 0)
+            n = len(self._colors)
+            for i, c in enumerate(self._colors):
+                grad.setColorAt(i / (n - 1) if n > 1 else 0.0, QColor(*c))
+            p.fillRect(0, 0, w, bar_h, grad)
+            f = p.font()
+            f.setPointSize(7)
+            p.setFont(f)
+            p.setPen(QPen(QColor("#aaaaaa")))
+            p.drawText(2, h - 1, f"weak  {self._lo_db:.0f} dB")
+            txt = f"{self._hi_db:.0f} dB  strong"
+            adv = p.fontMetrics().horizontalAdvance(txt)
+            p.drawText(max(0, w - adv - 2), h - 1, txt)
+        finally:
+            p.end()
+
+
 
 from ui.tabs.sdr_setup_guide  import _SDRSetupGuideMixin
 from ui.tabs.sdr_device_panels import _SDRDevicePanelsMixin
@@ -189,9 +236,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # Noise blanker (time-domain impulse removal on IQ)
         self._nb_enabled      = False
         self._nb_strength     = 0.5   # 0.0-1.0
-        # IF bandwidth filter lines (updated in _update_axes)
-        self._filter_lo_line  = None
-        self._filter_hi_line  = None
+        # IF passband indicator + waterfall colour legend (built with the
+        # spectrum/waterfall plots, updated in _update_axes)
+        self._passband = None
+        self._legend   = None
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -381,10 +429,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "Save spectrum+waterfall screenshot to Desktop"))
         shot_btn.clicked.connect(self._save_screenshot)
         lay.addWidget(shot_btn)
-        rflab_btn = QPushButton(self.tr("→ RF Lab"))
-        rflab_btn.setFixedWidth(68)
+        rflab_btn = QPushButton(self.tr("→ Monitor"))
+        rflab_btn.setFixedWidth(76)
         rflab_btn.setToolTip(self.tr(
-            "Export signal bookmarks to RF Lab frequency watchlist"))
+            "Export signal bookmarks to Monitor frequency watchlist"))
         rflab_btn.clicked.connect(self._export_to_rf_lab)
         lay.addWidget(rflab_btn)
         audio_btn = QPushButton(self.tr("🎙 Rig Audio"))
@@ -449,7 +497,13 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         wf_container = QWidget()
         wc_lay = QVBoxLayout(wf_container)
         wc_lay.setContentsMargins(0, 0, 0, 0)
+        wc_lay.setSpacing(0)
         wc_lay.addWidget(self._wf_plot)
+        self._legend = _PaletteLegend()
+        self._legend.set_palette(self._palette_combo.currentText()
+                                 if hasattr(self, "_palette_combo") else "Jet")
+        self._legend.set_range(self._floor_db, self._ceiling_db)
+        wc_lay.addWidget(self._legend)
         wf_splitter.addWidget(spec_container)
         wf_splitter.addWidget(wf_container)
         wf_splitter.setSizes([120, 280])   # spectrum 30%, waterfall 70%
@@ -493,14 +547,19 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._spec_plot.addItem(self._squelch_line)
         self._spec_plot.scene().sigMouseClicked.connect(self._on_spec_click)
         self._spec_plot.wheelEvent = self._wheel_waterfall
-        # IF filter width indicator — two dashed cyan lines at ±BW/2
-        filter_pen = pg.mkPen("#00cccc", width=1, style=Qt.PenStyle.DashLine)
-        self._filter_lo_line = pg.InfiniteLine(
-            angle=90, movable=False, pen=filter_pen)
-        self._filter_hi_line = pg.InfiniteLine(
-            angle=90, movable=False, pen=filter_pen)
-        self._spec_plot.addItem(self._filter_lo_line)
-        self._spec_plot.addItem(self._filter_hi_line)
+        # IF passband indicator — a draggable shaded region spanning ±BW/2
+        # around the tuned centre.  Drag an edge to change the IF bandwidth;
+        # the shaded fill also makes a BW change visible instead of two
+        # sub-pixel hairlines.
+        self._passband = pg.LinearRegionItem(
+            values=[0, 0], movable=True,
+            brush=pg.mkBrush(0, 204, 204, 36),
+            pen=pg.mkPen("#00cccc", width=1, style=Qt.PenStyle.DashLine))
+        self._passband.setZValue(5)
+        self._passband.setToolTip(
+            "IF passband — drag an edge to change bandwidth")
+        self._passband.sigRegionChangeFinished.connect(self._on_passband_drag)
+        self._spec_plot.addItem(self._passband)
 
     def _build_waterfall_plot(self) -> None:
         """Build self._wf_plot with image item and click/wheel handlers."""
@@ -780,6 +839,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # auto-applied changes don't trip it.
         self._demod_combo.activated.connect(self._on_manual_demod_pick)
         self._demod_bw.activated.connect(self._on_manual_demod_pick)
+        # Redraw the passband indicator whenever the IF bandwidth changes
+        # (manual pick, mode-default, auto-demod or restore) — previously the
+        # passband only moved on tune, so BW changes were invisible.
+        self._demod_bw.currentTextChanged.connect(self._on_bw_change)
         self._route_cb = QCheckBox(self.tr("Route to Digital tab"))
         self._route_cb.setToolTip(self.tr(
             "Pipe demodulated audio to the Digital "
@@ -863,7 +926,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
     def _build_bottom_bar(self) -> QFrame:
         bar = QFrame()
-        bar.setFixedHeight(90)
+        # The IQ Recorder group grew to ~6 rows (transport, status, play bar,
+        # scheduled record, squelch-trigger); a fixed 90px clipped everything
+        # below it.  Let the bar size to its contents with a safe minimum.
+        bar.setMinimumHeight(158)
         bar.setStyleSheet(
             "background:#0d0d0d;"
             "border-top:1px solid #1a1a1a;")
@@ -1438,6 +1504,32 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         if cb and cb.isChecked():
             cb.setChecked(False)
 
+    def _on_bw_change(self, _txt: str = "") -> None:
+        """Redraw the IF passband indicator when the bandwidth changes."""
+        if HAS_PG and getattr(self, "_passband", None) is not None:
+            self._update_axes()
+
+    def _on_passband_drag(self) -> None:
+        """User dragged a passband edge → snap IF bandwidth to the new width."""
+        if not (HAS_PG and getattr(self, "_passband", None) is not None):
+            return
+        lo_mhz, hi_mhz = self._passband.getRegion()
+        new_bw = int(abs(hi_mhz - lo_mhz) * 1e6)
+        if new_bw <= 0:
+            self._update_axes()
+            return
+        from core.auto_demod import nearest_bw_label
+        labels = [self._demod_bw.itemText(i)
+                  for i in range(self._demod_bw.count())]
+        label = nearest_bw_label(new_bw, labels)
+        if label and label != self._demod_bw.currentText():
+            # setCurrentText fires currentTextChanged → _on_bw_change → redraw,
+            # which re-snaps the region to the chosen (quantised) bandwidth.
+            self._demod_bw.setCurrentText(label)
+        else:
+            self._update_axes()
+        self._on_manual_demod_pick()   # a hand-drag pauses Auto demod
+
     def _apply_auto_demod(self, hz: int) -> None:
         """When Auto is enabled, set demod mode + IF bandwidth for `hz`."""
         cb = getattr(self, "_auto_demod_cb", None)
@@ -1502,6 +1594,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
     def _on_palette(self, name: str):
         self._palette = name
+        if getattr(self, "_legend", None) is not None:
+            self._legend.set_palette(name)
         if HAS_PG:
             cmap = _make_colormap(name)
             if cmap:
@@ -1858,6 +1952,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         if self._auto_range:
             self._floor_db   = np.percentile(fft, 5) - 5
             self._ceiling_db = np.max(fft) + 5
+            if getattr(self, "_legend", None) is not None:
+                self._legend.set_range(
+                    self._floor_db + self._y_ref_db,
+                    self._ceiling_db + self._y_ref_db)
 
         # Waterfall
         self._wf_img.setImage(
@@ -1898,12 +1996,21 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             QRectF(lo_mhz, 0, hi_mhz - lo_mhz, WF_ROWS))
         self._wf_plot.setXRange(lo_mhz, hi_mhz, padding=0)
         self._cf_line.setValue((self._center_hz + self._lo_hz) / 1e6)
-        # Filter width indicator — ±BW/2 around the centre
-        if self._filter_lo_line is not None:
+        # IF passband indicator — ±BW/2 around the centre.  Block the region's
+        # change signal so this programmatic update doesn't re-enter
+        # _on_passband_drag.
+        if getattr(self, "_passband", None) is not None:
             half_bw = self._bw_hz / 2
             cf_mhz  = (self._center_hz + self._lo_hz) / 1e6
-            self._filter_lo_line.setValue(cf_mhz - half_bw / 1e6)
-            self._filter_hi_line.setValue(cf_mhz + half_bw / 1e6)
+            self._passband.blockSignals(True)
+            self._passband.setRegion(
+                (cf_mhz - half_bw / 1e6, cf_mhz + half_bw / 1e6))
+            self._passband.blockSignals(False)
+        # Waterfall colour legend — mirror the floor/ceiling (+ ref offset)
+        if getattr(self, "_legend", None) is not None:
+            self._legend.set_range(
+                self._floor_db + self._y_ref_db,
+                self._ceiling_db + self._y_ref_db)
 
     def _draw_band_segments(self):
         if not HAS_PG:

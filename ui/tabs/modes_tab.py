@@ -271,7 +271,11 @@ class ModesTab(SquelchPanel, QWidget):
         self._freq_label = QLabel("14.074.000 MHz")
         self._freq_label.setStyleSheet(
             "color:#3fbe6f; font-family:'Courier New'; ")
+        # Wide enough for the longest readout (e.g. "1296.074000 MHz")
+        # so the monospace text is never clipped at small window widths.
+        self._freq_label.setMinimumWidth(150)
         band_gl.addWidget(self._freq_label, 1, 1)
+        band_gl.setColumnStretch(1, 1)
         
         self._tune_btn = QPushButton("Tune Rig")
         self._tune_btn.setToolTip(

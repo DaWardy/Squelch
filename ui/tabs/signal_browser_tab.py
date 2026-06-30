@@ -40,7 +40,7 @@ class SignalBrowserTab(SquelchPanel, QWidget):
     """Searchable, read-only browser over the unified Signal store."""
 
     panel_id    = "signals"
-    panel_title = "Signals"
+    panel_title = "Signal Log"
 
     # Emitted (Hz) on double-click — receiver wires this to the SDR tab.
     tune_requested = pyqtSignal(int)

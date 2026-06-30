@@ -107,7 +107,7 @@ class BandReliabilityChart(QWidget):
 
 class BandConditionsTab(SquelchPanel, QWidget):
     panel_id    = "band_conditions"
-    panel_title = "Band Cond."
+    panel_title = "Propagation"
 
     # Worker thread → main thread: path-to result delivery
     _path_resolved = pyqtSignal(float, float, str, bool, str)

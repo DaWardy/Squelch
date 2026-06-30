@@ -63,11 +63,11 @@ TABS = [
     ("digital",   "🔊  Digital Voice",  True),
     ("winlink",   "✉️  Winlink",        True),
     ("log",       "📒  Log",            True),
-    ("localrf",   "📋  Local RF",       True),
+    ("localrf",   "📋  Repeaters",      True),
     ("map",       "🗺  Map",            True),
-    ("bandcond",  "☀️  Band Cond.",     True),
-    ("signals",   "📶  Signals",        False),
-    ("rf_lab",    "🔬  RF Lab",         False),
+    ("bandcond",  "☀️  Propagation",    True),
+    ("signals",   "📶  Signal Log",     False),
+    ("rf_lab",    "🔬  Monitor",        False),
     ("help",      "❓  Help",           True),
 ]
 
@@ -731,15 +731,15 @@ class MainWindow(
         clock_a.triggered.connect(lambda: self._toggle_clock(None))
         vm.addAction(clock_a)
         vm.addSeparator()
-        # RF Lab Mode — SDR-only education mode; hides ham-specific tabs (C-16/C-21)
-        rflab_a = QAction(self.tr("🔬  RF Lab / Education Mode"), self)
+        # Monitor Mode — SDR-only education mode; hides ham-specific tabs (C-16/C-21)
+        rflab_a = QAction(self.tr("🔬  Monitor / Education Mode"), self)
         rflab_a.setCheckable(True)
         rflab_a.setChecked(self.cfg.get("ui.mode", "ham") == "rf_lab")
         rflab_a.setShortcut("Ctrl+Shift+R")
         rflab_a.setToolTip(
             "Switches to SDR-only education layout  (Ctrl+Shift+R)\n"
-            "Hides Rig, Modes, Log, Digital, Winlink, Local RF tabs.\n"
-            "Shows SDR, RF Lab, Band Conditions, Map, Help.\n"
+            "Hides Rig, Weak Signal, Log, Digital Voice, Winlink, Repeaters tabs.\n"
+            "Shows SDR, Monitor, Propagation, Map, Help.\n"
             "TX capability for USRP/HackRF remains available via the SDR tab.")
         rflab_a.triggered.connect(lambda checked: self._toggle_rf_lab_mode(checked))
         self._rflab_action = rflab_a

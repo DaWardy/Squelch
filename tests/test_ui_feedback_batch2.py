@@ -58,3 +58,28 @@ class TestTabRenameBatch3:
 
     def test_signal_browser_panel_title_renamed(self):
         assert 'panel_title = "Signal Log"' in _src("ui/tabs/signal_browser_tab.py")
+
+
+class TestRigTuneArrows:
+    """#5 — the VFO tuning row mixed ◄►(step) with ▼▲(fine), which gave no
+    consistent sense of direction or magnitude. Now a single horizontal axis:
+    band-edge (⏮⏭) → step (⏪⏩) → fine 1 Hz (◄►), with a 'Tune:' label.
+    """
+
+    def test_no_vertical_fine_tune_arrows(self):
+        src = _src("ui/tabs/rig_tab.py")
+        # The old vertical fine-tune glyphs must be gone from the tune row.
+        assert '"▼", "Fine tune' not in src
+        assert '"▲", "Fine tune' not in src
+
+    def test_horizontal_step_glyphs(self):
+        src = _src("ui/tabs/rig_tab.py")
+        assert '"⏪"' in src and '"⏩"' in src  # coarse step, magnitude-coded
+
+    def test_tune_label_present(self):
+        assert 'QLabel("Tune:")' in _src("ui/tabs/rig_tab.py")
+
+    def test_directional_tooltips(self):
+        src = _src("ui/tabs/rig_tab.py")
+        assert "Fine tune down (− 1 Hz)" in src
+        assert "Fine tune up (+ 1 Hz)" in src

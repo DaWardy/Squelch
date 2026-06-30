@@ -442,12 +442,23 @@ class RigTab(_RigRotorMixin, _RigVoiceMixin, SquelchPanel, QWidget):
             b.setStyleSheet(_abtn_ss)
             b.clicked.connect(cb)
             return b
-        arrow_row.addWidget(_abtn("⏮", "Jump to band start", self._jump_band_start))
-        arrow_row.addWidget(_abtn("◄", "Step down", self._step_down))
-        arrow_row.addWidget(_abtn("▼", "Fine tune down (1 Hz)", lambda: self._nudge(-1)))
-        arrow_row.addWidget(_abtn("▲", "Fine tune up (1 Hz)", lambda: self._nudge(1)))
-        arrow_row.addWidget(_abtn("►", "Step up", self._step_up))
-        arrow_row.addWidget(_abtn("⏭", "Jump to band end", self._jump_band_end))
+        # Single horizontal axis: left = lower freq, right = higher; magnitude
+        # shrinks toward centre — band edge (⏮⏭) → step (⏪⏩) → fine 1 Hz (◄►).
+        tune_lbl = QLabel("Tune:")
+        tune_lbl.setStyleSheet(" ")
+        arrow_row.addWidget(tune_lbl)
+        arrow_row.addWidget(_abtn("⏮", "Jump to band start (lowest frequency)",
+                                  self._jump_band_start))
+        arrow_row.addWidget(_abtn("⏪", "Step down (− selected step size)",
+                                  self._step_down))
+        arrow_row.addWidget(_abtn("◄", "Fine tune down (− 1 Hz)",
+                                  lambda: self._nudge(-1)))
+        arrow_row.addWidget(_abtn("►", "Fine tune up (+ 1 Hz)",
+                                  lambda: self._nudge(1)))
+        arrow_row.addWidget(_abtn("⏩", "Step up (+ selected step size)",
+                                  self._step_up))
+        arrow_row.addWidget(_abtn("⏭", "Jump to band end (highest frequency)",
+                                  self._jump_band_end))
         arrow_row.addSpacing(12)
         arrow_row.addWidget(QLabel("Band:"))
         self._band_jump_combo = QComboBox()

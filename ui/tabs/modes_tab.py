@@ -34,6 +34,8 @@ from core.launcher import get_launcher
 from core.guest_op import operating_callsign
 from core.safety import get_safety
 from ui.panel import SquelchPanel
+from ui.tabs.modes_sstv_mixin import _ModesSSTVMixin
+from ui.tabs.modes_rbn_mixin import _ModesRBNMixin
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QGroupBox,
@@ -89,7 +91,7 @@ WEAK_SIGNAL_BANDS = [
 ]
 
 
-class ModesTab(SquelchPanel, QWidget):
+class ModesTab(_ModesSSTVMixin, _ModesRBNMixin, SquelchPanel, QWidget):
     panel_id    = "modes"
     panel_title = "Weak Signal"
 
@@ -707,108 +709,6 @@ class ModesTab(SquelchPanel, QWidget):
         layout.addWidget(self._build_sstv_image_panel())
         return panel
 
-    def _build_sstv_image_panel(self) -> QWidget:
-        """SSTV received-image viewer — watches fldigi's image output folder."""
-        from PyQt6.QtWidgets import QScrollArea, QFileDialog
-        from PyQt6.QtGui import QPixmap
-        from pathlib import Path
-        import sys, os
-
-        self._sstv_panel = QGroupBox("SSTV Image")
-        self._sstv_panel.setVisible(False)
-        sv = QVBoxLayout(self._sstv_panel)
-        sv.setContentsMargins(4, 4, 4, 4)
-        sv.setSpacing(4)
-
-        self._sstv_image_lbl = QLabel("No image received yet")
-        self._sstv_image_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._sstv_image_lbl.setMinimumHeight(120)
-        self._sstv_image_lbl.setStyleSheet("")
-        sv.addWidget(self._sstv_image_lbl)
-
-        btn_row = QHBoxLayout()
-        open_btn = QPushButton("Open folder")
-        open_btn.setFixedHeight(22)
-        open_btn.setToolTip("Open fldigi's SSTV image folder in Explorer/Finder")
-        open_btn.clicked.connect(self._sstv_open_folder)
-        save_btn = QPushButton("Save copy…")
-        save_btn.setFixedHeight(22)
-        save_btn.clicked.connect(self._sstv_save)
-        btn_row.addWidget(open_btn)
-        btn_row.addWidget(save_btn)
-        btn_row.addStretch()
-        self._sstv_folder_lbl = QLabel("")
-        self._sstv_folder_lbl.setStyleSheet("color:#555;font-size:9px;")
-        sv.addLayout(btn_row)
-        sv.addWidget(self._sstv_folder_lbl)
-
-        # QFileSystemWatcher monitors fldigi SSTV image folder
-        from PyQt6.QtCore import QFileSystemWatcher
-        self._sstv_watcher = QFileSystemWatcher()
-        self._sstv_watcher.directoryChanged.connect(self._sstv_refresh)
-        self._sstv_image_path: "str | None" = None
-
-        # Arm the watcher for the default fldigi image path
-        if sys.platform == "win32":
-            default = str(Path(os.environ.get("APPDATA", "~")) / "fldigi" / "images")
-        else:
-            default = str(Path.home() / ".fldigi" / "images")
-        if Path(default).is_dir():
-            self._sstv_watcher.addPath(default)
-            self._sstv_folder_lbl.setText(default)
-            self._sstv_refresh(default)
-
-        return self._sstv_panel
-
-    def _sstv_refresh(self, folder: str) -> None:
-        """Scan folder for latest image and display it."""
-        from pathlib import Path
-        from PyQt6.QtGui import QPixmap
-        p = Path(folder)
-        images = sorted(
-            [f for f in p.glob("*") if f.suffix.lower() in (".bmp", ".png", ".jpg")],
-            key=lambda f: f.stat().st_mtime)
-        if not images:
-            return
-        latest = str(images[-1])
-        if latest == self._sstv_image_path:
-            return
-        self._sstv_image_path = latest
-        px = QPixmap(latest)
-        if not px.isNull():
-            self._sstv_image_lbl.setPixmap(
-                px.scaled(self._sstv_image_lbl.width() or 240,
-                          200, Qt.AspectRatioMode.KeepAspectRatio,
-                          Qt.TransformationMode.SmoothTransformation))
-
-    def _sstv_open_folder(self) -> None:
-        import sys, subprocess, os
-        from pathlib import Path
-        if sys.platform == "win32":
-            d = str(Path(os.environ.get("APPDATA", "~")) / "fldigi" / "images")
-        else:
-            d = str(Path.home() / ".fldigi" / "images")
-        try:
-            if sys.platform == "win32":
-                os.startfile(d)        # noqa: only on Windows
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", d])
-            else:
-                subprocess.Popen(["xdg-open", d])
-        except Exception:
-            pass
-
-    def _sstv_save(self) -> None:
-        from PyQt6.QtWidgets import QFileDialog
-        if not self._sstv_image_path:
-            return
-        dst, _ = QFileDialog.getSaveFileName(
-            self, "Save SSTV Image", "sstv_received.png",
-            "Images (*.png *.bmp *.jpg)")
-        if dst:
-            import shutil
-            shutil.copy2(self._sstv_image_path, dst)
-
     # ── Wire signals ──────────────────────────────────────────────────────
 
     def _build_dx_panel(self):
@@ -926,119 +826,6 @@ class ModesTab(SquelchPanel, QWidget):
         self._pota_spots = []
         self._sota_client = None
         self._pota_client = None
-
-    # ── RBN "Am I heard?" panel ───────────────────────────────────────────
-
-    def _build_rbn_panel(self) -> None:
-        """Collapsible panel showing which RBN skimmers hear our signal."""
-        rbn_grp = QGroupBox("RBN — Am I Being Heard?")
-        rbn_grp.setMaximumHeight(150)
-        rbn_grp.setCheckable(True)
-        rbn_grp.setChecked(False)
-        rbn_grp.toggled.connect(self._on_rbn_toggle)
-        rl = QVBoxLayout(rbn_grp)
-        rl.setContentsMargins(4, 4, 4, 4)
-        rl.setSpacing(3)
-        rl.addLayout(self._build_rbn_controls_row())
-        rl.addWidget(self._build_rbn_table())
-        self.layout().addWidget(rbn_grp)
-        self._rbn_grp     = rbn_grp
-        self._rbn_client  = None
-        self._rbn_spots: list = []
-
-    def _build_rbn_controls_row(self) -> "QHBoxLayout":
-        ctrl = QHBoxLayout()
-        ctrl.addWidget(QLabel("Call:"))
-        self._rbn_call_edit = QLineEdit()
-        self._rbn_call_edit.setPlaceholderText("your callsign")
-        self._rbn_call_edit.setFixedWidth(90)
-        self._rbn_call_edit.setToolTip(
-            "Callsign to search for in the RBN skimmer feed.\n"
-            "Defaults to your station callsign.")
-        ctrl.addWidget(self._rbn_call_edit)
-        ctrl.addWidget(QLabel("Mode:"))
-        self._rbn_mode = QComboBox()
-        self._rbn_mode.addItems(["CW", "RTTY", "FT8", "FT4"])
-        self._rbn_mode.setFixedWidth(60)
-        ctrl.addWidget(self._rbn_mode)
-        ctrl.addStretch()
-        self._rbn_status = QLabel("Expand to start polling")
-        self._rbn_status.setStyleSheet("font-size:9px;")
-        ctrl.addWidget(self._rbn_status)
-        return ctrl
-
-    def _build_rbn_table(self) -> "QTableWidget":
-        self._rbn_table = QTableWidget(0, 5)
-        self._rbn_table.setHorizontalHeaderLabels(
-            ["Spotter", "Freq", "Mode", "SNR (dB)", "Time"])
-        h = self._rbn_table.horizontalHeader()
-        h.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._rbn_table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers)
-        self._rbn_table.setFixedHeight(88)
-        self._rbn_table.setStyleSheet(
-            "QTableWidget{font-family:'Courier New';}"
-            "QHeaderView::section{border:none;}")
-        return self._rbn_table
-
-    def _on_rbn_toggle(self, checked: bool) -> None:
-        from core.guest_op import operating_callsign
-        if checked:
-            call = self._rbn_call_edit.text().strip()
-            if not call:
-                call = operating_callsign(self.cfg) or ""
-                self._rbn_call_edit.setText(call)
-            if call:
-                self._start_rbn(call)
-        else:
-            self._stop_rbn()
-
-    def _start_rbn(self, callsign: str) -> None:
-        from network.dx_cluster import RBNClient
-        from PyQt6.QtCore import QTimer
-        if self._rbn_client:
-            self._rbn_client.stop()
-        self._rbn_client = RBNClient(self.cfg)
-        self._rbn_client.on_spot(
-            lambda s: QTimer.singleShot(0,
-                lambda spot=s: self._on_rbn_spot(spot)))
-        mode = self._rbn_mode.currentText()
-        self._rbn_client.start(callsign, mode)
-        self._rbn_status.setText(f"Polling RBN for {callsign} ({mode}) …")
-
-    def _stop_rbn(self) -> None:
-        if self._rbn_client:
-            self._rbn_client.stop()
-            self._rbn_client = None
-        self._rbn_status.setText("Stopped")
-
-    def _on_rbn_spot(self, spot) -> None:
-        from PyQt6.QtWidgets import QTableWidgetItem
-        from PyQt6.QtCore import Qt
-        # Deduplicate by spotter+freq
-        key = (spot.spotter, spot.freq_hz)
-        self._rbn_spots = [s for s in self._rbn_spots
-                           if (s.spotter, s.freq_hz) != key]
-        self._rbn_spots.insert(0, spot)
-        if len(self._rbn_spots) > 40:
-            self._rbn_spots = self._rbn_spots[:40]
-        self._rbn_table.setRowCount(0)
-        for s in self._rbn_spots:
-            row = self._rbn_table.rowCount()
-            self._rbn_table.insertRow(row)
-            snr_str = f"+{s.snr}" if s.snr and s.snr >= 0 else str(s.snr or "—")
-            for col, val in enumerate([
-                    s.spotter, f"{s.freq_hz/1000:.1f}",
-                    s.mode, snr_str, s.time_utc]):
-                item = QTableWidgetItem(val)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._rbn_table.setItem(row, col, item)
-        n = len(self._rbn_spots)
-        best = max((s.snr for s in self._rbn_spots if s.snr), default=None)
-        best_str = f", best SNR +{best} dB" if best is not None else ""
-        self._rbn_status.setText(
-            f"Heard by {n} skimmer{'s' if n != 1 else ''}{best_str}")
 
     def _start_sota_pota(self):
         """Start fetching SOTA/POTA spots."""

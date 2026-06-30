@@ -210,5 +210,6 @@ class TestMapSatPopup:
         assert "AOS" in src and "LOS" in src
 
     def test_sstv_image_viewer_in_modes(self):
-        src = (ROOT / "ui/tabs/modes_tab.py").read_text(encoding="utf-8")
+        # SSTV viewer was extracted to modes_sstv_mixin.py (HOUSE-CS split).
+        src = (ROOT / "ui/tabs/modes_sstv_mixin.py").read_text(encoding="utf-8")
         assert "def _build_sstv_image_panel(" in src

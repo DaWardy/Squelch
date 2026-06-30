@@ -182,6 +182,53 @@ class TestLayerControls:
         assert "lyrHeard" in html
 
 
+class TestLayerVisibilityPersistence:
+    """Leaflet layer control is canonical; visibility persists via the bridge."""
+
+    def test_default_layer_visible_var_present(self):
+        html = _html()
+        assert "LAYER_VISIBLE" in html
+        # Repeaters default off; conditional add is used (not unconditional)
+        assert "if (_vis('qsopaths'))" in html
+
+    def test_visible_layers_param_flows_into_js(self):
+        html = _html(visible_layers={"aircraft": False, "repeaters": True})
+        import json
+        # The JSON object embedded in LAYER_VISIBLE reflects the overrides
+        assert '"aircraft": false' in html or '"aircraft":false' in html
+        assert '"repeaters": true' in html or '"repeaters":true' in html
+
+    def test_unknown_layer_keys_ignored(self):
+        # Bogus keys must not leak into the embedded LAYER_VISIBLE object
+        html = _html(visible_layers={"totally_bogus_key": True})
+        assert "totally_bogus_key" not in html
+
+    def test_overlay_toggle_persistence_handlers(self):
+        html = _html()
+        assert "overlayadd" in html
+        assert "overlayremove" in html
+        assert "squelch://layer-toggle?name=" in html
+        assert "NAME2KEY" in html
+
+    def test_defaults_have_repeaters_off(self):
+        from network.map_data import DEFAULT_LAYER_VISIBLE
+        assert DEFAULT_LAYER_VISIBLE["repeaters"] is False
+        assert DEFAULT_LAYER_VISIBLE["qsopaths"] is True
+
+
+class TestRulerTool:
+    def test_ruler_control_present(self):
+        html = _html()
+        assert "RulerControl" in html
+        assert "rulerBearing" in html
+        # Reports both km and miles plus a bearing
+        assert "km" in html and "mi" in html and "Bearing" in html
+
+    def test_ruler_uses_great_circle_distance(self):
+        html = _html()
+        assert "map.distance(" in html
+
+
 # ── Worked grids ──────────────────────────────────────────────────────────────
 
 class TestWorkedGridsData:

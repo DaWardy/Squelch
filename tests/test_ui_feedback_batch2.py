@@ -94,9 +94,11 @@ class TestRigTuneArrows:
 
 
 class TestMapStatePersistence:
-    """#9 — the Map tab never persisted its layer/filter choices, so toggling
-    off clutter (ADS-B/APRS) was forgotten every restart. It now implements the
-    SquelchPanel save_state/restore_state lifecycle.
+    """#9 — the Map tab persists its layer/filter choices across restart.
+
+    Layer visibility now lives in the in-map Leaflet control and is mirrored in
+    `_layer_visible` (persisted as a dict); the APRS-labels rendering toggle and
+    the QSO/band filter combos persist alongside it.
     """
 
     def test_methods_defined(self):
@@ -109,44 +111,59 @@ class TestMapStatePersistence:
         # Drive save_state/restore_state against a holder carrying real Qt
         # widgets — avoids constructing MapTab (which needs QtWebEngine).
         from ui.tabs.map_tab import MapTab
+        from network.map_data import DEFAULT_LAYER_VISIBLE
 
         class _Holder:
             _STATE_CHECKS = MapTab._STATE_CHECKS
             _STATE_COMBOS = MapTab._STATE_COMBOS
 
         src = _Holder()
-        src._show_gl = QCheckBox(); src._show_gl.setChecked(True)
-        src._show_adsb = QCheckBox(); src._show_adsb.setChecked(True)
+        src._layer_visible = dict(DEFAULT_LAYER_VISIBLE)
+        src._show_aprs_labels = QCheckBox(); src._show_aprs_labels.setChecked(False)
         src._qso_filter = QComboBox(); src._qso_filter.addItems(["All", "Last 50"])
         src._qso_filter.setCurrentText("All")
 
-        # User turns ADS-B off and narrows the QSO filter, then we persist.
-        src._show_adsb.setChecked(False)
+        # User turns ADS-B (aircraft layer) off and narrows the QSO filter.
+        src._layer_visible["aircraft"] = False
+        src._show_aprs_labels.setChecked(True)
         src._qso_filter.setCurrentText("Last 50")
         state = MapTab.save_state(src)
-        assert state["_show_adsb"] is False
+        assert state["_layer_visible"]["aircraft"] is False
+        assert state["_show_aprs_labels"] is True
         assert state["_qso_filter"] == "Last 50"
 
-        # Fresh widgets (defaults) → restore should reapply the saved view.
+        # Fresh holder (defaults) → restore should reapply the saved view.
         dst = _Holder()
-        dst._show_gl = QCheckBox(); dst._show_gl.setChecked(True)
-        dst._show_adsb = QCheckBox(); dst._show_adsb.setChecked(True)
+        dst._layer_visible = dict(DEFAULT_LAYER_VISIBLE)
+        dst._show_aprs_labels = QCheckBox(); dst._show_aprs_labels.setChecked(False)
         dst._qso_filter = QComboBox(); dst._qso_filter.addItems(["All", "Last 50"])
         MapTab.restore_state(dst, state)
-        assert dst._show_adsb.isChecked() is False
+        assert dst._layer_visible["aircraft"] is False
+        assert dst._show_aprs_labels.isChecked() is True
         assert dst._qso_filter.currentText() == "Last 50"
 
     @pytest.mark.skipif(not HAS_QT, reason="PyQt6 not installed")
     def test_restore_tolerates_missing_widgets(self):
         # Fallback toolbar has fewer widgets — restore must not raise.
         from ui.tabs.map_tab import MapTab
+        from network.map_data import DEFAULT_LAYER_VISIBLE
 
         class _Holder:
             _STATE_CHECKS = MapTab._STATE_CHECKS
             _STATE_COMBOS = MapTab._STATE_COMBOS
 
         dst = _Holder()
+        dst._layer_visible = dict(DEFAULT_LAYER_VISIBLE)
         dst._show_gl = QCheckBox()
-        MapTab.restore_state(dst, {"_show_gl": False, "_show_adsb": True,
-                                   "_qso_filter": "Last 50"})
+        MapTab.restore_state(dst, {"_show_gl": False, "_qso_filter": "Last 50",
+                                   "_layer_visible": {"repeaters": True}})
         assert dst._show_gl.isChecked() is False
+        assert dst._layer_visible["repeaters"] is True
+
+    def test_redundant_layer_checkboxes_removed(self):
+        # The old per-layer Qt checkboxes are gone from the WebEngine toolbar;
+        # only the APRS-labels rendering toggle remains.
+        src = _src("ui/tabs/map_tab.py")
+        assert "_toolbar_add_aprs_label_toggle" in src
+        assert "_toolbar_add_layer_toggles" not in src
+        assert "def _on_layer_toggled(self" in src

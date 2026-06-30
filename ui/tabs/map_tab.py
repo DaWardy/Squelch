@@ -51,9 +51,12 @@ class _MapPage(QWebEnginePage):
     When the user clicks "Analyze propagation" in the Leaflet right-click
     popup, the popup's href navigates to squelch://path-analysis?lat=X&lon=Y.
     This page class catches that URL, emits path_analysis_requested, and
-    cancels the navigation so the map stays in place.
+    cancels the navigation so the map stays in place. It also intercepts
+    squelch://layer-toggle?name=X&on=1|0 fired by the Leaflet layer control so
+    layer-visibility choices persist across rebuilds and sessions.
     """
     path_analysis_requested = pyqtSignal(float, float)
+    layer_toggled = pyqtSignal(str, bool)          # layer key, visible
 
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
         if url.scheme() == "squelch" and url.host() == "path-analysis":
@@ -65,6 +68,16 @@ class _MapPage(QWebEnginePage):
                 self.path_analysis_requested.emit(lat, lon)
             except Exception:
                 pass
+            return False   # cancel navigation — map stays visible
+        if url.scheme() == "squelch" and url.host() == "layer-toggle":
+            try:
+                from urllib.parse import parse_qs
+                params = parse_qs(url.query())
+                name = params["name"][0]
+                on   = params.get("on", ["1"])[0] == "1"
+                self.layer_toggled.emit(name, on)
+            except Exception as e:
+                log.debug(f"layer-toggle parse: {e}")
             return False   # cancel navigation — map stays visible
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
@@ -137,6 +150,11 @@ class MapTab(SquelchPanel, QWidget):
         self._winlink_gateways = []
         self._wspr_spots:  list = []
         self._dx_spots:    list = []
+        # Layer visibility is owned by the in-map Leaflet control; this dict
+        # mirrors it so choices persist across rebuilds/sessions and gates the
+        # expensive ADS-B fetch. Updated via the _MapPage layer-toggle bridge.
+        from network.map_data import DEFAULT_LAYER_VISIBLE
+        self._layer_visible: dict = dict(DEFAULT_LAYER_VISIBLE)
         self._build()
         # Debounce timer for callsign search field
         self._cs_timer = QTimer(self)
@@ -148,17 +166,18 @@ class MapTab(SquelchPanel, QWidget):
         self._start_psk_timer()
 
     # ── State persistence ─────────────────────────────────────
-    # Layer toggles + QSO/band filters survive restart so the user's chosen
-    # map view (e.g. ADS-B and APRS turned off to cut clutter) is remembered.
-    # hasattr-guarded so the Qt fallback toolbar (fewer widgets) is safe.
+    # Layer visibility (_layer_visible, driven by the Leaflet layer control) +
+    # the APRS-labels rendering toggle + QSO/band filters survive restart so the
+    # user's chosen map view (e.g. ADS-B and APRS turned off to cut clutter) is
+    # remembered. hasattr-guarded so the Qt fallback toolbar (which keeps a few
+    # of its own checkboxes and no Leaflet control) is safe.
     _STATE_CHECKS = (
-        "_show_gl", "_show_qso", "_show_rep", "_show_adsb",
-        "_show_aprs", "_show_aprs_labels", "_show_wl_gw",
+        "_show_gl", "_show_qso", "_show_aprs", "_show_aprs_labels",
     )
     _STATE_COMBOS = ("_qso_filter", "_band_combo")
 
     def save_state(self) -> dict:
-        st: dict = {}
+        st: dict = {"_layer_visible": dict(self._layer_visible)}
         for name in self._STATE_CHECKS:
             cb = getattr(self, name, None)
             if cb is not None:
@@ -172,6 +191,11 @@ class MapTab(SquelchPanel, QWidget):
     def restore_state(self, state: dict) -> None:
         if not isinstance(state, dict):
             return
+        lv = state.get("_layer_visible")
+        if isinstance(lv, dict):
+            for k, v in lv.items():
+                if k in self._layer_visible:
+                    self._layer_visible[k] = bool(v)
         for name in self._STATE_CHECKS:
             cb = getattr(self, name, None)
             if cb is not None and name in state:
@@ -208,6 +232,7 @@ class MapTab(SquelchPanel, QWidget):
         self._map_page = _MapPage(self._view)
         self._map_page.path_analysis_requested.connect(
             self.path_analysis_requested)
+        self._map_page.layer_toggled.connect(self._on_layer_toggled)
         self._view.setPage(self._map_page)
         self._view.settings().setAttribute(
             QWebEngineSettings.WebAttribute
@@ -251,7 +276,7 @@ class MapTab(SquelchPanel, QWidget):
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(8, 4, 8, 4)
         lay.setSpacing(8)
-        self._toolbar_add_layer_toggles(lay)
+        self._toolbar_add_aprs_label_toggle(lay)
         lay.addWidget(_vsep(_t.border))
         lay.addWidget(QLabel("QSOs:"))
         self._qso_filter = QComboBox()
@@ -313,54 +338,23 @@ class MapTab(SquelchPanel, QWidget):
         lay.addWidget(center_btn)
         return bar
 
-    def _toolbar_add_layer_toggles(self, lay) -> None:
-        self._show_gl = QCheckBox("Gray line")
-        self._show_gl.setChecked(True)
-        self._show_gl.setToolTip(
-            "Show day/night terminator on map\n"
-            "The gray line is the best time for DX\n"
-            "Updates every 60 seconds")
-        self._show_gl.toggled.connect(lambda _: self._refresh_map())
-        lay.addWidget(self._show_gl)
-        self._show_qso = QCheckBox("QSO paths")
-        self._show_qso.setChecked(True)
-        self._show_qso.setToolTip(
-            "Draw great circle paths to logged QSOs\n"
-            "Color-coded by mode (FT8=blue, CW=orange, SSB=green)")
-        self._show_qso.toggled.connect(lambda _: self._refresh_map())
-        lay.addWidget(self._show_qso)
-        self._show_rep = QCheckBox("Repeaters")
-        self._show_rep.setChecked(False)
-        self._show_rep.toggled.connect(lambda _: self._refresh_map())
-        lay.addWidget(self._show_rep)
-        self._show_adsb = QCheckBox("ADS-B")
-        self._show_adsb.setChecked(True)
-        self._show_adsb.setToolTip(
-            "Show aircraft from dump1090-fa\n"
-            "Requires dump1090-fa running locally")
-        self._show_adsb.toggled.connect(lambda _: self._refresh_map())
-        lay.addWidget(self._show_adsb)
-        self._show_aprs = QCheckBox("APRS")
-        self._show_aprs.setChecked(True)
-        self._show_aprs.setToolTip(
-            "Show APRS stations from APRS-IS\n"
-            "Connect in Local RF tab first")
-        self._show_aprs.toggled.connect(lambda _: self._refresh_map())
-        lay.addWidget(self._show_aprs)
-        self._show_aprs_labels = QCheckBox("Labels")
+    def _toolbar_add_aprs_label_toggle(self, lay) -> None:
+        """Add the APRS callsign-label toggle.
+
+        Layer visibility (gray line, QSO paths, repeaters, ADS-B, APRS, Winlink)
+        is now handled solely by the in-map Leaflet layer control (top-right),
+        so the old redundant Qt layer checkboxes were removed. APRS Labels stays
+        here because it is a marker-rendering option, not a layer — it has no
+        Leaflet-control equivalent.
+        """
+        self._show_aprs_labels = QCheckBox("APRS labels")
         self._show_aprs_labels.setChecked(False)
         self._show_aprs_labels.setToolTip(
             "Show callsign labels on APRS station markers.\n"
-            "May clutter the map when many stations are visible.")
+            "May clutter the map when many stations are visible.\n"
+            "Toggle map layers in the layer control (top-right of map).")
         self._show_aprs_labels.toggled.connect(lambda _: self._refresh_map())
         lay.addWidget(self._show_aprs_labels)
-        self._show_wl_gw = QCheckBox("Winlink GW")
-        self._show_wl_gw.setChecked(True)
-        self._show_wl_gw.setToolTip(
-            "Show Winlink RMS gateway pins\n"
-            "Fetch via Winlink tab → Gateways → Refresh")
-        self._show_wl_gw.toggled.connect(lambda _: self._refresh_map())
-        lay.addWidget(self._show_wl_gw)
 
     def _build_fallback_toolbar(self) -> "QFrame":
         """Controls bar for the Qt fallback map."""
@@ -427,33 +421,32 @@ class MapTab(SquelchPanel, QWidget):
         try:
             from network.map_data import build_map_html
 
-            reps = self._repeaters \
-                   if self._show_rep.isChecked() else []
-            wl_gws = (self._winlink_gateways
-                      if getattr(self, "_show_wl_gw", None)
-                         and self._show_wl_gw.isChecked()
-                      else [])
+            # All data is always passed; the Leaflet layer control governs what
+            # is shown. Only the ADS-B fetch is gated by visibility because it
+            # blocks the UI on a localhost dump1090 request each refresh.
             heard = self._filtered_heard()
-            aprs  = self._filtered_aprs() if self._show_aprs.isChecked() else []
+            aprs  = self._filtered_aprs()
+            show_adsb = bool(self._layer_visible.get("aircraft", True))
             html = build_map_html(
                 config              = self.cfg,
                 log_db              = self.log_db,
-                repeaters           = reps,
+                repeaters           = self._repeaters,
                 aprs_stations       = aprs,
-                show_grayline       = self._show_gl.isChecked(),
-                show_qso_paths      = self._show_qso.isChecked(),
-                show_adsb           = self._show_adsb.isChecked(),
-                show_aprs           = self._show_aprs.isChecked(),
+                show_grayline       = True,
+                show_qso_paths      = True,
+                show_adsb           = show_adsb,
+                show_aprs           = True,
                 center_on_station   = True,
                 heard_stations      = heard,
                 hearing_me          = getattr(self, "_hearing_me", {}),
-                winlink_gateways    = wl_gws,
+                winlink_gateways    = self._winlink_gateways,
                 satellites          = list(self._satellites),
                 show_aprs_labels    = getattr(self, "_show_aprs_labels",
                                               type("o", (), {"isChecked": lambda: False})()
                                               ).isChecked(),
                 wspr_spots          = list(self._wspr_spots),
                 dx_spots            = list(self._dx_spots),
+                visible_layers      = dict(self._layer_visible),
             )
             self._view.setHtml(html)
             self._update_layer_stats(heard, aprs)
@@ -506,9 +499,23 @@ class MapTab(SquelchPanel, QWidget):
         psk = len(getattr(self, "_hearing_me", {}))
         if psk:
             parts.append(f"PSK: {psk}")
-        if self._show_rep.isChecked() and self._repeaters:
+        if self._layer_visible.get("repeaters") and self._repeaters:
             parts.append(f"Reps: {len(self._repeaters)}")
         lbl.setText("  ".join(parts))
+
+    def _on_layer_toggled(self, name: str, on: bool) -> None:
+        """Record a Leaflet layer-control toggle so it persists.
+
+        Visibility is applied client-side by Leaflet (no rebuild needed). The
+        one exception is Aircraft: its data is only fetched when visible, so
+        turning it on triggers a refresh to pull live ADS-B.
+        """
+        from network.map_data import DEFAULT_LAYER_VISIBLE
+        if name not in DEFAULT_LAYER_VISIBLE:
+            return
+        self._layer_visible[name] = bool(on)
+        if name == "aircraft" and on:
+            self._refresh_map()
 
     def _update_gl_status(self):
         """Update the gray line status bar text."""
@@ -543,14 +550,14 @@ class MapTab(SquelchPanel, QWidget):
     def set_winlink_gateways(self, gateways: list):
         """Called by Winlink tab after gateway fetch completes."""
         self._winlink_gateways = gateways
-        if getattr(self, "_show_wl_gw", None) and self._show_wl_gw.isChecked():
+        if HAS_WEBENGINE:
             QTimer.singleShot(0, self._refresh_map)
 
     def set_repeaters(self, repeaters: list):
         """Called by Local RF tab when search results arrive."""
         self._repeaters = repeaters
-        if self._show_rep.isChecked():
-            self._refresh_map()
+        if HAS_WEBENGINE:
+            QTimer.singleShot(0, self._refresh_map)
 
     def set_satellite_positions(self, sats: list):
         """Called when satellite positions update."""
@@ -730,7 +737,7 @@ class MapTab(SquelchPanel, QWidget):
     def set_aprs_stations(self, stations: list):
         """Called when APRS packet received — update map."""
         self._aprs_stations = stations
-        if self._show_aprs.isChecked():
+        if HAS_WEBENGINE:
             # Throttle refreshes — don't rebuild map every packet
             if not hasattr(self, '_aprs_refresh_pending'):
                 self._aprs_refresh_pending = False

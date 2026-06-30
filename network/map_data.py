@@ -56,6 +56,45 @@ LEAFLET_CSS = (
 LEAFLET_JS  = (
     "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js")
 
+# Canonical map overlay layers. The in-map Leaflet layer control is the single
+# source of truth for layer visibility (the redundant Qt toolbar checkboxes
+# were removed). This dict gives the default on/off state; MapTab persists the
+# user's choices across sessions and passes the live dict in as visible_layers.
+# Keys are the JS layer keys; values are the default visibility.
+DEFAULT_LAYER_VISIBLE = {
+    "grayline":    True,
+    "mygrid":      True,
+    "workedgrids": True,
+    "qsopaths":    True,
+    "heard":       True,
+    "pskreporter": True,
+    "aprs":        True,
+    "winlink":     True,
+    "repeaters":   False,   # off by default — can clutter when many loaded
+    "aircraft":    True,
+    "satellites":  True,
+    "wspr":        True,
+    "dxspots":     True,
+}
+
+# Maps the Leaflet layer-control display name to its JS key, used by the
+# overlayadd/overlayremove handlers that persist toggles back to Qt.
+_LAYER_NAME_TO_KEY = {
+    "Gray Line":      "grayline",
+    "My Grid":        "mygrid",
+    "Worked Grids":   "workedgrids",
+    "QSO Paths":      "qsopaths",
+    "Heard (decode)": "heard",
+    "PSKReporter":    "pskreporter",
+    "APRS":           "aprs",
+    "Winlink RMS":    "winlink",
+    "Repeaters":      "repeaters",
+    "Aircraft":       "aircraft",
+    "Satellites":     "satellites",
+    "WSPR spots":     "wspr",
+    "DX Spots":       "dxspots",
+}
+
 
 def _station_location(config) -> tuple[str, float, float, str]:
     """Return (grid, lat, lon, callsign) from config, resolving grid→coords if needed."""
@@ -181,8 +220,18 @@ def build_map_html(config,
                    wspr_spots: list | None = None,
                    dx_spots: list | None = None,
                    show_aprs_labels: bool = False,
+                   visible_layers: dict | None = None,
                    ) -> str:
-    """Build self-contained Leaflet map HTML for QWebEngineView."""
+    """Build self-contained Leaflet map HTML for QWebEngineView.
+
+    visible_layers maps JS layer keys to their on/off state; the in-map Leaflet
+    layer control toggles them and persists choices via the squelch:// bridge.
+    Missing keys fall back to DEFAULT_LAYER_VISIBLE.
+    """
+    vis = dict(DEFAULT_LAYER_VISIBLE)
+    if isinstance(visible_layers, dict):
+        vis.update({k: bool(v) for k, v in visible_layers.items()
+                    if k in DEFAULT_LAYER_VISIBLE})
     now_utc = datetime.now(timezone.utc)
 
     grid, my_lat, my_lon, my_call = _station_location(config)
@@ -215,6 +264,7 @@ def build_map_html(config,
         wspr_spots          = wspr_spots or [],
         dx_spots            = _resolve_dx_spot_locs(dx_spots or []),
         show_aprs_labels    = bool(show_aprs_labels),
+        visible_layers      = vis,
     )
 
 
@@ -398,6 +448,10 @@ def _render_html(**ctx) -> str:
   .leaflet-control-layers-separator {{
     border-top-color:#333 !important;
   }}
+  .ruler-btn {{
+    font-size:15px; text-align:center;
+    line-height:26px; text-decoration:none;
+  }}
   .map-legend {{
     background:rgba(10,10,10,0.85);
     border:1px solid #333; border-radius:5px;
@@ -449,6 +503,8 @@ var SATELLITES   = {json.dumps(ctx['satellites'])};
 var WSPR_SPOTS   = {json.dumps(ctx['wspr_spots'])};
 var DX_SPOTS     = {json.dumps(ctx['dx_spots'])};
 var SHOW_APRS_LABELS = {'true' if ctx.get('show_aprs_labels') else 'false'};
+var LAYER_VISIBLE = {json.dumps(ctx['visible_layers'])};
+function _vis(k) {{ return LAYER_VISIBLE[k] !== false; }}
 
 // ── Map init ─────────────────────────────────────────────────
 var map = L.map('map', {{
@@ -469,19 +525,22 @@ var streetTiles = L.tileLayer(
 darkTiles.addTo(map);
 
 // ── Layer groups ─────────────────────────────────────────────
-var lyrGrayline    = L.layerGroup().addTo(map);
-var lyrWorkedGrids = L.layerGroup().addTo(map);
-var lyrMyGrid      = L.layerGroup().addTo(map);
-var lyrQsoPaths    = L.layerGroup().addTo(map);
-var lyrRepeaters   = L.layerGroup().addTo(map);
-var lyrAprs        = L.layerGroup().addTo(map);
-var lyrAircraft    = L.layerGroup().addTo(map);
-var lyrHeard       = L.layerGroup().addTo(map);
-var lyrHearingMe   = L.layerGroup().addTo(map);
-var lyrWinlink     = L.layerGroup().addTo(map);
-var lyrSatellites  = L.layerGroup().addTo(map);
-var lyrWspr        = L.layerGroup().addTo(map);
-var lyrDxSpots     = L.layerGroup().addTo(map);
+// Each group is created, then added to the map only if its persisted
+// visibility (LAYER_VISIBLE) is on. The Leaflet layer control toggles them
+// after load; toggles are persisted back to Qt via the overlay handlers below.
+var lyrGrayline    = L.layerGroup(); if (_vis('grayline'))    lyrGrayline.addTo(map);
+var lyrWorkedGrids = L.layerGroup(); if (_vis('workedgrids')) lyrWorkedGrids.addTo(map);
+var lyrMyGrid      = L.layerGroup(); if (_vis('mygrid'))      lyrMyGrid.addTo(map);
+var lyrQsoPaths    = L.layerGroup(); if (_vis('qsopaths'))    lyrQsoPaths.addTo(map);
+var lyrRepeaters   = L.layerGroup(); if (_vis('repeaters'))   lyrRepeaters.addTo(map);
+var lyrAprs        = L.layerGroup(); if (_vis('aprs'))        lyrAprs.addTo(map);
+var lyrAircraft    = L.layerGroup(); if (_vis('aircraft'))    lyrAircraft.addTo(map);
+var lyrHeard       = L.layerGroup(); if (_vis('heard'))       lyrHeard.addTo(map);
+var lyrHearingMe   = L.layerGroup(); if (_vis('pskreporter')) lyrHearingMe.addTo(map);
+var lyrWinlink     = L.layerGroup(); if (_vis('winlink'))     lyrWinlink.addTo(map);
+var lyrSatellites  = L.layerGroup(); if (_vis('satellites'))  lyrSatellites.addTo(map);
+var lyrWspr        = L.layerGroup(); if (_vis('wspr'))        lyrWspr.addTo(map);
+var lyrDxSpots     = L.layerGroup(); if (_vis('dxspots'))     lyrDxSpots.addTo(map);
 
 // ── Gray line ─────────────────────────────────────────────────
 if (GRAYLINE) {{
@@ -824,6 +883,76 @@ L.control.layers(
   }},
   {{position:'topright', collapsed:true}}
 ).addTo(map);
+
+// ── Persist layer toggles back to Qt ─────────────────────────
+// When the user toggles an overlay in the control, fire a squelch:// URL that
+// _MapPage intercepts (and cancels) so the choice survives the next rebuild
+// and across sessions. Handlers are attached AFTER the initial addTo() calls
+// above so restoring the persisted state does not re-fire them.
+var NAME2KEY = {json.dumps(_LAYER_NAME_TO_KEY)};
+map.on('overlayadd', function(e) {{
+  var k = NAME2KEY[e.name];
+  if (k) {{ window.location.href = 'squelch://layer-toggle?name=' + k + '&on=1'; }}
+}});
+map.on('overlayremove', function(e) {{
+  var k = NAME2KEY[e.name];
+  if (k) {{ window.location.href = 'squelch://layer-toggle?name=' + k + '&on=0'; }}
+}});
+
+// ── Measure / ruler tool ─────────────────────────────────────
+// Click the 📏 button to arm, then click two points for great-circle
+// distance (km / mi) + initial bearing. A third click resets.
+var rulerLayer = L.layerGroup().addTo(map);
+var rulerPts = [];
+var rulerOn = false;
+function rulerClear() {{ rulerLayer.clearLayers(); rulerPts = []; }}
+function rulerBearing(a, b) {{
+  var la1 = a.lat * Math.PI / 180, la2 = b.lat * Math.PI / 180;
+  var dlon = (b.lng - a.lng) * Math.PI / 180;
+  var y = Math.sin(dlon) * Math.cos(la2);
+  var x = Math.cos(la1) * Math.sin(la2)
+        - Math.sin(la1) * Math.cos(la2) * Math.cos(dlon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}}
+var RulerControl = L.Control.extend({{
+  options: {{position: 'topleft'}},
+  onAdd: function() {{
+    var btn = L.DomUtil.create('a', 'leaflet-bar leaflet-control ruler-btn');
+    btn.href = '#';
+    btn.title = 'Measure distance + bearing (click two points)';
+    btn.innerHTML = '📏';
+    L.DomEvent.on(btn, 'click', function(ev) {{
+      L.DomEvent.stop(ev);
+      rulerOn = !rulerOn;
+      btn.style.background = rulerOn ? '#3fbe6f' : '';
+      L.DomUtil.removeClass(map._container, 'leaflet-grab');
+      map._container.style.cursor = rulerOn ? 'crosshair' : '';
+      if (!rulerOn) rulerClear();
+    }});
+    return btn;
+  }}
+}});
+map.addControl(new RulerControl());
+map.on('click', function(e) {{
+  if (!rulerOn) return;
+  if (rulerPts.length >= 2) rulerClear();
+  rulerPts.push(e.latlng);
+  L.circleMarker(e.latlng, {{radius: 4, color: '#3fbe6f',
+    fillColor: '#3fbe6f', fillOpacity: 1, weight: 2}}).addTo(rulerLayer);
+  if (rulerPts.length === 2) {{
+    var a = rulerPts[0], b = rulerPts[1];
+    var km = map.distance(a, b) / 1000;
+    var mi = km * 0.621371;
+    var brg = rulerBearing(a, b);
+    L.polyline([a, b], {{color: '#3fbe6f', weight: 2,
+      dashArray: '5,6', opacity: 0.9}}).addTo(rulerLayer);
+    L.popup({{className: 'qso-popup'}})
+      .setLatLng(b)
+      .setContent('<b>Ruler</b><br>' + km.toFixed(1) + ' km / '
+        + mi.toFixed(1) + ' mi<br>Bearing ' + brg.toFixed(0) + '&deg;')
+      .openOn(map);
+  }}
+}});
 
 // ── Legend control (bottom-right) ────────────────────────────
 var legend = L.control({{position:'bottomright'}});

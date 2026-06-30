@@ -84,7 +84,8 @@ class TestFT8FrequencyMapping:
 class TestScannerSquelch:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        # Scanner code lives in rig_scanner_mixin.py (HOUSE-CS split).
+        return (ROOT / "ui/tabs/rig_scanner_mixin.py").read_text(encoding="utf-8")
 
     def test_scan_squelch_open_method(self):
         assert "def _scan_squelch_open(" in self._src()

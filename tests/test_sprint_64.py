@@ -14,7 +14,8 @@ ROOT = pathlib.Path(__file__).parent.parent
 class TestMemoryScanMode:
 
     def _src(self):
-        return (ROOT / "ui/tabs/rig_tab.py").read_text(encoding="utf-8")
+        # Scanner code lives in rig_scanner_mixin.py (HOUSE-CS split).
+        return (ROOT / "ui/tabs/rig_scanner_mixin.py").read_text(encoding="utf-8")
 
     def test_memory_mode_in_combo(self):
         src = self._src()

@@ -19,7 +19,7 @@ imported lazily inside the methods to avoid an import cycle.
 """
 
 from PyQt6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QButtonGroup,
+    QFrame, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit,
 )
 
 
@@ -84,32 +84,28 @@ class _SDRToolbarMixin:
         lay.addWidget(self._freq_edit)
         self._freq_unit = QComboBox()
         self._freq_unit.addItems(["MHz", "kHz", "Hz"])
-        self._freq_unit.setFixedWidth(55)
+        # AdjustToContents + a minimum so the unit text (e.g. "MHz") is never
+        # clipped to "MI…" by a too-narrow fixed width.
+        self._freq_unit.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._freq_unit.setMinimumWidth(64)
         lay.addWidget(self._freq_unit)
         lay.addWidget(_vsep())
 
     def _toolbar_add_step_group(self, lay) -> None:
-        from ui.tabs.sdr_tab import _vsep, SDR_STEP_SIZES, SDR_STEP_LABELS
-        lay.addWidget(QLabel("Step:"))
-        self._step_btns = []
-        self._step_grp  = QButtonGroup(self)
-        self._step_grp.setExclusive(True)
-        for i, (hz, lbl) in enumerate(zip(SDR_STEP_SIZES, SDR_STEP_LABELS)):
-            btn = QPushButton(lbl)
-            btn.setCheckable(True)
-            btn.setChecked(i == self._step_idx)
-            btn.setFixedHeight(22)
-            btn.setStyleSheet(
-                "QPushButton{border:1px solid #222;border-radius:3px;"
-                "background:#111;padding:0 4px;}"
-                "QPushButton:checked{background:#1a3a1a;color:#3fbe6f;"
-                "border-color:#3fbe6f;}"
-                "QPushButton:hover{background:#1e2e1e;}")
-            btn.clicked.connect(lambda _, idx=i: self._set_step(idx))
-            self._step_btns.append(btn)
-            self._step_grp.addButton(btn)
-            lay.addWidget(btn)
-        lay.addWidget(_vsep())
+        """Tuning-step selector — a compact dropdown (HDSDR-style) rather than
+        a row of nine buttons that ate toolbar width."""
+        from ui.tabs.sdr_tab import SDR_STEP_LABELS
+        lay.addWidget(QLabel(self.tr("Step:")))
+        self._step_combo = QComboBox()
+        self._step_combo.addItems(SDR_STEP_LABELS)
+        self._step_combo.setCurrentIndex(self._step_idx)
+        self._step_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._step_combo.setToolTip(self.tr(
+            "Tuning step for the ◄ ► keys and the mouse wheel"))
+        self._step_combo.currentIndexChanged.connect(self._set_step)
+        lay.addWidget(self._step_combo)
 
     def _toolbar_add_extras(self, lay) -> None:
         """TX indicator (hidden until TX hardware detected) + rig-tune + audio buttons."""

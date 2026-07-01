@@ -61,14 +61,17 @@ class _PanelCard(QFrame):
 
         root.addStretch(1)
 
-        # Navigate button
-        nav_btn = QToolButton()
-        nav_btn.setText("Open tab →")
-        nav_btn.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        nav_btn.setToolTip(f"Switch to the {panel_title} tab")
-        nav_btn.clicked.connect(self.navigate_requested)
-        root.addWidget(nav_btn)
+        # Navigate button — only for whole-tab shortcut cards. À-la-carte
+        # widget cards are self-contained (they show live content bound to the
+        # shared backend), so they don't need an 'Open tab' link.
+        if summary_widget is None:
+            nav_btn = QToolButton()
+            nav_btn.setText("Open tab →")
+            nav_btn.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            nav_btn.setToolTip(f"Switch to the {panel_title} tab")
+            nav_btn.clicked.connect(self.navigate_requested)
+            root.addWidget(nav_btn)
 
         # Reorder row (hidden until unlock mode)
         self._reorder_row = QWidget()
@@ -187,12 +190,15 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         hl.setSpacing(6)
 
         self._add_btn = QToolButton()
-        self._add_btn.setText("＋ Add panel")
+        self._add_btn.setText("＋ Add widget")
+        # InstantPopup: the WHOLE button opens the menu on a single click
+        # (MenuButtonPopup split the button so only the little arrow worked).
         self._add_btn.setPopupMode(
-            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            QToolButton.ToolButtonPopupMode.InstantPopup)
         self._add_btn.setToolTip(
-            "Add a panel shortcut to this tab.\n"
-            "The original panel stays in its own tab — nothing is moved.")
+            "Add a widget to this dashboard — pick à-la-carte from any tab's\n"
+            "widgets, or a whole-tab shortcut. Each opens in a movable,\n"
+            "resizable window; the original tabs are unaffected.")
         hl.addWidget(self._add_btn)
 
         self._unlock_btn = QToolButton()

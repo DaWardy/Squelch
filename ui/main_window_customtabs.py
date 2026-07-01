@@ -68,14 +68,19 @@ class _MainWindowCustomTabsMixin:
             self._save_custom_tabs_state()
 
     def _assign_panel_to_custom_tab(self, tab_id: str, panel_key: str) -> None:
-        """Add a navigation card for panel_key to the custom tab."""
+        """Add an à-la-carte widget (or whole-tab shortcut) to the custom tab."""
         from ui.main_window import TABS
+        from ui.tabs.custom_summaries import widget_title
         ct = self._custom_tabs.get(tab_id)
         if ct is None:
             return
-        label = next((lbl for k, lbl, _ in TABS if k == panel_key), panel_key)
-        panel_title = label.split("  ", 1)[-1] if "  " in label else label
-        ct.assign_panel(panel_key, panel_title)
+        # Prefer the catalog's 'Category: Label' title for widget keys; fall
+        # back to the tab label for whole-tab shortcut keys.
+        title = widget_title(panel_key)
+        if title is None:
+            label = next((lbl for k, lbl, _ in TABS if k == panel_key), panel_key)
+            title = label.split("  ", 1)[-1] if "  " in label else label
+        ct.assign_panel(panel_key, title)
         self._save_custom_tabs_state()
 
     def _unassign_panel_from_custom_tab(self, tab_id: str,
@@ -96,19 +101,31 @@ class _MainWindowCustomTabsMixin:
     def _make_add_panel_menu(self, ct) -> "QMenu":
         from PyQt6.QtWidgets import QMenu
         from ui.main_window import TABS
+        from ui.tabs.custom_summaries import catalog_by_category
         menu = QMenu(self)
+
+        def _add(target_menu, key, label, assigned):
+            if key in assigned:
+                return
+            a = target_menu.addAction(label)
+            a.triggered.connect(
+                lambda _, k=key: self._assign_panel_to_custom_tab(
+                    ct.panel_id, k))
 
         def _rebuild():
             menu.clear()
             assigned = set(ct.assigned_keys)
+            # À-la-carte widgets, grouped by the tab they come from.
+            for category, widgets in catalog_by_category().items():
+                sub = menu.addMenu(category)
+                for key, label in widgets:
+                    _add(sub, key, label, assigned)
+            menu.addSeparator()
+            # Whole-tab shortcuts (jump to a tab) as before.
+            open_sub = menu.addMenu(self.tr("Open a tab →"))
             for key, label, _ in TABS:
-                if key in assigned:
-                    continue  # already in this tab
                 clean = label.split("  ", 1)[-1] if "  " in label else label
-                a = menu.addAction(clean)
-                a.triggered.connect(
-                    lambda _, k=key: self._assign_panel_to_custom_tab(
-                        ct.panel_id, k))
+                _add(open_sub, key, clean, assigned)
 
         menu.aboutToShow.connect(_rebuild)
         return menu
@@ -136,8 +153,12 @@ class _MainWindowCustomTabsMixin:
             self._custom_tabs[tab_id] = ct
             ct.set_add_menu(self._make_add_panel_menu(ct))
             self.tabs.addTab(ct, title)
-            # Restore assigned panels (assign_panel creates the cards)
+            # Restore assigned widgets/shortcuts (assign_panel creates the cards)
+            from ui.tabs.custom_summaries import widget_title
             for key in entry.get("assigned", []):
-                label = next((lbl for k, lbl, _ in TABS if k == key), key)
-                panel_title = label.split("  ", 1)[-1] if "  " in label else label
+                panel_title = widget_title(key)
+                if panel_title is None:
+                    label = next((lbl for k, lbl, _ in TABS if k == key), key)
+                    panel_title = (label.split("  ", 1)[-1]
+                                   if "  " in label else label)
                 ct.assign_panel(key, panel_title)

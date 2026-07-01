@@ -79,7 +79,11 @@ class TestContestScore:
 class TestContestScorePanel:
 
     def _src(self):
-        return (ROOT / "ui/tabs/log_tab.py").read_text(encoding="utf-8")
+        # Contest-score panel was extracted to _LogPanelsMixin (HOUSE-CS split);
+        # _build / _update_stats callers remain in log_tab.py (listed first).
+        parts = ["ui/tabs/log_tab.py", "ui/tabs/log_panels_mixin.py"]
+        return "\n".join(
+            (ROOT / p).read_text(encoding="utf-8") for p in parts)
 
     def test_build_contest_score_panel_defined(self):
         assert "def _build_contest_score_panel(" in self._src()

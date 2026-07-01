@@ -161,7 +161,10 @@ class TestPassCountdownPanel:
 class TestSessionNotesPanel:
 
     def _src(self):
-        return (ROOT / "ui/tabs/log_tab.py").read_text(encoding="utf-8")
+        # Session-notes panel was extracted to _LogPanelsMixin (HOUSE-CS split).
+        parts = ["ui/tabs/log_tab.py", "ui/tabs/log_panels_mixin.py"]
+        return "\n".join(
+            (ROOT / p).read_text(encoding="utf-8") for p in parts)
 
     def test_build_session_notes_defined(self):
         assert "def _build_session_notes_panel(" in self._src()

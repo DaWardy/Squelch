@@ -13,6 +13,12 @@ def _src(rel: str) -> str:
     return (pathlib.Path(__file__).parent.parent / rel).read_text(encoding="utf-8")
 
 
+def _src_mw() -> str:
+    """main_window.py + its menu mixin — the menu bar (View menu, tab presets,
+    lock action, save-layout) was extracted to main_window_menu.py (HOUSE-CS)."""
+    return _src("ui/main_window.py") + "\n" + _src("ui/main_window_menu.py")
+
+
 # ── Tab presets — workspace mode removed; presets now native to tab UI ────────
 
 class TestTabPresets:
@@ -25,11 +31,11 @@ class TestTabPresets:
         assert "HF Ops" in src
 
     def test_apply_tab_preset_method_exists(self):
-        src = _src("ui/main_window.py")
+        src = _src_mw()
         assert "def _apply_tab_preset(" in src
 
     def test_save_tab_layout_method_exists(self):
-        src = _src("ui/main_window.py")
+        src = _src_mw()
         assert "def _save_tab_layout(" in src
 
     def test_no_workspace_mode_entry_point(self):
@@ -46,11 +52,11 @@ class TestTabPresets:
 
 class TestLockActionLabel:
     def test_lock_tooltip_mentions_tab_order(self):
-        src = _src("ui/main_window.py")
+        src = _src_mw()
         assert "tab bar order" in src.lower() or "tab order" in src.lower()
 
     def test_lock_tooltip_clarifies_not_section_order(self):
-        src = _src("ui/main_window.py")
+        src = _src_mw()
         assert "NOT affect section order" in src or "not affect section" in src.lower()
 
     def test_context_menu_uses_tab_order_label(self):

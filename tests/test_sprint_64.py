@@ -124,7 +124,10 @@ class TestGridCalcDialog:
         assert "_compass_point" in self._src()
 
     def test_show_grid_calc_in_main_window(self):
-        src = (ROOT / "ui/main_window.py").read_text(encoding="utf-8")
+        # Help-menu label "Grid Square Calculator…" was extracted to
+        # main_window_menu.py (HOUSE-CS); the _show_grid_calc handler stays.
+        src = ((ROOT / "ui/main_window.py").read_text(encoding="utf-8") + "\n"
+               + (ROOT / "ui/main_window_menu.py").read_text(encoding="utf-8"))
         assert "_show_grid_calc" in src
         assert "Grid Square Calculator" in src
 

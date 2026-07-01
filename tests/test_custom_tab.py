@@ -18,6 +18,12 @@ def _src(rel: str) -> str:
     return (pathlib.Path(__file__).parent.parent / rel).read_text(encoding="utf-8")
 
 
+def _src_ct() -> str:
+    """main_window.py + its custom-tabs mixin — the add/remove/rename/assign/
+    navigate methods were extracted to main_window_customtabs.py (HOUSE-CS)."""
+    return _src("ui/main_window.py") + "\n" + _src("ui/main_window_customtabs.py")
+
+
 # ── custom_tab.py source checks ───────────────────────────────────────────
 
 class TestCustomTabSource:
@@ -97,19 +103,19 @@ class TestCustomTabSource:
 
 class TestMainWindowCustomTabWiring:
     def test_add_custom_tab_method(self):
-        src = _src("ui/main_window.py")
+        src = _src_ct()
         assert "def _add_custom_tab(" in src
 
     def test_remove_custom_tab_method(self):
-        src = _src("ui/main_window.py")
+        src = _src_ct()
         assert "def _remove_custom_tab(" in src
 
     def test_assign_panel_method(self):
-        src = _src("ui/main_window.py")
+        src = _src_ct()
         assert "def _assign_panel_to_custom_tab(" in src
 
     def test_unassign_panel_method(self):
-        src = _src("ui/main_window.py")
+        src = _src_ct()
         assert "def _unassign_panel_from_custom_tab(" in src
 
     def test_no_borrowed_panels_infrastructure(self):
@@ -122,11 +128,11 @@ class TestMainWindowCustomTabWiring:
             "_do_release_panel must be removed (no reparenting)"
 
     def test_navigate_to_panel_wired(self):
-        src = _src("ui/main_window.py")
+        src = _src_ct()
         assert "def _navigate_to_panel(" in src
 
     def test_panel_navigate_signal_connected(self):
-        src = _src("ui/main_window.py")
+        src = _src_ct()
         assert "panel_navigate_requested.connect" in src
 
     def test_on_tab_switched_handler(self):

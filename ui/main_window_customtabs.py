@@ -162,3 +162,6 @@ class _MainWindowCustomTabsMixin:
                     panel_title = (label.split("  ", 1)[-1]
                                    if "  " in label else label)
                 ct.assign_panel(key, panel_title)
+            # Re-apply the windows-locked state after the widgets are back.
+            if entry.get("locked"):
+                ct.apply_locked(True)

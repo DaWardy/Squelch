@@ -119,10 +119,49 @@ class _PanelSubWindow(QMdiSubWindow):
 
     closed = pyqtSignal(str)   # panel_key
 
+    _GRID = 12   # px snap grid
+
     def __init__(self, panel_key: str, parent: QWidget | None = None):
         super().__init__(parent)
         self._key = panel_key
+        self._locked = False
+        self._lock_pos = None
+        self._snap = True
+        self._busy = False   # re-entrancy guard for programmatic move()
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
+    def set_locked(self, locked: bool) -> None:
+        """Freeze (or free) this window's size and position."""
+        self._locked = bool(locked)
+        if self._locked:
+            self._lock_pos = self.pos()
+            self.setFixedSize(self.size())          # no resize
+        else:
+            self.setMinimumSize(80, 60)
+            self.setMaximumSize(16777215, 16777215)  # resize freely again
+
+    def set_snap(self, on: bool) -> None:
+        self._snap = bool(on)
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        if self._busy:
+            return
+        if self._locked and self._lock_pos is not None:
+            # Locked: bounce back to the fixed position on any drag attempt.
+            if self.pos() != self._lock_pos:
+                self._busy = True
+                self.move(self._lock_pos)
+                self._busy = False
+            return
+        if self._snap:
+            p = self.pos()
+            nx = round(p.x() / self._GRID) * self._GRID
+            ny = round(p.y() / self._GRID) * self._GRID
+            if nx != p.x() or ny != p.y():
+                self._busy = True
+                self.move(nx, ny)
+                self._busy = False
 
     def closeEvent(self, event) -> None:
         self.closed.emit(self._key)
@@ -153,6 +192,7 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         self._cards: dict[str, _PanelCard] = {}
         self._subwins: dict[str, _PanelSubWindow] = {}
         self._unlocked   = False
+        self._locked     = False   # windows lock (freeze move/resize)
         self._build()
 
     # ── Build ──────────────────────────────────────────────────────────────
@@ -202,11 +242,12 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         hl.addWidget(self._add_btn)
 
         self._unlock_btn = QToolButton()
-        self._unlock_btn.setText("✏️ Edit Layout")
+        self._unlock_btn.setText("🔒 Lock windows")
         self._unlock_btn.setCheckable(True)
         self._unlock_btn.setToolTip(
-            "Edit this custom tab — reorder cards with ◀ ▶, remove with ✕.\n"
-            "Click again (✔ Done) when finished.")
+            "Lock the widget windows in place — freezes their size and\n"
+            "position so you can't nudge them by accident. Click again to\n"
+            "unlock and rearrange. (Windows snap to a grid while unlocked.)")
         self._unlock_btn.toggled.connect(self._on_unlock_toggled)
         hl.addWidget(self._unlock_btn)
 
@@ -245,6 +286,7 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         self._mdi.addSubWindow(sub)
         sub.resize(240, 260)
         sub.show()
+        sub.set_locked(self._locked)   # inherit the tab's current lock state
         self._subwins[panel_key] = sub
         self._refresh_visibility()
         self._refresh_reorder_buttons()
@@ -313,11 +355,17 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         self._placeholder.setVisible(not has_cards)
         self._mdi.setVisible(has_cards)
 
-    def _on_unlock_toggled(self, unlocked: bool) -> None:
-        self._unlocked = unlocked
-        self._unlock_btn.setText("✔ Done" if unlocked else "✏️ Edit Layout")
-        for card in self._cards.values():
-            card.set_unlock_mode(unlocked)
+    def _on_unlock_toggled(self, locked: bool) -> None:
+        """Lock / unlock every widget window (freeze move + resize)."""
+        self._locked = locked
+        self._unlock_btn.setText(
+            "🔓 Unlock windows" if locked else "🔒 Lock windows")
+        for sub in self._subwins.values():
+            sub.set_locked(locked)
+
+    def apply_locked(self, locked: bool) -> None:
+        """Restore the locked state (called after panels are re-added)."""
+        self._unlock_btn.setChecked(bool(locked))
 
     # ── SquelchPanel lifecycle ─────────────────────────────────────────────
 
@@ -325,6 +373,7 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         return {
             "title":    self.panel_title,
             "assigned": list(self._assigned_keys),
+            "locked":   self._locked,
         }
 
     def restore_state(self, state: dict) -> None:

@@ -30,11 +30,13 @@ class _PanelCard(QFrame):
     move_right         = pyqtSignal(str)    # panel_key
 
     def __init__(self, panel_key: str, panel_title: str,
-                 parent: QWidget | None = None):
+                 parent: QWidget | None = None,
+                 summary_widget: QWidget | None = None):
         super().__init__(parent)
         self._key = panel_key
         self.setObjectName("CustomTabPanelCard")
-        self.setFixedWidth(160)
+        # A card with a live summary needs more room than a bare link card.
+        self.setFixedWidth(220 if summary_widget is not None else 160)
         self.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -49,6 +51,12 @@ class _PanelCard(QFrame):
         self._title_lbl.setStyleSheet("font-weight:bold;font-size:12px;")
         self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self._title_lbl)
+
+        # Live summary bound to the shared backend (if this panel has one).
+        # It reflects/drives the same singleton the full panel uses.
+        if summary_widget is not None:
+            summary_widget.setParent(self)
+            root.addWidget(summary_widget)
 
         root.addStretch(1)
 
@@ -194,7 +202,11 @@ class CustomLayoutTab(SquelchPanel, QWidget):
         if not panel_title:
             panel_title = panel_key
         self._assigned_keys.append(panel_key)
-        card = _PanelCard(panel_key, panel_title, self)
+        # A live summary bound to the shared backend, when this panel provides
+        # one; otherwise the card is a plain 'Open tab →' navigation link.
+        from ui.tabs.custom_summaries import make_summary
+        summary = make_summary(panel_key, self._cfg)
+        card = _PanelCard(panel_key, panel_title, self, summary_widget=summary)
         card.navigate_requested.connect(
             lambda: self.panel_navigate_requested.emit(panel_key))
         card.remove_requested.connect(self._on_card_remove)

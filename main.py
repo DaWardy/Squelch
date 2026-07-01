@@ -63,7 +63,14 @@ def setup_logging(debug: bool = False, log_dir: "Path | None" = None):
     logging.basicConfig(
         level=level, format=fmt, handlers=handlers, force=True)
 
-    logging.getLogger().info(f"Diagnostic log: {log_path}")
+    # Startup banner — makes the console window obviously identify itself as
+    # Squelch's, rather than looking like a blank/silent cmd window. Live
+    # activity from every subsystem scrolls below it.
+    root = logging.getLogger()
+    root.info("=" * 60)
+    root.info("Squelch console — live activity + logs appear below")
+    root.info("Diagnostic log file: %s", log_path)
+    root.info("=" * 60)
     return log_path
 
 

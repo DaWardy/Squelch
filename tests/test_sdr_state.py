@@ -376,8 +376,12 @@ class TestSquelchSourceKeys:
         assert "squelch_enabled" in text and "squelch_db" in text
 
     def test_squelch_slider_range(self):
+        # Squelch slider is built in _SDRControlsMixin (sdr_controls.py) since
+        # the demod control-group was extracted (HOUSE-CS split).
         src = __import__("pathlib").Path(__file__).parent.parent
-        text = (src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+        text = ((src / "ui" / "tabs" / "sdr_tab.py").read_text(encoding="utf-8")
+                + "\n"
+                + (src / "ui" / "tabs" / "sdr_controls.py").read_text(encoding="utf-8"))
         assert "setRange(-120, 0)" in text
 
     def test_squelch_line_in_spec_plot(self):

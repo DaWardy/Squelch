@@ -12,7 +12,10 @@ ROOT = pathlib.Path(__file__).parent.parent
 
 
 def _sdr_src() -> str:
-    return (ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8")
+    # Demod control-group builder was extracted to sdr_controls.py (HOUSE-CS);
+    # sdr_tab.py first so host-side handler/plot body-scans still resolve.
+    return ((ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8") + "\n"
+            + (ROOT / "ui/tabs/sdr_controls.py").read_text(encoding="utf-8"))
 
 
 def _rig_src() -> str:

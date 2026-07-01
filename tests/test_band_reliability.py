@@ -118,7 +118,10 @@ class TestScannerSquelchAdvance:
         return (ROOT / "ui/tabs/sdr_scanner.py").read_text(encoding="utf-8")
 
     def _sdr_src(self):
-        return (ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8")
+        # Scanner group builder (incl. _scan_squelch_cb) was extracted to
+        # sdr_bottom_bar.py (HOUSE-CS split).
+        return ((ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8") + "\n"
+                + (ROOT / "ui/tabs/sdr_bottom_bar.py").read_text(encoding="utf-8"))
 
     def test_squelch_advance_checkbox_in_sdr_tab(self):
         assert "_scan_squelch_cb" in self._sdr_src()

@@ -14,7 +14,11 @@ ROOT = pathlib.Path(__file__).parent.parent
 class TestSquelchTriggerSource:
 
     def _src(self):
-        return (ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8")
+        # Recorder group builder (incl. squelch-trigger widgets + timer) was
+        # extracted to sdr_bottom_bar.py (HOUSE-CS split); _check_sqtrig
+        # handler stays on the host.
+        return ((ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8") + "\n"
+                + (ROOT / "ui/tabs/sdr_bottom_bar.py").read_text(encoding="utf-8"))
 
     def test_sqtrig_checkbox_defined(self):
         assert "_sqtrig_cb" in self._src()

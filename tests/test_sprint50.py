@@ -12,7 +12,10 @@ ROOT = pathlib.Path(__file__).parent.parent
 
 
 def _sdr_src() -> str:
-    return (ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8")
+    # Demod-profile methods were extracted to sdr_profile.py (HOUSE-CS split);
+    # sdr_tab.py listed first so scheduled-recording body-slices still resolve.
+    return ((ROOT / "ui/tabs/sdr_tab.py").read_text(encoding="utf-8") + "\n"
+            + (ROOT / "ui/tabs/sdr_profile.py").read_text(encoding="utf-8"))
 
 
 # ── FEAT-25: Demod profiles ───────────────────────────────────────────────────

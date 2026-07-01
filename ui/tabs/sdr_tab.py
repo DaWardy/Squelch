@@ -68,9 +68,7 @@ except ImportError:
     RTLTCPDevice = None
 
 try:
-    from sdr.audio_iq_source import (
-        AudioIQSource, find_rig_audio_device,
-        IQ_CAPABLE_RIGS)
+    import sdr.audio_iq_source  # noqa: F401  (probe: rig-audio input support)
     HAS_AUDIO_SRC = True
 except ImportError:
     HAS_AUDIO_SRC = False
@@ -168,10 +166,13 @@ from ui.tabs.sdr_device_panels import _SDRDevicePanelsMixin
 from ui.tabs.sdr_recording import _SDRRecordingMixin, _safe_recordings_path
 from ui.tabs.sdr_scanner import _SDRScannerMixin
 from ui.tabs.sdr_signal_id import _SDRSignalIDMixin
+from ui.tabs.sdr_profile import _SDRProfileMixin
+from ui.tabs.sdr_audio_source import _SDRAudioSourceMixin
 
 
 class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
-             _SDRRecordingMixin, _SDRScannerMixin, _SDRSignalIDMixin, QWidget):
+             _SDRRecordingMixin, _SDRScannerMixin, _SDRSignalIDMixin,
+             _SDRProfileMixin, _SDRAudioSourceMixin, QWidget):
     panel_id    = "sdr"
     panel_title = "SDR"
 
@@ -611,97 +612,6 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         "Digital / FT8":   {"mode": "USB",     "bw": "2.5 kHz", "nr": False, "nr_lvl": 0,  "sq": True,  "sq_db": -80.0},
         "NFM Comms":       {"mode": "NFM",      "bw": "10 kHz",  "nr": True,  "nr_lvl": 30, "sq": True,  "sq_db": -90.0},
     }
-
-    def _build_profile_group(self) -> QGroupBox:
-        """Demodulator profile quick-select."""
-        grp = QGroupBox(self.tr("Profile"))
-        gl  = QGridLayout(grp)
-        gl.setSpacing(3)
-        self._profile_combo = QComboBox()
-        self._profile_combo.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self._profile_combo.setMinimumWidth(110)
-        self._profile_combo.setToolTip(
-            "Quick-load a demodulator preset.\n"
-            "Sets mode, bandwidth, NR, and squelch in one click.")
-        self._refresh_profile_combo()
-        gl.addWidget(self._profile_combo, 0, 0, 1, 2)
-        load_btn = QPushButton(self.tr("Load"))
-        load_btn.setFixedHeight(22)
-        load_btn.setFixedWidth(48)
-        load_btn.clicked.connect(self._apply_profile)
-        gl.addWidget(load_btn, 1, 0)
-        save_btn = QPushButton(self.tr("Save…"))
-        save_btn.setFixedHeight(22)
-        save_btn.setFixedWidth(48)
-        save_btn.setToolTip("Save current demod settings as a named profile")
-        save_btn.clicked.connect(self._save_profile)
-        gl.addWidget(save_btn, 1, 1)
-        del_btn  = QPushButton(self.tr("Del"))
-        del_btn.setFixedHeight(22)
-        del_btn.setFixedWidth(36)
-        del_btn.setToolTip("Delete the selected custom profile")
-        del_btn.clicked.connect(self._delete_profile)
-        gl.addWidget(del_btn, 1, 2)
-        return grp
-
-    def _refresh_profile_combo(self) -> None:
-        self._profile_combo.clear()
-        for name in self._BUILTIN_PROFILES:
-            self._profile_combo.addItem(name)
-        custom = self.cfg.get("sdr.profiles", {}) if self.cfg else {}
-        for name in sorted(custom.keys()):
-            self._profile_combo.addItem(f"★ {name}")
-
-    def _apply_profile(self) -> None:
-        name = self._profile_combo.currentText()
-        # Strip ★ prefix from custom profile names
-        key = name.lstrip("★ ")
-        prof = self._BUILTIN_PROFILES.get(key)
-        if prof is None and self.cfg:
-            prof = (self.cfg.get("sdr.profiles", {}) or {}).get(key)
-        if not prof:
-            return
-        self._demod_combo.setCurrentText(prof.get("mode", "USB"))
-        self._demod_bw.setCurrentText(prof.get("bw", "2.5 kHz"))
-        self._nr_cb.setChecked(bool(prof.get("nr", False)))
-        self._nr_slider.setValue(int(prof.get("nr_lvl", 0)))
-        self._squelch_cb.setChecked(bool(prof.get("sq", False)))
-        self._squelch_slider.setValue(int(prof.get("sq_db", -60)))
-
-    def _save_profile(self) -> None:
-        from PyQt6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(
-            self, self.tr("Save Profile"),
-            self.tr("Profile name:"),
-            text="My Profile")
-        if not ok or not name.strip():
-            return
-        name = name.strip()
-        if name in self._BUILTIN_PROFILES:
-            return   # can't overwrite built-ins
-        prof = {
-            "mode":   self._demod_combo.currentText(),
-            "bw":     self._demod_bw.currentText(),
-            "nr":     self._nr_enabled,
-            "nr_lvl": self._nr_level,
-            "sq":     self._squelch_enabled,
-            "sq_db":  self._squelch_db,
-        }
-        if self.cfg:
-            customs = dict(self.cfg.get("sdr.profiles", {}) or {})
-            customs[name] = prof
-            self.cfg.set("sdr.profiles", customs)
-        self._refresh_profile_combo()
-
-    def _delete_profile(self) -> None:
-        name = self._profile_combo.currentText().lstrip("★ ")
-        if name in self._BUILTIN_PROFILES or not self.cfg:
-            return
-        customs = dict(self.cfg.get("sdr.profiles", {}) or {})
-        customs.pop(name, None)
-        self.cfg.set("sdr.profiles", customs)
-        self._refresh_profile_combo()
 
     def _build_gain_group(self) -> QGroupBox:
         gain_grp = QGroupBox(self.tr("Gain"))
@@ -1197,144 +1107,6 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         label = next((v for k, v in _DRIVER_NAMES.items()
                       if k in driver), driver or "Unknown")
         self._dev_type_lbl.setText(label)
-
-    def _build_audio_mode_group(self):
-        """Build Input Mode GroupBox; sets self._audio_mode_btns. Returns group."""
-        from PyQt6.QtWidgets import QGroupBox, QVBoxLayout, QRadioButton, QButtonGroup
-        grp = QGroupBox("Input Mode")
-        lay = QVBoxLayout(grp)
-        self._audio_mode_btns = QButtonGroup()
-        rb_mono = QRadioButton("Mono Audio  —  rig USB audio, standard receive")
-        rb_mono.setChecked(True)
-        rb_mono.setToolTip(
-            "Use the rig's demodulated audio output\n"
-            "Bandwidth: ~3 kHz SSB, ~15 kHz FM\n"
-            "Works with IC-7100, FT-991A, TS-2000, any USB rig")
-        self._audio_mode_btns.addButton(rb_mono, 0)
-        lay.addWidget(rb_mono)
-        rb_iq = QRadioButton("IQ Stereo  —  L=I, R=Q (FUNcube, IC-7300 IQ mode)")
-        rb_iq.setToolTip(
-            "True complex IQ from a stereo source\n"
-            "Bandwidth: up to 192 kHz depending on soundcard\n"
-            "Supported: IC-7300/7610/705 (IQ mode), FUNcube Dongle, Softrock")
-        self._audio_mode_btns.addButton(rb_iq, 1)
-        lay.addWidget(rb_iq)
-        return grp
-
-    def _build_audio_device_form(self):
-        """Build device + sample-rate form. Returns (layout, dev_combo, sr_combo)."""
-        from PyQt6.QtWidgets import QFormLayout, QComboBox
-        from sdr.audio_iq_source import AudioIQSource
-        f = QFormLayout()
-        dev_combo = QComboBox()
-        dev_combo.addItem("Default (system default input)")
-        try:
-            for d in AudioIQSource.enumerate_inputs():
-                dev_combo.addItem(
-                    f"{d['name']}  ({d['channels']}ch, {d['default_sr']}Hz)")
-        except Exception:
-            pass
-        rig_model = self.cfg.get("rig.selected_model", "") if self.cfg else ""
-        rig_dev   = find_rig_audio_device(rig_model)
-        if rig_dev:
-            for i in range(dev_combo.count()):
-                if rig_dev[:10].lower() in dev_combo.itemText(i).lower():
-                    dev_combo.setCurrentIndex(i)
-                    break
-        dev_combo.setToolTip(
-            "For IC-7100: USB Audio CODEC\n"
-            "For IC-7300 IQ: USB Audio CODEC (stereo, 192kHz)")
-        f.addRow("Audio Device:", dev_combo)
-        sr_combo = QComboBox()
-        sr_combo.addItems(["48000 Hz  (standard)", "96000 Hz",
-                           "192000 Hz  (IQ mode, IC-7300)"])
-        f.addRow("Sample Rate:", sr_combo)
-        return f, dev_combo, sr_combo
-
-    def _open_audio_source_dialog(self):
-        """Open dialog to configure rig audio as SDR input."""
-        if not HAS_AUDIO_SRC:
-            QMessageBox.warning(
-                self, "sounddevice Required",
-                "pip install sounddevice\n\n"
-                "sounddevice is needed to use rig audio input.")
-            return
-
-        from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QLabel, QVBoxLayout)
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Rig Audio Input")
-        dlg.setMinimumWidth(420)
-        root = QVBoxLayout(dlg)
-        root.addWidget(self._build_audio_mode_group())
-        form, dev_combo, sr_combo = self._build_audio_device_form()
-        root.addLayout(form)
-        iq_note = QLabel(
-            "IQ-capable rigs:\n"
-            "  IC-7300/7610/705: SET → Connectors → USB Send/Keying → IQ 192kHz\n"
-            "  FUNcube Dongle Pro+: always IQ — just select it\n"
-            "  Softrock / SDR-Kits: IQ Stereo with any soundcard")
-        iq_note.setStyleSheet(
-            "font-family:'Courier New';background:#0a0a0a;padding:8px;"
-            "border:1px solid #1a1a1a;border-radius:3px;")
-        iq_note.setWordWrap(True)
-        root.addWidget(iq_note)
-        btns = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        root.addWidget(btns)
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-        mode_str = "iq_stereo" if self._audio_mode_btns.checkedId() == 1 else "mono"
-        dev_name = dev_combo.currentText().split("  (")[0].strip()
-        if dev_name.startswith("Default"):
-            dev_name = "Default"
-        sr = {0: 48000, 1: 96000, 2: 192000}[sr_combo.currentIndex()]
-        self._start_audio_source(dev_name, mode_str, sr)
-
-    def _start_audio_source(self, device: str,
-                              mode: str,
-                              sample_rate: int):
-        """Start AudioIQSource and route into the waterfall."""
-        if not HAS_AUDIO_SRC:
-            return
-
-        # Stop any existing source
-        if hasattr(self, "_audio_src") and                 self._audio_src:
-            self._audio_src.stop()
-
-        from sdr.audio_iq_source import AudioIQSource
-        src = AudioIQSource()
-        src.set_device(device)
-        src.set_mode(mode)
-        src.set_sample_rate(sample_rate)
-
-        # Sync center freq from rig if available
-        center = 0
-        if self.cfg:
-            center = int(
-                self.cfg.get("rig.freq_hz", 0) or 0)
-        src.set_center_hz(center)
-        src.on_samples = self._on_samples
-
-        if src.start():
-            self._audio_src   = src
-            self._sdr_status.setText(
-                f"● Audio: {device[:20]}")
-            self._sdr_status.setStyleSheet(
-                "color:#3fbe6f;"
-                "font-weight:bold;")
-            # Update center when rig tunes
-            self._audio_center_update = True
-            log.info(
-                f"Audio source started: "
-                f"{device} {mode} {sample_rate}Hz")
-        else:
-            QMessageBox.warning(
-                self, "Audio Source Failed",
-                f"Could not open audio device:\n{device}\n\n"
-                "Check the device is connected and not in use.")
-            self._audio_src = None
 
     def _on_device_select(self, idx: int):
         self._update_dev_type_label(idx)

@@ -22,7 +22,10 @@ in SUMMARY_FACTORIES below.
 import logging
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QWidget, QGridLayout, QLabel
+from PyQt6.QtWidgets import (
+    QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout,
+    QPushButton, QDoubleSpinBox, QCheckBox,
+)
 
 log = logging.getLogger(__name__)
 
@@ -174,10 +177,111 @@ def make_prop_solar(cfg) -> QWidget:
     return _PropSolar(cfg)
 
 
+class _SDRTune(QWidget):
+    """Interactive tune control that drives the LIVE SDR and rig tabs.
+
+    It reaches the real tabs via the MainWindow's _tab_map (no second SDR/rig
+    instance) and calls their _set_freq(hz) — the same entry point the rest of
+    the app tunes through. Enables the contest loop: scroll around the SDR
+    spectrum to find a spot, then push that frequency to the rig (one-shot
+    '→ Rig', or 'Auto-tune rig' to follow continuously).
+    """
+
+    def __init__(self, cfg, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._cfg = cfg
+        self._last_sent = None
+        v = QVBoxLayout(self)
+        v.setContentsMargins(5, 4, 5, 4)
+        v.setSpacing(4)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("MHz:"))
+        self._spin = QDoubleSpinBox()
+        self._spin.setDecimals(4)
+        self._spin.setRange(0.0, 3000.0)
+        self._spin.setSingleStep(0.001)
+        self._spin.setValue(14.074)
+        row.addWidget(self._spin, 1)
+        v.addLayout(row)
+
+        btns = QHBoxLayout()
+        tune_btn = QPushButton(self.tr("Tune SDR"))
+        tune_btn.setToolTip("Tune the SDR tab to the frequency above")
+        tune_btn.clicked.connect(self._tune_sdr)
+        btns.addWidget(tune_btn)
+        rig_btn = QPushButton(self.tr("→ Rig"))
+        rig_btn.setToolTip("Set the rig to the SDR's current frequency")
+        rig_btn.clicked.connect(self._to_rig)
+        btns.addWidget(rig_btn)
+        v.addLayout(btns)
+
+        self._follow = QCheckBox(self.tr("Auto-tune rig"))
+        self._follow.setToolTip(
+            "Continuously tune the rig to follow the SDR's frequency —\n"
+            "scroll around the SDR spectrum and the rig tracks it.")
+        v.addWidget(self._follow)
+
+        self._status = QLabel("—")
+        self._status.setStyleSheet(
+            "font-size:10px;color:#99aabb;font-family:'Courier New';")
+        v.addWidget(self._status)
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._refresh)
+        self._timer.start()
+        self._refresh()
+
+    def _tab(self, key: str):
+        """The live tab widget for *key* from the MainWindow, or None."""
+        try:
+            return getattr(self.window(), "_tab_map", {}).get(key)
+        except Exception:
+            return None
+
+    def _tune_sdr(self) -> None:
+        sdr = self._tab("sdr")
+        if sdr is not None and hasattr(sdr, "_set_freq"):
+            sdr._set_freq(int(self._spin.value() * 1e6))
+
+    def _to_rig(self) -> None:
+        sdr = self._tab("sdr")
+        hz = (getattr(sdr, "_center_hz", None)
+              if sdr is not None else None)
+        if hz is None:
+            hz = int(self._spin.value() * 1e6)
+        rig = self._tab("rig")
+        if rig is not None and hasattr(rig, "_set_freq"):
+            rig._set_freq(int(hz))
+            self._last_sent = int(hz)
+
+    def _refresh(self) -> None:
+        try:
+            sdr = self._tab("sdr")
+            hz = getattr(sdr, "_center_hz", None) if sdr is not None else None
+            if hz is None:
+                self._status.setText("SDR tab not open")
+                return
+            self._status.setText(f"SDR: {hz / 1e6:.4f} MHz")
+            if self._follow.isChecked() and hz != self._last_sent:
+                rig = self._tab("rig")
+                if rig is not None and hasattr(rig, "_set_freq"):
+                    rig._set_freq(int(hz))
+                    self._last_sent = hz
+        except Exception as e:
+            log.debug("sdr tune refresh failed: %s", e)
+
+
+def make_sdr_tune(cfg) -> QWidget:
+    return _SDRTune(cfg)
+
+
 # À-la-carte widget catalog: (key, category, label, factory). Each factory
 # builds a compact widget bound to the SAME singleton backend the full tab
 # uses, so it reflects/drives real app state with no duplication.
 WIDGET_CATALOG = [
+    ("sdr.tune",   "SDR",         "Tune (→ rig)",    make_sdr_tune),
     ("log.stats",  "Log",         "Statistics",      make_log_summary),
     ("log.awards", "Log",         "Awards progress", make_log_awards),
     ("prop.solar", "Propagation", "Solar indices",   make_prop_solar),

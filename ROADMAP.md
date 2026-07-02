@@ -412,8 +412,10 @@ in §4.
 ### 12.2 Packaging, install & platforms (v1.0 gate)
 - [ ] One-click installer; **workflow install profiles** (e.g. amateur /
   education / analysis / developer) that pull only what's needed.
-- [ ] Auto-install required native packages + fix **SoapySDR module load
-  failures** (rtlsdr/uhd `*.dll` LoadLibrary errors → 0 devices found).
+- [x] Fix **SoapySDR module load failures** (rtlsdr/uhd `*.dll` LoadLibrary
+  errors → 0 devices). DONE 7e9deef — os.add_dll_directory(conda/Library/bin)
+  + ctypes pre-load of dependency DLLs (LOAD_WITH_ALTERED_SEARCH_PATH bypass).
+  [ ] still: auto-install required native packages at install time.
 - [ ] **AV-friendly distributable** — signed `.exe` (and submit to AV vendors
   for allow-listing) so Defender/AV don't flag it; keep the offline install path.
 - [ ] **Linux support** — Debian-based first; **Raspberry Pi** target.

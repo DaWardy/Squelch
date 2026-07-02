@@ -23,8 +23,11 @@ numpy>=1.26.0
 sounddevice>=0.4.6
 soundfile>=0.12.1
 
-# Map features (requires Python <3.14 for now)
-# PyQtWebEngine>=6.4.0   <- skip on Python 3.14
+# Map features — the interactive Leaflet map. WITHOUT these you get the crude
+# Qt fallback renderer (no satellites, no propagation path overlays, etc.).
+# Versions MUST match PyQt6 (6.6.x here); a mismatch causes a DLL load error.
+PyQt6-WebEngine==6.6.0
+PyQt6-WebEngine-Qt6==6.6.1
 folium>=0.15.0
 
 # Digital mode features

@@ -119,7 +119,7 @@ class _PanelSubWindow(QMdiSubWindow):
 
     closed = pyqtSignal(str)   # panel_key
 
-    _GRID = 12   # px snap grid
+    _GRID = 24   # px snap grid (coarse enough to see windows align)
 
     def __init__(self, panel_key: str, parent: QWidget | None = None):
         super().__init__(parent)
@@ -162,6 +162,18 @@ class _PanelSubWindow(QMdiSubWindow):
                 self._busy = True
                 self.move(nx, ny)
                 self._busy = False
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self._busy or self._locked or not self._snap:
+            return
+        s = self.size()
+        nw = max(self._GRID * 5, round(s.width() / self._GRID) * self._GRID)
+        nh = max(self._GRID * 4, round(s.height() / self._GRID) * self._GRID)
+        if nw != s.width() or nh != s.height():
+            self._busy = True
+            self.resize(nw, nh)
+            self._busy = False
 
     def closeEvent(self, event) -> None:
         self.closed.emit(self._key)

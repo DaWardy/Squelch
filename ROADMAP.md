@@ -385,6 +385,76 @@ public release.
 
 ---
 
+## 12. Operator / instructor / analyst vision backlog (2026-07-01 pass)
+
+Running to-do list captured from an operator vision pass. Broadened audience:
+amateur operators (new → expert), RF educators and engineering students,
+spectrum / RF-signal analysts, authorized RF-security testers, and the general
+public exploring their local RX environment. **Public-language policy (§1)
+holds** — neutral, professional framing everywhere public; capabilities are
+dual-use and the user decides the application. Items cross-reference the phases
+in §4.
+
+### 12.1 Composable operating dashboard (custom tabs) — flagship
+- [ ] **Interactive control widgets** in the à-la-carte catalog, not just
+  read-only summaries: **SDR tune (→ rig auto-tune)**, rig VFO/mode, digital-
+  voice decode, propagation-to-target. Each = one catalog entry + a factory
+  bound to that tab's shared singleton backend.
+- [ ] **Cross-widget workflow:** tune the SDR to a spot → auto-tune the rig to
+  it → check propagation to that area → work it — all in one custom tab.
+- [x] MDI windows: move / resize / **snap-to-grid** / **lock in place** (done
+  e4cb564 + snap tuning; launch-verify feel). [ ] persist per-window geometry.
+- [ ] **Hide / show widgets within the default tabs** + **Restore defaults per
+  tab** + unhide (Microsoft-toolbar-style checklist). Default tabs are a
+  starting layout, not fixed.
+- [ ] Let **community plugin** widgets register into the catalog.
+
+### 12.2 Packaging, install & platforms (v1.0 gate)
+- [ ] One-click installer; **workflow install profiles** (e.g. amateur /
+  education / analysis / developer) that pull only what's needed.
+- [ ] Auto-install required native packages + fix **SoapySDR module load
+  failures** (rtlsdr/uhd `*.dll` LoadLibrary errors → 0 devices found).
+- [ ] **AV-friendly distributable** — signed `.exe` (and submit to AV vendors
+  for allow-listing) so Defender/AV don't flag it; keep the offline install path.
+- [ ] **Linux support** — Debian-based first; **Raspberry Pi** target.
+- [ ] Optional online asset downloads at install/first-run (see 12.3).
+
+### 12.3 Signal identification (Phase 2 IDENTIFY)
+- [ ] Bundled/downloadable **Signal-ID database** (sigidwiki-style, Artemis-like):
+  frequency + bandwidth + waterfall-shape → candidate matches; flag/annotate
+  unknown signals of interest. Wire into the SDR signal-ID panel + Signal model.
+
+### 12.4 IQ record / playback / retransmit (PLAYBACK + Phase 5)
+- [ ] **Specify + document IQ recording location and formats** (WAV / SigMF
+  sidecar metadata; a known recordings dir, `.gitignore`d).
+- [ ] **Replay stored IQ** back through the pipeline (scrub, loop).
+- [ ] **Classroom retransmit** — replay recorded IQ → TX (authorization-gated)
+  for demos on TX-capable hardware.
+
+### 12.5 Map & propagation overhaul (map currently "feels useless")
+- [ ] Real map renderer — install `PyQt6-WebEngine` for the Leaflet map;
+  otherwise substantially improve the Qt fallback.
+- [ ] **Satellite tracking** layer — select/track sats + ISS, pass predictions.
+- [ ] **RX↔TX great-circle path** with **MUF / LUF / optimal band** for a chosen
+  target area; click-a-location → propagation to it.
+- [ ] Surface **NVIS** (short-range) in path analysis + on the map, not just the
+  side-view overlay.
+
+### 12.6 Direction finding (Phase 3 refinement)
+- [ ] DF a target from **RSSI + RX-antenna GPS location + time**.
+- [ ] Reading triggers: **on-demand / continuous / timed / distance-interval**.
+- [ ] RSSI→GPS track log + heatmap; bearing + estimated emitter location on map.
+
+### 12.7 Transmit safety & authorization (Phase 5 refinement)
+- [ ] First TX **outside the amateur bands** → explicit warning + acknowledgment
+  before it's allowed.
+- [ ] **License-class TX filter** — dropdown (Technician / General / Extra / …)
+  gating permitted frequencies, plus an **"Other / Emergency"** override (buried,
+  disclaimer-gated, every keying logged). Legal onus on the operator, stated at
+  the gate. Use cases are left to the user — not enumerated in-app.
+
+---
+
 *Supersedes the v0.7–v1.0 milestone roadmap. Update the status line and
 phase markers each sprint; do a full reconciliation every 5th (housekeeping)
 sprint.*

@@ -34,6 +34,11 @@ from typing import Optional, Callable
 
 log = logging.getLogger(__name__)
 
+# Kept alive for the process lifetime: os.add_dll_directory() handles are
+# released when garbage-collected, which would un-register the directory.
+_DLL_DIR_HANDLES: list = []
+
+
 def _inject_soapy_from_path(sp, conda_root) -> None:
     """Inject a conda site-packages dir into sys.path and fix up env vars."""
     import sys, os
@@ -69,6 +74,22 @@ def _inject_soapy_from_path(sp, conda_root) -> None:
             os.environ["PATH"] = (os.pathsep.join(additions)
                                   + os.pathsep + current_path)
             log.info(f"SoapySDR: added to PATH: {os.pathsep.join(additions)}")
+        # CRITICAL (Python 3.8+): modifying PATH no longer affects DLL
+        # resolution for extension modules — the SoapySDR loader's
+        # LoadLibrary() of e.g. rtlsdrSupport.dll can't find its dependent
+        # DLLs (rtlsdr.dll, libusb-1.0.dll in Library/bin) unless the
+        # directory is registered via os.add_dll_directory(). This is the
+        # usual cause of "LoadLibrary() failed: The specified module could
+        # not be found" → 0 devices.
+        add_dll = getattr(os, "add_dll_directory", None)
+        if add_dll is not None:
+            for d in win_dll_dirs:
+                try:
+                    if d.exists():
+                        _DLL_DIR_HANDLES.append(add_dll(str(d)))
+                        log.info(f"SoapySDR: add_dll_directory({d})")
+                except Exception as e:
+                    log.debug(f"SoapySDR: add_dll_directory({d}) failed: {e}")
 
 
 def _try_conda_soapy() -> bool:
@@ -125,6 +146,76 @@ def _try_conda_soapy() -> bool:
 
     return False
 
+
+def _register_soapy_dll_dirs() -> None:
+    """Put conda's Library/bin on the DLL search path (Windows, Python 3.8+).
+
+    SoapySDR.py — even when imported straight from the venv — loads its binary
+    support modules (rtlsdrSupport.dll, uhdSupport.dll, …) from the conda
+    install, and those depend on DLLs in <conda>/Library/bin (rtlsdr.dll,
+    uhd.dll, libusb-1.0.dll). Since Python 3.8 only os.add_dll_directory()
+    (NOT %PATH%) makes those dependencies resolvable; without it the module
+    LoadLibrary() fails with "The specified module could not be found" and
+    0 devices are enumerated.
+    """
+    import os
+    import sys
+    from pathlib import Path as _P
+    if sys.platform != "win32":
+        return
+    add_dll = getattr(os, "add_dll_directory", None)
+    if add_dll is None:
+        return
+    home = _P.home()
+    roots = []
+    cp = os.environ.get("CONDA_PREFIX")
+    if cp:
+        roots.append(_P(cp))
+    roots += [
+        home / "miniforge3", home / "miniconda3", home / "anaconda3",
+        _P("C:/miniforge3"), _P("C:/miniconda3"),
+        _P(getattr(sys, "base_prefix", sys.prefix)),   # conda-based venv base
+    ]
+    bin_dirs = []
+    seen = set()
+    for root in roots:
+        for sub in ("Library/bin", "Library/mingw-w64/bin"):
+            d = root / sub
+            key = str(d).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                if d.exists():
+                    _DLL_DIR_HANDLES.append(add_dll(str(d)))
+                    bin_dirs.append(d)
+                    log.info(f"SoapySDR: add_dll_directory({d})")
+            except Exception as e:
+                log.debug(f"SoapySDR: add_dll_directory({d}) failed: {e}")
+
+    # add_dll_directory alone is NOT enough: SoapySDR's C++ module loader uses
+    # LOAD_WITH_ALTERED_SEARCH_PATH, which bypasses the registered user dirs, so
+    # rtlsdrSupport.dll/uhdSupport.dll still fail to find rtlsdr.dll/uhd.dll.
+    # Fix: pre-load the dependency DLLs here so they're already resident in the
+    # process when SoapySDR loads its support modules (in-memory modules win).
+    import ctypes
+    dep_dlls = [
+        "SoapySDR.dll", "libusb-1.0.dll",      # core + shared USB
+        "rtlsdr.dll", "hackrf.dll", "airspy.dll", "airspyhf.dll",
+        "uhd.dll", "LimeSuite.dll", "bladeRF.dll", "libiio.dll",
+    ]
+    for d in bin_dirs:
+        for name in dep_dlls:
+            p = d / name
+            try:
+                if p.exists():
+                    _DLL_DIR_HANDLES.append(ctypes.WinDLL(str(p)))
+                    log.debug(f"SoapySDR: pre-loaded {name}")
+            except Exception as e:
+                log.debug(f"SoapySDR: pre-load {name} failed: {e}")
+
+
+_register_soapy_dll_dirs()
 
 try:
     import SoapySDR

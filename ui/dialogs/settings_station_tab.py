@@ -64,8 +64,13 @@ class _SettingsStationTab:
         self._itu_region.setToolTip("ITU region determines band edges for the band plan.")
         f.addRow("ITU Region:", self._itu_region)
         self._license = QComboBox()
-        self._license.addItems(["Technician", "General", "Extra", "Other / Non-US"])
-        self._license.setToolTip("Shows privilege overlays on the band plan.")
+        self._license.addItems([
+            "Technician", "General", "Extra",
+            "Other / Non-US", "Other / Emergency"])
+        self._license.setToolTip(
+            "Shows privilege overlays on the band plan, and gates the\n"
+            "one-time out-of-band TX warning (Settings apply immediately).\n"
+            "\"Other / Emergency\" always requires that acknowledgment.")
         f.addRow("License Class:", self._license)
 
     def _build_station_event_callsign_section(self, f: "QFormLayout") -> None:

@@ -114,15 +114,21 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
 
     def _load_station(self, cfg):
         region_map = {"1": 1, "2": 0, "3": 2}
-        lic_map    = {"technician": 0, "general": 1, "extra": 2, "other": 3}
         self._daily_goal.setValue(cfg.get("log.daily_goal", 0))
         self._callsign.setText(cfg.callsign or "")
         self._op_name.setText(cfg.get("station.op_name", ""))
         self._grid.setText(cfg.grid or "")
         self._itu_region.setCurrentIndex(
             region_map.get(str(cfg.get("station.itu_region", "2")), 0))
-        self._license.setCurrentIndex(
-            lic_map.get(cfg.get("station.license", "").lower(), 1))
+        # station.license stores the combo's exact display text ("Technician",
+        # "General", "Extra", "Other / Non-US", "Other / Emergency") — this is
+        # the canonical value core/tx_license.py and BandPlanDialog both key
+        # off of. (Previously this stored a separate lowercase token that
+        # never matched BandPlanDialog's capitalized keys, so the band-plan
+        # privilege overlay silently always showed Extra-level regardless of
+        # the operator's actual selection — fixed by using one shared value.)
+        idx = self._license.findText(cfg.get("station.license", "Technician"))
+        self._license.setCurrentIndex(idx if idx >= 0 else 0)
         self._event_callsign.setText(cfg.get("station.event_callsign", ""))
         self._station_call.setText(cfg.get("station.station_callsign", ""))
         self._contest_exchange.setText(cfg.get("station.contest_exchange", ""))
@@ -437,8 +443,9 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         region_map = {0: "2", 1: "1", 2: "3"}
         cfg.set("station.itu_region",
                 region_map.get(self._itu_region.currentIndex(), "2"))
-        lic_labels = ["technician", "general", "extra", "other"]
-        cfg.set("station.license", lic_labels[self._license.currentIndex()])
+        # Persist the combo's own display text — see _load_station for why
+        # this must be the canonical capitalized value, not a separate token.
+        cfg.set("station.license", self._license.currentText())
         cfg.set("station.event_callsign",
                 self._event_callsign.text().strip().upper())
         cfg.set("station.station_callsign",

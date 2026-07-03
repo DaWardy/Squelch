@@ -17,7 +17,10 @@ from PyQt6.QtGui import QColor
 from core.band_plan import ALL_BANDS, BANDS, SERVICE_BANDS, SegType, SEG_COLORS, License
 
 # License hierarchy for amateur privilege check
-_LICENSE_RANK = {"Technician": 0, "General": 1, "Extra": 2, "Other / Non-US": 2}
+_LICENSE_RANK = {
+    "Technician": 0, "General": 1, "Extra": 2,
+    "Other / Non-US": 2, "Other / Emergency": 2,
+}
 _SEG_TYPE_LABELS = {
     SegType.CW:         "CW",
     SegType.CW_DIGITAL: "CW / Digital",

@@ -942,8 +942,17 @@ class RigTab(_RigRotorMixin, _RigVoiceMixin, _RigCWMixin, _RigScannerMixin,
 
     @pyqtSlot(bool)
     def _on_ptt(self, tx: bool):
-        if self.rig.is_connected:
-            self.rig.set_ptt(tx)
+        if not self.rig.is_connected:
+            return
+        if tx:
+            from ui.tx_confirm import confirm_tx
+            if not confirm_tx(self, self.cfg, self.rig.state.freq_hz):
+                # Declined — revert the button without re-entering this slot.
+                self.ptt_btn.blockSignals(True)
+                self.ptt_btn.setChecked(False)
+                self.ptt_btn.blockSignals(False)
+                return
+        self.rig.set_ptt(tx)
 
     @pyqtSlot(int)
     def _on_preamp(self, idx: int):

@@ -380,6 +380,15 @@ def _setup_qt_app() -> "QApplication":
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     except AttributeError:
         pass
+    # QWebEngineView (the Map tab) needs GL contexts shared across the app;
+    # Qt requires this attribute set before QApplication is constructed, or it
+    # warns "Attribute Qt::AA_ShareOpenGLContexts must be set before
+    # QCoreApplication is created" and WebEngine falls back to a less capable
+    # GL setup.
+    try:
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    except AttributeError:
+        pass
     app = QApplication(sys.argv)
     try:
         from PyQt6.QtGui import QIcon

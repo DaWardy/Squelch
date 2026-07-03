@@ -419,7 +419,10 @@ class DigitalTab(SquelchPanel, QWidget):
         self._audio_lbl = QLabel(f"🎙 {audio_in}")
         self._audio_lbl.setStyleSheet(
             "font-size:10px;font-family:'Courier New';"
-            "color:#888;text-decoration:underline;cursor:pointer;")
+            "color:#888;text-decoration:underline;")
+        # Qt's QSS engine doesn't support the CSS "cursor" property (it warns
+        # "Unknown property cursor" on every apply) — use the native API.
+        self._audio_lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         self._audio_lbl.setToolTip(
             "Decode audio input device\nClick to open Audio Settings")
         self._audio_lbl.mousePressEvent = lambda _: self._open_audio_settings()

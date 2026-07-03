@@ -530,15 +530,20 @@ var streetTiles = L.tileLayer(
   'https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',
   {{attribution:'© OpenStreetMap contributors', maxZoom:19}}
 );
-darkTiles.addTo(map);
+// Default to the standard OpenStreetMap layer, not the CARTO "dark_all" tile.
+// dark_all is genuinely very low-contrast (near-illegible labels/borders) and
+// a CSS filter meant to compensate didn't render reliably on all GPUs — so
+// rather than depend on a post-process effect, default to a tile source
+// that's crisp and legible on its own. "Dark" stays available in the layer
+// control (top-right) for anyone who prefers it and whose setup renders it well.
+streetTiles.addTo(map);
 
 // Embedded-view fix + diagnostics for the "black map" case: force a size
 // recalc after layout so Leaflet actually requests tiles, and surface tile
-// load failures visibly (a black map is usually GPU compositing failing —
-// mitigated by the --disable-gpu launch flag — or the tile CDN being blocked).
+// load failures visibly (blocked tile CDN or broken GPU compositing).
 setTimeout(function() {{ try {{ map.invalidateSize(true); }} catch(e) {{}} }}, 300);
 var _tileErrs = 0;
-darkTiles.on('tileerror', function(e) {{
+function _onTileError(e) {{
   _tileErrs++;
   if (_tileErrs === 3) {{
     var d = document.createElement('div');
@@ -549,7 +554,9 @@ darkTiles.on('tileerror', function(e) {{
     d.textContent = 'Map tiles failed to load — check network / tile-CDN access.';
     document.body.appendChild(d);
   }}
-}});
+}}
+darkTiles.on('tileerror', _onTileError);
+streetTiles.on('tileerror', _onTileError);
 
 // ── Layer groups ─────────────────────────────────────────────
 // Each group is created, then added to the map only if its persisted

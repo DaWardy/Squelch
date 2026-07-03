@@ -408,14 +408,14 @@ def _render_html(**ctx) -> str:
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   html,body,#map {{ width:100%; height:100%; }}
   body {{ background:#0a0a0a; }}
-  /* The CARTO dark_all basemap is deliberately low-contrast (designed to sit
-     under bright data markers, not be read on its own) — country borders and
-     place labels are barely visible at default brightness. Punch the raster
-     tiles up so the map is legible by itself. Overlay markers/labels are
-     drawn in their own panes above this one and are unaffected. */
-  .leaflet-tile-pane {{
-    filter: brightness(1.55) contrast(1.35) saturate(1.15);
-  }}
+  /* NOTE: a brightness/contrast CSS filter on .leaflet-tile-pane was tried
+     here to compensate for the low-contrast CARTO "dark_all" tile. Removed:
+     it didn't reliably render on all GPUs anyway, and — because the filter
+     applies to whichever base layer is active, dark or street — it badly
+     overexposed the now-default OpenStreetMap tile (washed out to near-blank
+     white, roads/water gone). Do not reintroduce a blanket tile-pane filter;
+     if per-layer tuning is wanted, scope it to a class toggled on layer
+     switch, not the shared pane. */
   .gl-status {{
     position:absolute; bottom:10px; left:50%;
     transform:translateX(-50%);

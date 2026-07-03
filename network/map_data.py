@@ -853,6 +853,16 @@ SATELLITES.forEach(function(s) {{
   var size = isISS ? 20 : 14;
   var emoji = isISS ? '🛰️' : '🛰';
   var opacity = isVisible ? 1.0 : 0.5;
+  // Compute the next-pass popup fragment BEFORE the marker — these are plain
+  // statements and cannot live inside the L.marker({{...}}) options object
+  // literal (doing so is a JS syntax error that aborts the whole map script).
+  var np = s.next_pass;
+  var npHtml = np
+    ? '<br><span style="color:#aaa;font-size:10px;">Next pass: AOS '
+      +np.aos+' / LOS '+np.los
+      +' / Max El '+np.max_el.toFixed(1)+'°'
+      +' / Az '+np.aos_az.toFixed(0)+'°</span>'
+    : '';
   L.marker([s.lat, s.lon], {{
     icon: L.divIcon({{
       html: '<div title="'+s.name+'" style="'
@@ -862,13 +872,6 @@ SATELLITES.forEach(function(s) {{
            +'cursor:pointer;"></div>',
       className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]
     }})
-  var np = s.next_pass;
-  var npHtml = np
-    ? '<br><span style="color:#aaa;font-size:10px;">Next pass: AOS '
-      +np.aos+' / LOS '+np.los
-      +' / Max El '+np.max_el.toFixed(1)+'°'
-      +' / Az '+np.aos_az.toFixed(0)+'°</span>'
-    : '';
   }}).bindPopup(
     '<div class="qso-popup">'
     +'<b style="color:'+col+'">'+s.name+'</b><br>'

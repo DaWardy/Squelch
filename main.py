@@ -366,6 +366,14 @@ def _setup_qt_app() -> "QApplication":
     except ImportError:
         print("\nERROR: PyQt6 not found.\nRun bootstrap.bat to install dependencies.\n")
         sys.exit(1)
+    # WebEngine (the map's Leaflet renderer) shows a black tile layer on many
+    # Windows setups where GPU compositing is flaky — the DOM/controls draw but
+    # the composited raster tiles come out black. Forcing software rendering is
+    # the reliable fix and the map doesn't need the GPU. Must be set before
+    # QApplication / any WebEngine init. Respects a user-provided override.
+    os.environ.setdefault(
+        "QTWEBENGINE_CHROMIUM_FLAGS",
+        "--disable-gpu --disable-gpu-compositing")
     try:
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)

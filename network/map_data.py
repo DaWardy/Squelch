@@ -524,6 +524,25 @@ var streetTiles = L.tileLayer(
 );
 darkTiles.addTo(map);
 
+// Embedded-view fix + diagnostics for the "black map" case: force a size
+// recalc after layout so Leaflet actually requests tiles, and surface tile
+// load failures visibly (a black map is usually GPU compositing failing —
+// mitigated by the --disable-gpu launch flag — or the tile CDN being blocked).
+setTimeout(function() {{ try {{ map.invalidateSize(true); }} catch(e) {{}} }}, 300);
+var _tileErrs = 0;
+darkTiles.on('tileerror', function(e) {{
+  _tileErrs++;
+  if (_tileErrs === 3) {{
+    var d = document.createElement('div');
+    d.style.cssText = 'position:absolute;top:8px;left:50%;'
+      + 'transform:translateX(-50%);z-index:9999;background:#3a1a1a;'
+      + 'color:#ff8888;border:1px solid #cc4444;border-radius:4px;'
+      + 'padding:6px 12px;font:12px monospace;';
+    d.textContent = 'Map tiles failed to load — check network / tile-CDN access.';
+    document.body.appendChild(d);
+  }}
+}});
+
 // ── Layer groups ─────────────────────────────────────────────
 // Each group is created, then added to the map only if its persisted
 // visibility (LAYER_VISIBLE) is on. The Leaflet layer control toggles them

@@ -68,7 +68,7 @@ class TestWSPRMapTabWiring:
 
     def test_wspr_spots_passed_to_build_map_html(self):
         src = self._src()
-        idx = src.find("def _refresh_map(")
+        idx = src.find("def _do_refresh_map(")
         body = src[idx: src.find("\n    def ", idx + 10)]
         assert "wspr_spots" in body
 

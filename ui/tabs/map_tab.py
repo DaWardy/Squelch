@@ -414,7 +414,27 @@ class MapTab(SquelchPanel, QWidget):
     # ── Map rendering ──────────────────────────────────────────
 
     def _refresh_map(self):
-        """Rebuild and reload the map HTML."""
+        """Coalesce rapid refresh triggers into a single rebuild.
+
+        Many events (APRS/PSKReporter/satellite/DX updates, filter changes,
+        the periodic timer) call this; each rebuild is a full setHtml() that
+        re-inits Leaflet and re-fetches tiles, so firing them individually made
+        the map churn. Debounce them into one rebuild ~350 ms after the last
+        trigger.
+        """
+        if not HAS_WEBENGINE:
+            return
+        t = getattr(self, "_refresh_debounce", None)
+        if t is None:
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.setInterval(350)
+            t.timeout.connect(self._do_refresh_map)
+            self._refresh_debounce = t
+        t.start()   # restart on each call → coalesces bursts into one rebuild
+
+    def _do_refresh_map(self):
+        """Rebuild and reload the map HTML (full setHtml)."""
         if not HAS_WEBENGINE:
             return
 

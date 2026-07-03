@@ -140,7 +140,7 @@ class TestAPRSLabels:
 
     def test_show_aprs_labels_passed_to_build_map(self):
         src = self._tab_src()
-        idx = src.find("def _refresh_map(")
+        idx = src.find("def _do_refresh_map(")
         body = src[idx: src.find("\n    def ", idx + 10)]
         assert "show_aprs_labels" in body
 

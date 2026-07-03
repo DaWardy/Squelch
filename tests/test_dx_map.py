@@ -51,7 +51,7 @@ class TestDXSpotsMapHTML:
 
     def test_dx_spots_passed_to_refresh(self):
         src = (ROOT / "ui/tabs/map_tab.py").read_text(encoding="utf-8")
-        idx = src.find("def _refresh_map(")
+        idx = src.find("def _do_refresh_map(")
         body = src[idx: src.find("\n    def ", idx + 10)]
         assert "dx_spots" in body
 

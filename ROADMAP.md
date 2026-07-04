@@ -46,7 +46,7 @@ forward.
 | **SEARCH** | Wideband scan, energy detection, occupancy survey | 🟡 Scanner exists; no persistent survey/occupancy DB |
 | **IDENTIFY** | Classify a signal (DB match + modulation classifier) | 🟡 SigID-wiki DB match (`network/signal_id.py`); no modulation classifier |
 | **CORRELATE** | Tie signals together by ID/time/location; fingerprint emitters | ❌ No correlation store |
-| **DECODE** | Voice + generic digital + weak-signal | 🟢 Voice (DSD+/OP25), FT8/WSPR done; ❌ generic OOK/ASK/FSK/PSK |
+| **DECODE** | Voice + generic digital + weak-signal | 🟢 Voice (DSD+/OP25), FT8/WSPR done; 🟡 generic OOK/ASK/FSK/PSK bit-slicer core done (`core/bitslicer.py`) |
 | **PLAYBACK** | Record & replay IQ, scrub captures | 🟢 `IQRecorder`/`IQPlayer` done |
 | **ENCODE** | Build a waveform to transmit | ❌ No modulators/frame builders |
 | **TRANSMIT** | Key a TX-capable SDR / rig | 🟡 `transmit_iq()` plumbing only; no encode chain, no authorization layer |
@@ -161,7 +161,14 @@ The keystone and biggest differentiator. Implement `digital/rfdf.py` for real.
 
 ### Phase 4 — Decode + Encode (generic protocol)  ·  v0.17–0.19  ·  **P1**
 Reach URH-class parity for arbitrary digital protocols.
-- Generic demod/bit-slicer from IQ: OOK/ASK/FSK/PSK.
+- 🟡 **Generic demod/bit-slicer from IQ: OOK/ASK/FSK/PSK — core DONE**
+  (`core/bitslicer.py`): `slice_bits()` → soft signal per family (OOK envelope
+  level-threshold, FSK inst-freq sign, coherent-BPSK derotate) → shortest-run
+  samples-per-symbol estimator → symbol-centre sampling → bits, with an
+  eye-opening confidence and `bits_to_bytes`/`bits_to_hex`. Auto-selects the
+  family via the modulation classifier. Pure numpy, never raises; 23
+  synthetic-signal tests (exact OOK recovery, FSK/PSK up-to-inversion, sps
+  estimation, packing). Remaining: a UI to drive it + tie into DEC-FRAMING.
 - Protocol framing inspector — preamble / sync / payload / CRC (Inspectrum-style).
 - **Encode** — frame builder + modulator → IQ (feeds Phase 5 TX).
 - Replay: captured IQ → TX (authorization-gated).

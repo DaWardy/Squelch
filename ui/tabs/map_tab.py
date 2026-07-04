@@ -964,6 +964,10 @@ class MapTab(SquelchPanel, QWidget):
             done = pyqtSignal(list)
 
         w = _W()
+        # Keep a reference so the QObject is not garbage-collected before the
+        # worker thread emits (a dropped ref makes the queued signal fire on a
+        # half-deleted object and can deliver the slot 0 args → TypeError).
+        self._psk_worker = w
         w.done.connect(self._on_psk_spots)
 
         def _run():
@@ -976,11 +980,15 @@ class MapTab(SquelchPanel, QWidget):
 
         threading.Thread(target=_run, daemon=True, name="PSKFetch").start()
 
-    def _on_psk_spots(self, spots: list):
-        """Update hearing-me layer from PSKReporter results."""
+    def _on_psk_spots(self, spots=None):
+        """Update hearing-me layer from PSKReporter results.
+
+        `spots` defaults to None so a stray zero-argument invocation (e.g. a
+        queued cross-thread signal on a partially-collected sender) degrades to
+        an empty refresh instead of crashing the app."""
         import time
         self._hearing_me = {}
-        for s in spots:
+        for s in (spots or []):
             call = s.get("callsign", "")
             if not call:
                 continue

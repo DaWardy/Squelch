@@ -178,7 +178,13 @@ feature ships.
   logged via `core/netlog` → Help→Network Activity) enforced INSIDE
   `SoapyManager.transmit_iq()` — raises PermissionError before any hardware
   call, so no caller can bypass it. 15 chokepoint tests incl. a gate-coverage
-  source guard. Remaining: settings UI (band opt-in panel + acknowledgment flow).
+  source guard. **Settings UI DONE (2026-07-04):**
+  `ui/dialogs/settings_tx_auth_tab.py` — a "TX Authorization" settings tab:
+  legal-acknowledgment checkbox gating a per-band opt-in grid (all amateur +
+  service bands, disabled until acknowledged), plus the buried unrestricted
+  override behind a red danger disclaimer. Reads/writes only the `tx.auth.*`
+  keys the decision core consumes; 12 tests incl. an end-to-end check that a
+  UI-saved profile authorizes via `can_transmit`. **AUTH-LAYER complete.**
 - Wire encode → `transmit_iq()` strictly through the authorization gate,
   integrated with the AppState FSM. (Gate half done — transmit_iq is the hard
   auth chokepoint; the encode→modulator pipeline lands with Phase 4 ENC-BUILD.)

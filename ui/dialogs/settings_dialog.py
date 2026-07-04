@@ -32,9 +32,10 @@ from ui.dialogs.settings_apis_tab import _SettingsApisTab
 from ui.dialogs.settings_appearance_tab import _SettingsAppearanceTab
 from ui.dialogs.settings_advanced_tab import _SettingsAdvancedTab
 from ui.dialogs.settings_sdr_tab import _SettingsSdrTab
+from ui.dialogs.settings_tx_auth_tab import _SettingsTxAuthTab
 
 
-class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, _SettingsApisTab, _SettingsAppearanceTab, _SettingsAdvancedTab, _SettingsSdrTab, QDialog):
+class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, _SettingsApisTab, _SettingsAppearanceTab, _SettingsAdvancedTab, _SettingsSdrTab, _SettingsTxAuthTab, QDialog):
     """
     Full settings editor — all user-configurable options
     in one organized dialog. Changes applied on OK.
@@ -69,6 +70,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._tabs.addTab(self._tab_appearance(),"🎨  Appearance")
         self._tabs.addTab(self._tab_advanced(),  "⚙  Advanced")
         self._tabs.addTab(self._tab_sdr_drivers(),"📻  SDR Hardware")
+        self._tabs.addTab(self._tab_tx_auth(),   "📡  TX Authorization")
 
         root.addWidget(self._tabs, 1)
 
@@ -247,6 +249,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._load_advanced(cfg)
         self._load_apis(cfg)
         self._load_sdr(cfg)
+        self._load_tx_auth(cfg)
 
 
     def _conda_exe(self) -> str:
@@ -546,6 +549,7 @@ class SettingsDialog(_SettingsStationTab, _SettingsAudioTab, _SettingsModesTab, 
         self._save_advanced(cfg)
         self._save_apis(cfg)
         self._save_sdr(cfg)
+        self._save_tx_auth(cfg)
         cfg.save()
         # Deferred so the dialog closes before the stylesheet rebuild
         from PyQt6.QtCore import QTimer

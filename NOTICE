@@ -1,5 +1,5 @@
-APEX — Amateur Platform for EXperimentation
-Copyright (C) 2026  github.com/dawardy/apex
+Squelch — RF / SDR signal platform
+Copyright (C) 2026  github.com/dawardy/squelch
 
 This software is licensed under the GNU General Public License v3.
 See LICENSE for full terms.
@@ -88,13 +88,39 @@ adif-io
   Copyright: adif-io contributors
   https://github.com/on4kjm/adif-io
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFERENCE DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 CTY.DAT Country Files
   Copyright: AD1C
   https://www.country-files.com/
+  Downloaded at the user's request; not redistributed with Squelch.
+
+Squelch's built-in signal-identification table (core/sigid_db.py) contains
+only original, factual reference data (public frequency allocations and
+well-known signal characteristics) authored for this project.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTIONAL EXTERNAL DATA — NOT DISTRIBUTED WITH SQUELCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The following third-party signal catalogues can be downloaded or imported by
+the user for offline signal identification. They are NOT bundled, copied, or
+redistributed with Squelch; each carries its own licence, and the user is
+responsible for complying with it (including any non-commercial or share-alike
+terms) when they obtain and use it. Attribution is preserved on imported data.
+
+SigID Wiki
+  License: CC BY-SA 4.0
+  https://www.sigidwiki.com/
+  Accessed via its public API / user-supplied export.
 
 Artemis Signal Database
-  Copyright: Società Italiana Radioascolto (SIRAit)
+  Copyright: AresValley and contributors
+  License: CC BY-NC-SA 4.0  (NonCommercial — ShareAlike)
   https://github.com/AresValley/Artemis
+  Downloaded at the user's request into a local, gitignored cache.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PROPRIETARY COMPONENTS (separate install — not distributed)
@@ -104,26 +130,16 @@ VARA / VARA HF / VARA FM
   Copyright: EA5HVK (Alfonso Ruiz)
   Freeware / paid license
   https://rosmodem.wordpress.com/
-  APEX interfaces via TCP socket only.
-  VARA is not distributed with APEX.
+  Squelch interfaces via TCP socket only.
+  VARA is not distributed with Squelch.
 
 DSD+
   Freeware
   https://www.dsdplus.com/
-  APEX interfaces via subprocess only.
-  DSD+ is not distributed with APEX.
+  Squelch interfaces via subprocess only.
+  DSD+ is not distributed with Squelch.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 All trademarks are property of their respective owners.
-APEX is not affiliated with ARRL, FCC, or any radio manufacturer.
-
-SigID Wiki
-  License: CC BY-SA 4.0
-  https://www.sigidwiki.com/
-  Signal identification database accessed via API.
-
-Artemis Signal Database
-  Copyright: AresValley
-  License: CC BY-NC-SA 4.0
-  https://github.com/AresValley/Artemis
-  Local signal database for offline identification.
+Squelch is not affiliated with ARRL, FCC, SigID Wiki, AresValley, or any radio
+manufacturer.

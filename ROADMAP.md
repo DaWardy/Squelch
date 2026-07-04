@@ -123,6 +123,14 @@ features have nowhere to write.
 
 ### Phase 2 — Identify  ·  v0.14–0.15  ·  **P1**
 - Write SigID-wiki matches onto Signal records (classification + confidence).
+- ✅ **Offline signal-ID lookup DONE** (`core/sigid_db.py`): a data-source-
+  agnostic engine that ranks candidate identities from a signal's (frequency,
+  bandwidth, modulation) fingerprint. Ships an **original, factual** built-in
+  table (public allocations / well-known traits) — no third-party catalogue is
+  bundled. `import_entries()` / `from_json()` load a user-supplied SigIDWiki /
+  Artemis export (attribution preserved), keeping Squelch clear of those
+  catalogues' NonCommercial / ShareAlike terms. Ties `signal_classify` +
+  `modulation_classify` together. 22 tests.
 - 🟡 **Allocation classifier DONE** (`core/signal_classify.py`): matches
   freq → known fixed channels (NOAA/aviation/marine/ISS…), amateur band
   segments, and CB/FRS/GMRS/MURS/ISM service bands → label + suggested mode +

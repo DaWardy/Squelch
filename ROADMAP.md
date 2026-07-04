@@ -177,6 +177,11 @@ Reach URH-class parity for arbitrary digital protocols.
   the published "123456789" check vectors; `identify_crc()` reports which
   polynomial validates the payload. Pure Python, never raises; 28 tests.
   Remaining: a UI panel to visualise detected frames.
+- ✅ **Line-coding decode/encode DONE** (`core/linecoding.py`): sits between the
+  bit-slicer and the framing inspector — Manchester (IEEE 802.3 + G.E. Thomas,
+  auto chip-phase, invalid-pair count), NRZI, and differential, each with a
+  matching encoder so encode∘decode is the identity. Pure Python; 22 tests
+  (round-trips + a Manchester→framing chain check).
 - 🟡 **Encode — frame builder + modulator → IQ — core DONE**
   (`core/encoder.py`): the inverse of the decode chain. `build_frame()`
   assembles preamble + sync + payload + CRC; `modulate()` renders OOK/FSK/

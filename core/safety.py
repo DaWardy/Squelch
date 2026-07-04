@@ -147,6 +147,11 @@ class SafetyManager:
             return False
         return self._state in (AppState.IDLE, AppState.RX)
 
+    def is_demo_mode(self) -> bool:
+        """Whether Demo (classroom lecture) mode is active. Every TX path
+        must treat this as an absolute block (C-06, Elena)."""
+        return bool(getattr(self, "_demo_mode", False))
+
     def set_demo_mode(self, enabled: bool):
         """Enable/disable Demo (classroom lecture) mode. When on, all
         transmit paths are blocked regardless of app state. This is for

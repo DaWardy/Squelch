@@ -659,7 +659,18 @@ class SoapyManager:
                 self.current_device.can_tx)
 
     def transmit_iq(self, iq_data: np.ndarray):
-        """TX IQ samples — only for TX-capable hardware."""
+        """TX IQ samples — only for TX-capable hardware.
+
+        Hard authorization chokepoint (AUTH-LAYER / TX-CHAIN): every keying
+        passes through core.authorization.authorize_tx() — default-deny,
+        Demo-mode absolute block, per-band opt-in, every attempt logged.
+        Raises PermissionError when denied so no caller can key unauthorized.
+        """
+        from core.authorization import authorize_tx
+        decision = authorize_tx(self._center_hz)
+        if not decision.allowed:
+            raise PermissionError(
+                f"TX not authorized: {decision.reason}")
         if not self.tx_capable():
             raise RuntimeError(
                 "Connected SDR is RX-only")

@@ -170,13 +170,18 @@ Reach URH-class parity for arbitrary digital protocols.
 ### Phase 5 — Transmit chain + Authorization  ·  v0.19–0.21  ·  **P0 for any TX**
 The Authorization layer is a **hard prerequisite** before any encode→TX
 feature ships.
-- 🟡 **DONE (decision core)** `core/authorization.py` — **Authorization
-  Profiles**: per-band TX allow/deny, default-deny, legal-use acknowledgment
-  gate, buried unrestricted override; `can_transmit()` returns an AuthDecision;
-  18 tests. Remaining: settings UI + wire into AppState FSM / `transmit_iq`
-  (caller logs each keying via `core/netlog`).
+- 🟡 **DONE (decision core + chokepoint)** `core/authorization.py` —
+  **Authorization Profiles**: per-band TX allow/deny, default-deny, legal-use
+  acknowledgment gate, buried unrestricted override; `can_transmit()` returns
+  an AuthDecision; 18 tests. **Chokepoint wired (2026-07-04):**
+  `authorize_tx(freq_hz)` (fail-closed; Demo-mode absolute block; every keying
+  logged via `core/netlog` → Help→Network Activity) enforced INSIDE
+  `SoapyManager.transmit_iq()` — raises PermissionError before any hardware
+  call, so no caller can bypass it. 15 chokepoint tests incl. a gate-coverage
+  source guard. Remaining: settings UI (band opt-in panel + acknowledgment flow).
 - Wire encode → `transmit_iq()` strictly through the authorization gate,
-  integrated with the AppState FSM.
+  integrated with the AppState FSM. (Gate half done — transmit_iq is the hard
+  auth chokepoint; the encode→modulator pipeline lands with Phase 4 ENC-BUILD.)
 - **Buried "Unrestricted TX" override** — behind layered disclaimers, for
   emergency use or when the operator holds authorization for the band(s).
   Off by default, requires explicit acknowledgment, every use logged. Legal

@@ -123,3 +123,48 @@ def can_transmit(freq_hz: int, profile: AuthorizationProfile) -> AuthDecision:
         return AuthDecision(True, f"Band {band.name} authorized", band.name)
     return AuthDecision(
         False, f"Band {band.name} not in the authorized list", band.name)
+
+
+def authorize_tx(freq_hz: int, cfg=None, safety=None) -> AuthDecision:
+    """The full TX-chokepoint decision: Demo-mode block → authorization
+    profile (`can_transmit`). Fail-closed: ANY internal error denies.
+
+    This is what `transmit_iq()` (and any future TX path) calls right before
+    keying. Every attempt — allowed or denied — is logged via core.netlog so
+    it shows in Help → Network Activity ("every use logged", ROADMAP §Phase 5).
+    Demo mode is checked here as an *absolute* block (C-06 classroom
+    guarantee); AppState TX sequencing stays the caller's job so a streaming
+    TX chain (state already TX_*) is not self-blocked mid-transmission.
+    """
+    try:
+        freq_hz = int(freq_hz or 0)
+        if safety is None:
+            from core.safety import get_safety
+            safety = get_safety()
+        if safety is not None and safety.is_demo_mode():
+            decision = AuthDecision(
+                False, "Demo mode active — all transmit blocked")
+        else:
+            if cfg is None:
+                from core.config import get_config
+                cfg = get_config()
+            profile = AuthorizationProfile.from_cfg(cfg)
+            decision = can_transmit(freq_hz, profile)
+    except Exception as exc:
+        log.warning("authorize_tx failed closed: %s", exc)
+        decision = AuthDecision(False, f"Authorization check failed ({exc})")
+    _log_keying(freq_hz, decision)
+    return decision
+
+
+def _log_keying(freq_hz: int, decision: AuthDecision) -> None:
+    """Record the keying attempt in the netlog ring. Never raises."""
+    try:
+        from core.netlog import record_connection
+        verdict = "AUTHORIZED" if decision.allowed else "DENIED"
+        record_connection(
+            f"TX {freq_hz/1e6:.4f} MHz",
+            purpose=f"transmit {verdict}: {decision.reason}",
+            user_initiated=True)
+    except Exception:                              # pragma: no cover
+        pass

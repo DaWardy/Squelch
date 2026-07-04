@@ -147,9 +147,16 @@ The keystone and biggest differentiator. Implement `digital/rfdf.py` for real.
   save/load. 41 tests. Remaining: foxhunt UI panel wiring the live GPS+RSSI
   feed in and drawing the track/heatmap overlay (GUI).
 - **TDOA / multilateration** from multi-node captures (needs Phase 6 sensor mode).
-- **Emitter fingerprint correlation** — group Signal records by frequency +
+- 🟡 **Emitter fingerprint correlation** — group Signal records by frequency +
   digital ID (radio ID, talkgroup, protocol identifiers) → estimated location;
-  persistent emitter map overlay.
+  persistent emitter map overlay. Correlation core DONE
+  (`core/emitter_correlate.py`): `fingerprint()` (non-empty emitter-id names the
+  physical emitter across every frequency; anonymous obs group by
+  source+classification+freq-bucket), `correlate_emitters()` /
+  `correlate_from_store()` → `Emitter` records (freq range, distinct
+  sources/classifications/modulations, obs count, first/last seen, estimated
+  location via `rfdf.estimate_location_rssi` or plain centroid). 18 tests.
+  Remaining: the persistent emitter map overlay (GUI).
 - Map integration: bearings, heatmaps, estimated emitter locations.
 
 ### Phase 4 — Decode + Encode (generic protocol)  ·  v0.17–0.19  ·  **P1**

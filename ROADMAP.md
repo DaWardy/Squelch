@@ -138,7 +138,14 @@ The keystone and biggest differentiator. Implement `digital/rfdf.py` for real.
     the foxhunt RSSI→GPS track logging below will consume.
 - **Coherent / pseudo-doppler DF** where hardware supports (KrakenSDR-class
   multi-channel).
-- **RSSI→GPS track logging + heatmap** — drive/walk a signal, map strength.
+- 🟡 **RSSI→GPS track logging + heatmap** — drive/walk a signal, map strength.
+  Capture/logging core DONE (`core/df_track.py`): `DFTrack` accumulator +
+  `DFSample`; four capture triggers (MANUAL/CONTINUOUS/TIMED/DISTANCE) via the
+  pure `should_log()`; delegates to `digital/rfdf.py` for the location fix &
+  gradient bearing; `to_signal()` bridges into the store; `heatmap_points()`
+  (normalized weights), bbox/strongest/path-length/duration stats; JSON
+  save/load. 41 tests. Remaining: foxhunt UI panel wiring the live GPS+RSSI
+  feed in and drawing the track/heatmap overlay (GUI).
 - **TDOA / multilateration** from multi-node captures (needs Phase 6 sensor mode).
 - **Emitter fingerprint correlation** — group Signal records by frequency +
   digital ID (radio ID, talkgroup, protocol identifiers) → estimated location;

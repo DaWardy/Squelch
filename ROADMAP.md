@@ -114,6 +114,15 @@ features have nowhere to write.
   signal_classify; `anomalies_to_signals()` bridges to the unified store
   (source='anomaly'). JSON save/load. 19 tests. Remaining: live sweep capture
   + a compare UI.
+- ✅ **SOI / SNOI watch-list core DONE** (`core/soi_snoi.py`) — the founding
+  "signals of interest recorded; signals not of interest silently ignored"
+  concept. A persistent `WatchList` of frequency rules (SOI = watch/prioritise,
+  SNOI = ignore; SOI wins on overlap; optional modulation-family narrowing).
+  `snoi_ranges()` plugs straight into `compare_baselines(ignore_ranges=…)`;
+  `partition()` / `filter_out_snoi()` sort or drop any freq-bearing objects
+  (Signal records, occupancy segments). JSON + cfg persistence;
+  `with_common_snoi()` seeds broadcast/paging ignores. 20 tests. Remaining: a
+  watch-list editor UI.
 - ✅ **DONE (pending launch-test)** **Signal Browser** tab (`SIG-BROWSER`):
   presenter (`core/signal_browser.py`) + Qt tab (`ui/tabs/signal_browser_tab.py`,
   read-only table, search + source filter, CSV export, double-click→SDR tune,

@@ -177,7 +177,15 @@ Reach URH-class parity for arbitrary digital protocols.
   the published "123456789" check vectors; `identify_crc()` reports which
   polynomial validates the payload. Pure Python, never raises; 28 tests.
   Remaining: a UI panel to visualise detected frames.
-- **Encode** — frame builder + modulator → IQ (feeds Phase 5 TX).
+- 🟡 **Encode — frame builder + modulator → IQ — core DONE**
+  (`core/encoder.py`): the inverse of the decode chain. `build_frame()`
+  assembles preamble + sync + payload + CRC; `modulate()` renders OOK/FSK/
+  coherent-BPSK to complex-baseband IQ; `encode_iq()` is the one-shot →
+  `EncodeResult`. Validated by encode→`slice_bits`→`inspect_frame` round-trips
+  (OOK/FSK recover exactly with CRC ok; PSK up to its 180° ambiguity). 18
+  tests. `result.iq` feeds `SoapyManager.transmit_iq()` — the AUTH-LAYER
+  chokepoint — so the TX path is authorization-gated end to end. Remaining:
+  a build/replay UI.
 - Replay: captured IQ → TX (authorization-gated).
 - Targets: ISM-band telemetry, IoT/sensor protocols, and general protocol research.
 

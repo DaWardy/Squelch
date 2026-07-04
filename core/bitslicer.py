@@ -91,8 +91,12 @@ def _binarize(soft: np.ndarray, kind: str) -> np.ndarray:
     if kind == "level":
         lo, hi = float(soft.min()), float(soft.max())
         thr = (lo + hi) / 2.0
-    else:                                   # 'zero' → split at the median
-        thr = float(np.median(soft))
+    else:
+        # 'zero' (FSK/PSK): the mean sits strictly BETWEEN the two symbol
+        # levels even when the bit counts are imbalanced. The median would
+        # land ON the majority level, so float jitter around it straddles the
+        # threshold → sporadic bit errors. Mean is the robust two-level split.
+        thr = float(np.mean(soft))
     return (soft > thr).astype(np.int8)
 
 

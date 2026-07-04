@@ -283,6 +283,14 @@ Squelch is dual-use and (in part) TX-capable and decode-broad. The posture:
 3. **Receive/analysis features are not gated**, but the app surfaces a clear
    legal-use notice and keeps the existing outbound-network log
    (`core/netlog`, Help → Network Activity).
+   - ✅ **First-run legal acknowledgment DONE** (`DISCLAIMER.md` +
+     `core/legal.py` + `ui/legal_ack.py`): a version-stamped, plain-language
+     terms-of-use / disclaimer shown once at first launch (RX/TX legality is
+     the user's responsibility, no authorization granted, third-party-data
+     licences are the user's responsibility, GPL no-warranty). Declining quits
+     the app; acceptance persists and re-prompts only if the disclaimer version
+     is bumped. Third-party signal catalogues are never bundled (`core/sigid_db`
+     ships original factual data only) — see NOTICE.
 4. The existing safety stack stays: AppState FSM, `operating_callsign()`,
    Demo/Guest modes, no shell/eval/pickle, keyring credentials, pentest suite.
 

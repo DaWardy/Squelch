@@ -115,8 +115,20 @@ class _MainWindowFirstrunMixin:
 
 
     def _check_first_run(self):
+        from core.legal import needs_legal_ack
+        if needs_legal_ack(self.cfg):
+            QTimer.singleShot(300, self._show_legal_ack)
         if not self.cfg.is_configured:
             QTimer.singleShot(600, self._first_run_dialog)
+
+    def _show_legal_ack(self):
+        """One-time legal disclaimer; quit the app if the user declines."""
+        try:
+            from ui.legal_ack import show_legal_ack
+            if not show_legal_ack(self, self.cfg):
+                self.close()
+        except Exception as e:
+            log.error(f"Legal acknowledgment failed: {e}")
 
 
     def _first_run_dialog(self):

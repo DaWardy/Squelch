@@ -378,6 +378,13 @@ class DigitalTab(SquelchPanel, QWidget):
                 return
         except Exception:
             pass
+        # License-class TX gate (covers this send AND the F1-F8 digital macros,
+        # which route through here). Uses the rig's tuned frequency.
+        from ui.tx_confirm import confirm_tx
+        _freq = self.rig.state.freq_hz if getattr(self, "rig", None) else 0
+        if not confirm_tx(self, self.cfg, _freq):
+            self._tx_status.setText("TX cancelled")
+            return
         mode = self._tx_mode.currentText()
         sent = (mode in ("Auto", "fldigi") and self._try_fldigi_send(txt)) or \
                (mode in ("Auto", "JS8Call") and self._try_js8call_send(txt))

@@ -196,6 +196,11 @@ class _RigCWMixin:
         text = self._cw_text.text().strip()
         if not text:
             return
+        # License-class TX gate (covers this send AND the F1-F8 CW macros,
+        # which route through here). GUI-thread, so the confirm dialog is safe.
+        from ui.tx_confirm import confirm_tx
+        if not confirm_tx(self, self.cfg, self.rig.state.freq_hz):
+            return
         # WinKeyer hardware path (preferred)
         if self._winkeyer and self._winkeyer.is_connected:
             self._winkeyer.send_text(text)

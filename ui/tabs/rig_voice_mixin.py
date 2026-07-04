@@ -83,6 +83,10 @@ class _RigVoiceMixin:
         if not path or not os.path.isfile(path):
             self._voice_status.setText(f"No clip for {key.upper()} — right-click to set")
             return
+        # License-class TX gate — playing a voice clip transmits (VOX/PTT).
+        from ui.tx_confirm import confirm_tx
+        if not confirm_tx(self, self.cfg, self.rig.state.freq_hz):
+            return
         ok = self._voice_keyer.play(key)
         if ok:
             self._voice_status.setText(f"▶ Playing {key.upper()}: {clip['label']}")

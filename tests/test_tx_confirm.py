@@ -116,6 +116,50 @@ class TestRigTabWiring:
         assert confirm_idx < set_ptt_idx
 
 
+class TestAllTxPathsGated:
+    """Every user-initiated TX path must route through confirm_tx() before it
+    transmits. A future refactor that drops one of these gates should fail here.
+    """
+
+    def _method_body(self, rel: str, method: str) -> str:
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        idx = src.find(f"def {method}(")
+        assert idx != -1, f"{method} not found in {rel}"
+        end = src.find("\n    def ", idx + 10)
+        return src[idx: end if end != -1 else len(src)]
+
+    def test_manual_ptt_gated(self):
+        body = self._method_body("ui/tabs/rig_tab.py", "_on_ptt")
+        assert "confirm_tx" in body
+
+    def test_cw_keyer_and_macros_gated(self):
+        # _cw_macro_click routes through _send_cw, so gating _send_cw covers both.
+        body = self._method_body("ui/tabs/rig_cw_mixin.py", "_send_cw")
+        assert "confirm_tx" in body
+
+    def test_voice_keyer_gated(self):
+        body = self._method_body("ui/tabs/rig_voice_mixin.py", "_voice_play")
+        assert "confirm_tx" in body
+
+    def test_digital_send_and_macros_gated(self):
+        # _on_macro_btn routes through _send_tx_text, so one gate covers both.
+        body = self._method_body("ui/tabs/digital_tab.py", "_send_tx_text")
+        assert "confirm_tx" in body
+
+    def test_sdr_tx_iq_gated(self):
+        body = self._method_body("ui/tabs/sdr_signal_id.py", "_tx_iq_file")
+        assert "confirm_tx" in body
+
+    def test_cw_macro_routes_through_send_cw(self):
+        # Guards the "one gate covers macros too" assumption for CW.
+        body = self._method_body("ui/tabs/rig_cw_mixin.py", "_cw_macro_click")
+        assert "_send_cw()" in body
+
+    def test_digital_macro_routes_through_send_tx_text(self):
+        body = self._method_body("ui/tabs/digital_tab.py", "_on_macro_btn")
+        assert "_send_tx_text()" in body
+
+
 class TestSettingsStationLicenseCombo:
     def _src(self) -> str:
         return (ROOT / "ui" / "dialogs" / "settings_station_tab.py").read_text(

@@ -43,6 +43,13 @@ class _SDRSignalIDMixin:
 
     def _tx_iq_file(self):
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        # License-class TX gate. The SDR can key outside the amateur bands
+        # (HackRF/USRP), so this is the highest-risk out-of-band path — gate it
+        # up front against the tuned SDR centre. (TX itself is still a stub;
+        # the gate is wired now so it is enforced the moment TX goes live.)
+        from ui.tx_confirm import confirm_tx
+        if not confirm_tx(self, self.cfg, getattr(self, "_center_hz", 0)):
+            return
         path, _ = QFileDialog.getOpenFileName(
             self, self.tr("Select IQ File"),
             str(_safe_recordings_path(self.cfg)),

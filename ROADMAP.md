@@ -102,8 +102,14 @@ features have nowhere to write.
 - 🟡 **Spectrum occupancy survey** (`SIG-SURVEY`): detection core DONE
   (`core/occupancy.py`: robust noise floor, `detect_segments` →
   OccupancySegment, `occupancy_fraction`; feeds the store via
-  `signal_from_occupancy`; 18 tests). Remaining: the live wideband sweep loop
-  (tune SDR across a range, accumulate frames) — needs SDR streaming + GUI.
+  `signal_from_occupancy`; 18 tests). **Live-analysis pump DONE**
+  (`core/live_analysis.py` `SurveyEngine`): `offer_frame(powers_db, center_hz,
+  sample_rate)` — geometry matches `sdr_tab._on_samples`'s FFT — runs occupancy
+  → drops SNOI / tags SOI → Signal records (optional store ingest) → folds each
+  frame into a rolling `Baseline`; `snapshot()` / `compare_to(reference)` for
+  the baseline-compare workflow. Never raises. 18 synthetic-frame tests.
+  Remaining: the thin GUI wiring (call `offer_frame` from the sample callback +
+  a survey/compare view) + a real SDR to drive it — HARDWARE-READY.
 - ✅ **RF Baseline & Compare core DONE** (`core/rf_baseline.py`) — the founding
   "hound" feature (snapshot an environment, compare across time/location,
   surface anomalies = potential bugs / trackers / unauthorized transmitters).

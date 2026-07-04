@@ -104,6 +104,16 @@ features have nowhere to write.
   OccupancySegment, `occupancy_fraction`; feeds the store via
   `signal_from_occupancy`; 18 tests). Remaining: the live wideband sweep loop
   (tune SDR across a range, accumulate frames) — needs SDR streaming + GUI.
+- ✅ **RF Baseline & Compare core DONE** (`core/rf_baseline.py`) — the founding
+  "hound" feature (snapshot an environment, compare across time/location,
+  surface anomalies = potential bugs / trackers / unauthorized transmitters).
+  `baseline_from_spectrum()` snapshots noise floor + occupied segments (via
+  occupancy); `Baseline.merge()` folds repeated sweeps; `compare_baselines()`
+  diffs reference vs current → appeared / vanished / power-shifted signals +
+  floor delta, honours SNOI ignore-ranges, labels anomalies via
+  signal_classify; `anomalies_to_signals()` bridges to the unified store
+  (source='anomaly'). JSON save/load. 19 tests. Remaining: live sweep capture
+  + a compare UI.
 - ✅ **DONE (pending launch-test)** **Signal Browser** tab (`SIG-BROWSER`):
   presenter (`core/signal_browser.py`) + Qt tab (`ui/tabs/signal_browser_tab.py`,
   read-only table, search + source filter, CSV export, double-click→SDR tune,

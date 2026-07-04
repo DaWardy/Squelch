@@ -228,7 +228,7 @@ class PropagationSideView(QWidget):
                 p.setFont(QFont("", 7))
                 mid_y = y_top + h_px // 2 + 4
                 p.drawText(x0 + 4, mid_y,
-                           f"{name}-layer  ({lo_km}–{hi_km} km)")
+                           f"{name}-layer  ({lo_km}-{hi_km} km)")
             if name == "F2":
                 f2_top, f2_bot = y_top, y_bot
         return f2_top, f2_bot
@@ -346,7 +346,7 @@ class PropagationSideView(QWidget):
         if mode == "groundwave":
             arc.moveTo(x0, ground - ant_h)
             arc.quadTo((x0+x1)/2, ground + bulge_px - 6, x1, ground - ant_h)
-            msg = "Groundwave — surface-following, short-path"
+            msg = "Groundwave - surface-following, short-path"
 
         elif mode == "nvis":
             f2_mid = (f2_top + f2_bot) // 2
@@ -354,7 +354,7 @@ class PropagationSideView(QWidget):
             arc.cubicTo(x0 + 30, f2_mid + 20,
                         x1 - 30, f2_mid + 20,
                         x1, ground - ant_h)
-            msg = "NVIS — near-vertical, F-layer bounce, local/regional"
+            msg = "NVIS - near-vertical, F-layer bounce, local/regional"
 
         elif mode == "skywave":
             hops  = 2 if path > 4000 else 1
@@ -366,7 +366,7 @@ class PropagationSideView(QWidget):
                 cx  = (x_s + x_e) / 2
                 arc.quadTo(cx, f2_mid - 10,
                            x_e, (ground - ant_h) if h == hops-1 else ground - 2)
-            msg = f"Skywave — {'1-hop' if hops == 1 else '2-hop'} F2 refraction"
+            msg = f"Skywave - {'1-hop' if hops == 1 else '2-hop'} F2 refraction"
 
         elif mode == "beyond":
             arc.moveTo(x0, ground - ant_h)
@@ -376,7 +376,7 @@ class PropagationSideView(QWidget):
             p.setPen(col.lighter(130))
             p.setFont(QFont("", 8))
             p.drawText((x0+x1)//2 + 6, top + 14, "↑ escapes to space")
-            return f"Above MUF ({self._muf_mhz:.1f} MHz) — signal lost to space"
+            return f"Above MUF ({self._muf_mhz:.1f} MHz) - signal lost to space"
 
         elif mode == "absorbed":
             d = int((x1 - x0) * 0.30)
@@ -384,7 +384,7 @@ class PropagationSideView(QWidget):
             arc.quadTo(x0 + d//2, ground - 30, x0 + d, ground - 4)
             p.setPen(QPen(col, 2, Qt.PenStyle.DotLine))
             p.drawPath(arc)
-            return f"Below LUF ({self._luf_mhz:.1f} MHz) — D-layer absorbed"
+            return f"Below LUF ({self._luf_mhz:.1f} MHz) - D-layer absorbed"
 
         else:
             return ""

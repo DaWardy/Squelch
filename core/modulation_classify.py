@@ -22,9 +22,12 @@ Feed it IQ from an SDR capture or an occupancy segment. `confidence` is a rough
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 # Modulation labels (stable strings — used in UI, Signal records, tests).
 NONE   = "None/Noise"
@@ -247,3 +250,31 @@ def classify_modulation(iq: np.ndarray, fs: float) -> ModResult:
 
 def _conf(v: float) -> float:
     return float(max(0.0, min(1.0, v)))
+
+
+def apply_modulation(sig, iq, fs, *, min_confidence: float = 0.4):
+    """Enrich a Signal record in place with the measured modulation from its IQ.
+
+    The ID-DBWRITE step: runs classify_modulation() and, when it finds a real
+    modulation (not None) at or above *min_confidence*, writes sig.modulation
+    (an IQ measurement overrides an allocation-*guessed* default from
+    signal_classify.apply_classification), lifts sig.confidence, and fills
+    sig.bandwidth_hz from the occupied bandwidth when it is still unknown.
+
+    Returns the same Signal for chaining. Never raises. Pairs with
+    signal_classify.apply_classification (freq→label): call that for the
+    allocation label, this for the on-air modulation.
+    """
+    try:
+        r = classify_modulation(iq, fs)
+        if r.modulation != NONE and r.confidence >= min_confidence:
+            sig.modulation = r.modulation
+            sig.confidence = max(
+                float(getattr(sig, "confidence", 0.0) or 0.0), r.confidence)
+            if not getattr(sig, "bandwidth_hz", 0):
+                bw = int(r.features.occ_bw * fs)
+                if bw > 0:
+                    sig.bandwidth_hz = bw
+    except Exception as exc:
+        log.debug("apply_modulation failed: %s", exc)
+    return sig

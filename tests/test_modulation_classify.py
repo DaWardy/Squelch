@@ -11,9 +11,10 @@ import numpy as np
 import pytest
 
 from core.modulation_classify import (
-    classify_modulation, extract_features,
+    classify_modulation, extract_features, apply_modulation,
     NONE, CW, AM, SSB, FM, OOK, FSK, PSK, OFDM,
 )
+from core.signal_model import Signal
 
 FS = 48000.0
 N = 8192
@@ -166,3 +167,40 @@ class TestFeatures:
         rng = np.random.default_rng(1)
         f = extract_features(_gen("psk", rng), FS)
         assert f.freq_duty < 0.35      # spikes at transitions, not held
+
+
+class TestApplyModulation:
+    """ID-DBWRITE: enrich a Signal record in place from its IQ."""
+
+    def test_writes_measured_modulation(self):
+        rng = np.random.default_rng(1)
+        sig = Signal(freq_hz=145_000_000, source="sdr")
+        out = apply_modulation(sig, _gen("fm", rng), FS)
+        assert out is sig                      # in place, chainable
+        assert sig.modulation == FM
+        assert sig.confidence > 0.4
+
+    def test_iq_overrides_allocation_guess(self):
+        # An allocation guess of AM is overridden by a measured FM signal.
+        rng = np.random.default_rng(1)
+        sig = Signal(freq_hz=145_000_000, modulation=AM, confidence=0.3)
+        apply_modulation(sig, _gen("fm", rng), FS)
+        assert sig.modulation == FM
+
+    def test_does_not_clobber_on_noise(self):
+        rng = np.random.default_rng(1)
+        sig = Signal(freq_hz=145_000_000, modulation=AM)
+        apply_modulation(sig, _gen("noise", rng), FS)
+        assert sig.modulation == AM            # None result → leave existing
+
+    def test_fills_bandwidth_when_unknown(self):
+        rng = np.random.default_rng(1)
+        sig = Signal(freq_hz=145_000_000, bandwidth_hz=0)
+        apply_modulation(sig, _gen("fm", rng), FS)
+        assert sig.bandwidth_hz > 0
+
+    def test_never_raises_on_bad_iq(self):
+        sig = Signal(freq_hz=145_000_000, modulation=AM)
+        apply_modulation(sig, np.array([], dtype=complex), FS)   # empty
+        apply_modulation(sig, np.full(N, np.nan, dtype=complex), FS)
+        assert sig.modulation == AM

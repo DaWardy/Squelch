@@ -169,7 +169,14 @@ Reach URH-class parity for arbitrary digital protocols.
   family via the modulation classifier. Pure numpy, never raises; 23
   synthetic-signal tests (exact OOK recovery, FSK/PSK up-to-inversion, sps
   estimation, packing). Remaining: a UI to drive it + tie into DEC-FRAMING.
-- Protocol framing inspector — preamble / sync / payload / CRC (Inspectrum-style).
+- 🟡 **Protocol framing inspector — preamble / sync / payload / CRC — core DONE**
+  (`core/framing.py`): `inspect_frame(bits, sync_word, crc_bits)` → `FrameReport`
+  (preamble/sync/payload/CRC fields + notes). Alternating-run preamble finder,
+  sync-word search (bits/bytes/hex), and a generic bit-wise CRC engine with a
+  registry (CRC-8, CRC-16/CCITT-FALSE, XMODEM, ARC, CRC-32) validated against
+  the published "123456789" check vectors; `identify_crc()` reports which
+  polynomial validates the payload. Pure Python, never raises; 28 tests.
+  Remaining: a UI panel to visualise detected frames.
 - **Encode** — frame builder + modulator → IQ (feeds Phase 5 TX).
 - Replay: captured IQ → TX (authorization-gated).
 - Targets: ISM-band telemetry, IoT/sensor protocols, and general protocol research.

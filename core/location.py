@@ -158,20 +158,39 @@ class LocationManager:
     # ── Load saved ────────────────────────────────────────────────────────
 
     def load_from_config(self):
-        src  = self.cfg.get("location.source", "manual")
-        grid = self.cfg.get("location.grid", "")
-        lat  = self.cfg.get("location.lat",  0.0)
-        lon  = self.cfg.get("location.lon",  0.0)
-        if grid:
-            self.set_from_grid(grid, notify=False)
-        elif lat and lon:
-            self.set_from_latlon(lat, lon, notify=False)
-        elif src == "ip":
-            # Don't re-run IP geolocation on startup —
-            # use the saved grid/lat/lon from last session.
-            # IP geo only runs during first-run setup.
-            if lat and lon:
-                self.set_from_latlon(lat, lon, notify=False)
+        grid = (self.cfg.get("location.grid", "") or "").upper().strip()
+        lat  = float(self.cfg.get("location.lat", 0.0) or 0.0)
+        lon  = float(self.cfg.get("location.lon", 0.0) or 0.0)
+
+        # Restore the FULL persisted location without re-geocoding (offline-safe).
+        # Previously only grid/lat/lon were restored, so city/state/county/etc.
+        # were silently dropped on every restart — leaving the app with two
+        # out-of-sync sources of truth for the station location.
+        self.location = Location(
+            lat=lat, lon=lon, grid=grid,
+            city=self.cfg.get("location.city", "") or "",
+            state=self.cfg.get("location.state", "") or "",
+            county=self.cfg.get("location.county", "") or "",
+            country=self.cfg.get("location.country", "") or "",
+            zip_code=self.cfg.get("location.zip_code", "") or "",
+            mgrs_str=self.cfg.get("location.mgrs", "") or "",
+            source=LocationSource.MANUAL,
+            last_updated=time.time())
+
+        # Coordinates are the source of truth: recompute the grid from them so a
+        # stale saved grid can't send the map to the wrong continent (a saved
+        # grid left over from IP geolocation was centring the map on Germany).
+        # Fall back to the grid only when no coordinates are stored.
+        if lat or lon:
+            recomputed = _latlon_to_grid(lat, lon)
+            if grid and recomputed[:4] != grid[:4]:
+                log.warning(
+                    "Saved grid %s disagrees with saved coordinates "
+                    "(%.4f, %.4f → %s); trusting the coordinates.",
+                    grid, lat, lon, recomputed)
+            self.location.grid = recomputed
+        elif grid:
+            self.location.lat, self.location.lon = _grid_to_latlon(grid)
 
     # ── Setters ───────────────────────────────────────────────────────────
 

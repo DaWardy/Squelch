@@ -88,7 +88,7 @@ class LaunchButton(QPushButton):
             """)
             self.setToolTip(
                 f"{self._app.name} — not found\n"
-                f"Click to configure path\n"
+                f"Click to download or set its path\n"
                 f"Download: {self._app.download_url}")
 
     def _launch(self):
@@ -96,18 +96,35 @@ class LaunchButton(QPushButton):
         if self._avail:
             launcher.launch(self._app.key)
         else:
-            # Open paths dialog to configure
-            try:
-                from ui.dialogs.paths_dialog import \
-                    PathsDialog
-                dlg = PathsDialog(
-                    self._cfg,
-                    scroll_to=self._app.key,
-                    parent=self.window())
-                if dlg.exec():
-                    self._refresh()
-            except Exception as e:
-                log.warning(f"Paths dialog: {e}")
+            self._show_unavailable_menu()
+
+    def _show_unavailable_menu(self):
+        """For a not-detected app, offer a download link (so the button is
+        never a dead end) alongside the set-path option."""
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        menu = QMenu(self)
+        url = (getattr(self._app, "download_url", "") or "").strip()
+        if url:
+            act_dl = menu.addAction(f"⬇  Download {self._app.name}…")
+            act_dl.triggered.connect(
+                lambda: QDesktopServices.openUrl(QUrl(url)))
+        act_path = menu.addAction("⚙  Set installed path…")
+        act_path.triggered.connect(self._configure_path)
+        menu.exec(self.mapToGlobal(self.rect().bottomLeft()))
+
+    def _configure_path(self):
+        try:
+            from ui.dialogs.paths_dialog import PathsDialog
+            dlg = PathsDialog(
+                self._cfg,
+                scroll_to=self._app.key,
+                parent=self.window())
+            if dlg.exec():
+                self._refresh()
+        except Exception as e:
+            log.warning(f"Paths dialog: {e}")
 
 
 class LaunchBar(QWidget):

@@ -605,6 +605,23 @@ APPS: list[AppDef] = [
     ),
 
     AppDef(
+        key          = "paths.sdrconsole",
+        name         = "SDR Console",
+        description  = "Simon Brown's Windows SDR receiver — wide hardware support",
+        category     = "sdr",
+        exe_name     = "SDRConsole",
+        args         = None,
+        common_paths = [
+            r"C:\Program Files\SDR-Radio.com (V3)\SDRConsole.exe",
+            r"C:\Program Files (x86)\SDR-Radio.com (V3)\SDRConsole.exe",
+            r"C:\Program Files\SDR-Radio.com\SDRConsole.exe",
+        ],
+        linux_paths  = [],
+        download_url  = "https://www.sdr-radio.com/download",
+        tab          = "sdr",
+    ),
+
+    AppDef(
         key          = "paths.gnuradio",
         name         = "GNU Radio Companion",
         description  = "Visual flowgraph builder for signal processing and SDR",

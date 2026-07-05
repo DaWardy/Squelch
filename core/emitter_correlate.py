@@ -123,29 +123,30 @@ def _uniq(values) -> list[str]:
     return out
 
 
+def _col(grp: list, attr: str, default=""):
+    """Column of `attr` across the group, empties coerced to `default`."""
+    return [getattr(s, attr, default) or default for s in grp]
+
+
 def _build_emitter(key: str, grp: list) -> Emitter:
-    freqs = [int(getattr(s, "freq_hz", 0) or 0) for s in grp]
-    freqs_nz = [f for f in freqs if f] or [0]
-    seens_first = [getattr(s, "first_seen", "") or "" for s in grp]
-    seens_last  = [getattr(s, "last_seen", "") or "" for s in grp]
-    eid = (getattr(grp[0], "emitter_id", "") or "").strip()
+    freqs_nz = [f for f in _col(grp, "freq_hz", 0) if f] or [0]
+    firsts = [s for s in _col(grp, "first_seen") if s]
     lat, lon, conf, method = _estimate_group_location(grp)
     return Emitter(
         key=key,
-        emitter_id=eid,
+        emitter_id=(getattr(grp[0], "emitter_id", "") or "").strip(),
         freq_hz=freqs_nz[len(freqs_nz) // 2],       # median-ish representative
         freq_lo=min(freqs_nz),
         freq_hi=max(freqs_nz),
-        classifications=_uniq(getattr(s, "classification", "") for s in grp),
-        sources=_uniq(getattr(s, "source", "") for s in grp),
-        modulations=_uniq(getattr(s, "modulation", "") for s in grp),
+        classifications=_uniq(_col(grp, "classification")),
+        sources=_uniq(_col(grp, "source")),
+        modulations=_uniq(_col(grp, "modulation")),
         n_signals=len(grp),
-        n_observations=sum(int(getattr(s, "count", 1) or 1) for s in grp),
-        first_seen=min((s for s in seens_first if s), default=""),
-        last_seen=max(seens_last) if seens_last else "",
+        n_observations=sum(int(c) for c in _col(grp, "count", 1)),
+        first_seen=min(firsts, default=""),
+        last_seen=max(_col(grp, "last_seen") or [""]),
         lat=lat, lon=lon, location_confidence=conf, location_method=method,
-        signal_ids=[int(getattr(s, "id", 0) or 0)
-                    for s in grp if getattr(s, "id", 0)],
+        signal_ids=[int(i) for i in _col(grp, "id", 0) if i],
     )
 
 

@@ -78,6 +78,16 @@ class _SDRDeviceConnectMixin:
                 self.tr("No SDR devices found — use 🎙 Rig Audio or click ⟳"))
             if hasattr(self, "_dev_type_lbl"):
                 self._dev_type_lbl.setText("none")
+            # Surface *why* nothing was found (e.g. missing rtlsdr module) as a
+            # tooltip on the device combo, and log it to the console.
+            try:
+                from sdr.soapy_device import SoapyManager
+                hint = SoapyManager.diagnostics().get("hint", "")
+                if hint:
+                    self._dev_combo.setToolTip(hint)
+                    log.info("SDR: no devices — %s", hint.replace("\n", " "))
+            except Exception as exc:
+                log.debug("device diagnostics hint failed: %s", exc)
             return
         for dev in devices:
             self._dev_combo.addItem(dev.display_name)

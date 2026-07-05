@@ -414,6 +414,34 @@ class SDRDevice:
         return spans.get(self.driver.lower(), 2_000_000)
 
 
+# SoapySDR module-name fragments → friendly driver name.
+_KNOWN_DRIVERS = {
+    "rtlsdr": "RTL-SDR", "rtltcp": "RTL-TCP", "hackrf": "HackRF",
+    "uhd": "USRP (UHD)", "airspy": "Airspy", "sdrplay": "SDRplay",
+    "bladerf": "bladeRF", "lime": "LimeSDR", "plutosdr": "PlutoSDR",
+}
+
+
+def soapy_driver_hint(module_paths, n_devices: int) -> str:
+    """Human hint for why enumeration found nothing. Pure — unit-testable."""
+    if n_devices > 0:
+        return ""
+    low = [str(p).lower() for p in (module_paths or [])]
+    found = [name for frag, name in _KNOWN_DRIVERS.items()
+             if any(frag in p for p in low)]
+    if not found:
+        return (
+            "SoapySDR loaded but no device-driver modules are installed. "
+            "For an RTL-SDR, install the plugin in the conda environment "
+            "Squelch uses:\n"
+            "    conda install -c conda-forge soapysdr-module-rtlsdr\n"
+            "then click Rescan.")
+    return (
+        f"SoapySDR driver modules are present ({', '.join(sorted(set(found)))}) "
+        "but no device was detected. Check the SDR is plugged in, its WinUSB "
+        "(Zadig) driver is set, and no other program is holding it — then Rescan.")
+
+
 class SoapyManager:
     """
     Manages SoapySDR device lifecycle.
@@ -474,6 +502,28 @@ class SoapyManager:
         except Exception as e:
             log.warning(f"SDR enumerate: {e}")
             return []
+
+    @staticmethod
+    def diagnostics() -> dict:
+        """Why did enumeration find nothing? Returns has_soapy / modules /
+        n_devices / a human `hint`. Used by the SDR tab's 0-device message."""
+        if not HAS_SOAPY:
+            return {"has_soapy": False, "modules": [], "n_devices": 0,
+                    "hint": "SoapySDR is not available to Squelch. Install "
+                            "SoapySDR and a device module (e.g. "
+                            "soapysdr-module-rtlsdr) in a conda environment."}
+        modules = []
+        try:
+            modules = list(SoapySDR.listModules())
+        except Exception as exc:
+            log.debug("SoapySDR.listModules failed: %s", exc)
+        try:
+            n = len(SoapySDR.Device.enumerate())
+        except Exception as exc:
+            log.debug("SoapySDR.enumerate (diagnostics) failed: %s", exc)
+            n = 0
+        return {"has_soapy": True, "modules": modules, "n_devices": n,
+                "hint": soapy_driver_hint(modules, n)}
 
     # ── Open / Close ──────────────────────────────────────────────────────
 

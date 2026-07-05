@@ -64,7 +64,11 @@ class _SDRDeviceConnectMixin:
         if hasattr(self, "_dev_type_lbl"):
             self._dev_type_lbl.setText("")
         # Fallback: RTL-TCP running but SoapySDR can't claim the device
-        if not devices and HAS_RTLTCP and rtltcp_is_running():
+        rtltcp_up = HAS_RTLTCP and rtltcp_is_running()
+        if not devices:
+            log.info("SDR: 0 SoapySDR devices — HAS_RTLTCP=%s rtltcp_running=%s",
+                     HAS_RTLTCP, rtltcp_up)
+        if not devices and rtltcp_up:
             self._dev_combo.addItem(
                 self.tr("RTL-TCP server  (127.0.0.1:1234)"))
             self._devices = [None]

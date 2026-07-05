@@ -41,6 +41,7 @@ import logging
 import socket
 import struct
 import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -315,16 +316,26 @@ class RTLTCPDevice:
 # ── Detection ─────────────────────────────────────────────────────────────
 
 def rtltcp_is_running(host: str = RTL_TCP_HOST,
-                       port: int = RTL_TCP_PORT) -> bool:
+                       port: int = RTL_TCP_PORT,
+                       attempts: int = 3) -> bool:
     """
     Quick check: is rtl_tcp listening on this port?
-    Returns True in ~50ms if running, False otherwise.
+
+    rtl_tcp is single-client: a probe elsewhere (e.g. SoapySDR's enumerate)
+    can transiently hold its one connection slot, so a single connect can be
+    refused even while the server is up. Retry a few times (~0.1s apart) before
+    concluding it is down. Returns True as soon as a connect succeeds.
     """
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
-        result = s.connect_ex((host, port))
-        s.close()
-        return result == 0
-    except Exception:
-        return False
+    for i in range(max(1, attempts)):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            result = s.connect_ex((host, port))
+            s.close()
+            if result == 0:
+                return True
+        except Exception as exc:
+            log.debug("rtltcp_is_running probe failed: %s", exc)
+        if i + 1 < attempts:
+            time.sleep(0.1)
+    return False

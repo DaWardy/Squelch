@@ -32,6 +32,40 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _guard_user_config_writes():
+    """Never let the test suite WRITE the real user config
+    (%APPDATA%/Squelch/config.json). A settings test builds `Config()` and
+    saves a (Munich) GPS fix through it — running the suite on a user's machine
+    was overwriting their saved station location.
+
+    We can't globally redirect `Config()` (an unconfigured temp config makes
+    MainWindow-building tests block on the first-run / legal-ack modals), so
+    instead we make `Config.save()` a no-op *only* when it would write the real
+    user config path. Tests that save to an explicit temp path are unaffected.
+    """
+    try:
+        import core.config as cfgmod
+    except Exception:
+        yield
+        return
+    real = cfgmod.CONFIG_PATH
+    orig_save = cfgmod.Config.save
+
+    def _guarded_save(self, *a, **kw):
+        try:
+            is_real = Path(self._path).resolve() == Path(real).resolve()
+        except Exception:
+            is_real = False
+        if is_real:
+            return None                # refuse to clobber the real user config
+        return orig_save(self, *a, **kw)
+
+    cfgmod.Config.save = _guarded_save
+    yield
+    cfgmod.Config.save = orig_save
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _ensure_qapplication():
     """Guarantee a single QApplication exists for the whole test session.
 

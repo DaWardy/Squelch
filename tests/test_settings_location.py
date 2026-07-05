@@ -73,9 +73,16 @@ def app():
 
 
 def _dialog(app):
+    # Use an ISOLATED, throwaway config file — never the user's real
+    # %APPDATA%/Squelch/config.json. `_on_gps_settings_fix` below calls
+    # cfg.save(), so a real Config() here would overwrite the user's saved
+    # station location (the GPS-fix test uses Munich coordinates!). Isolate it.
+    import tempfile
+    from pathlib import Path
     from core.config import Config
     from ui.dialogs.settings_dialog import SettingsDialog
-    return SettingsDialog(Config())
+    tmp = Path(tempfile.mkdtemp(prefix="squelch_test_cfg_")) / "config.json"
+    return SettingsDialog(Config(tmp))
 
 
 class TestSettingsDialogLocationQt:

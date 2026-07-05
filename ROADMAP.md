@@ -291,6 +291,33 @@ so we sequence them realistically (not all are quick, and several need hardware)
 - **Richer map styles** — SDR Console-style world-map options for the Map tab.
   Small/cosmetic. P2.
 
+Fuller inventory from the SDR Console v3.3 screenshots (captured so nothing is
+lost — not all wanted, listed as inspiration; ✓ = Squelch already has some form):
+- **Frequency Database overlay** — load Aoki / EiBi / HFCC / FMLIST / ILGRadio /
+  MWLIST / custom CSV; annotate the spectrum with station IDs by frequency
+  (columns: Freq/Station/Call-ID/Lang/TX Country/On/Off/Days/Target/Notes/Source).
+  Ties into `sigid_db`. P1.
+- **Band & time favourites bar** — one-click jump to amateur bands (2200m→70cm/
+  23cm) + broadcast bands (LW/MW/tropical/SW 120m→16m) + time stations
+  (WWV/RWM). Quick-dial exists for rig ✓; add an SDR band-jump bar. P2.
+- **Multiple simultaneous receivers** (Multi-Band / Matrix) — several demods on
+  one device at once. Bigger DSP/UI lift. P2.
+- **RDS decode** for FM broadcast (station name/PS/RT). Headless DSP core is
+  doable. P2.
+- **Built-in digital decoder** — Squelch bridges DSD+/OP25 ✓; SDR Console has an
+  integrated one. Keep bridging.
+- **Display modes** — spectrum persistence/histogram, 3D waterfall, audio
+  waterfall, continuum mode, signal history, smoothing/windowing options,
+  peaks (max/shaded). Squelch has waterfall + peak-hold ✓; persistence/3D/
+  audio-waterfall are new. P2/P3 polish.
+- **QO-100 / transverter TX** with a TX meter panel (PWR/SWR/DRV/IPA/VDD/ALC) —
+  relevant once the TX chain + LO-offset are live (LO offset exists ✓). P2.
+- **Scheduler + data/video record + datafile (IQ) editor** — Squelch has
+  scheduled + IQ record/playback ✓ and the new SigMF codec; a recorded-IQ
+  editor/annotator would extend it. P3.
+- Already-covered overlaps: DX cluster ✓, scanner ✓, band plan ✓, screenshot ✓,
+  IQ record/playback ✓.
+
 ### Cross-cutting (every phase)
 - **SDR breadth & TX validation** — keep device profiles current; verify on
   real hardware as it becomes available.

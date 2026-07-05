@@ -268,6 +268,29 @@ feature ships.
   classroom/lab deployment story).
 - Optional crowd/shared sensor map (much later).
 
+### SDR-app parity — user-requested (from an SDR Console session, 2026-07-05)
+Feature targets inspired by SDR Console v3.3, with an honest feasibility read
+so we sequence them realistically (not all are quick, and several need hardware):
+- **Frequency database** (like SDR Console's Aoki / EiBi / HFCC / FMLIST /
+  ILGRadio / MWLIST loaders) → **headless-buildable now.** Extends
+  `core/sigid_db.py`: import user-downloaded public schedule catalogues
+  (attribution preserved, not bundled — same posture as SigIDWiki/Artemis) so
+  the survey / signal-ID can name a channel. P1.
+- **FHSS detection** (frequency-hopping emitters) → **first step headless.**
+  A hopping-emitter *detector* over the wideband survey (energy that jumps
+  channels on a regular dwell and revisits them) is squarely the hound mission —
+  hopping bugs / trackers / unauthorised devices. Full hop-*following* (fast
+  retune to stay on the signal) needs hardware + a control path. P1 (detector),
+  P2 (follow).
+- **DSSS detection / despread** → **research-tier.** Detecting below-noise
+  spread-spectrum energy is feasible; despreading needs the PN code. Later. P2.
+- **Trunk voice following** (P25 / DMR trunked control-channel → voice, like
+  SDR Console's "Trunk Voice Following") → extends the existing DSD+/OP25
+  digital-voice bridges; needs control-channel decode + fast retune + hardware.
+  Substantial, multi-sprint. P2.
+- **Richer map styles** — SDR Console-style world-map options for the Map tab.
+  Small/cosmetic. P2.
+
 ### Cross-cutting (every phase)
 - **SDR breadth & TX validation** — keep device profiles current; verify on
   real hardware as it becomes available.

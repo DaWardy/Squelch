@@ -422,6 +422,26 @@ _KNOWN_DRIVERS = {
 }
 
 
+def _kwargs_to_dict(kw) -> dict:
+    """Normalise a SoapySDR enumerate() result to a plain dict.
+
+    SoapySDR's `SoapySDRKwargs` is map-like (supports keys()/[]) but lacks a
+    `.get()` method in the 0.8 Python bindings, so calling `.get()` on it raises
+    AttributeError. Try keys()/index access first, then dict(), then give up
+    gracefully with an empty dict."""
+    if isinstance(kw, dict):
+        return kw
+    try:
+        return {str(k): str(kw[k]) for k in kw.keys()}
+    except Exception as exc:
+        log.debug("kwargs keys() normalise failed: %s", exc)
+    try:
+        return dict(kw)
+    except Exception as exc:
+        log.debug("kwargs dict() normalise failed: %s", exc)
+        return {}
+
+
 def soapy_driver_hint(module_paths, n_devices: int) -> str:
     """Human hint for why enumeration found nothing. Pure — unit-testable."""
     if n_devices > 0:
@@ -476,32 +496,36 @@ class SoapyManager:
             return []
         try:
             results = SoapySDR.Device.enumerate()
-            devices = []
-            for r in results:
+        except Exception as e:
+            log.warning(f"SDR enumerate: {e}")
+            return []
+        devices = []
+        for raw in results:
+            # SoapySDR.Device.enumerate() returns SoapySDRKwargs objects, which
+            # are map-like but lack a .get() method in the 0.8 bindings — using
+            # r.get() here crashed enumeration and reported 0 devices even when
+            # a dongle was found. Normalise each result to a plain dict first,
+            # and parse each device independently so one bad entry can't drop
+            # the rest.
+            try:
+                r = _kwargs_to_dict(raw)
                 driver = str(r.get("driver", "unknown"))
-                label  = str(r.get("label",
-                             r.get("product", driver)))
+                label  = str(r.get("label", r.get("product", driver)))
                 serial = str(r.get("serial", ""))
-                profile = DEVICE_PROFILES.get(
-                    driver.lower(), {})
+                profile = DEVICE_PROFILES.get(driver.lower(), {})
                 dev = SDRDevice(
                     driver   = driver,
                     label    = label,
                     serial   = serial,
                     can_tx   = profile.get("tx", False),
-                    max_sr   = profile.get("max_sr",
-                                          3_200_000),
-                    max_span = profile.get("max_span",
-                                          3_000_000),
+                    max_sr   = profile.get("max_sr", 3_200_000),
+                    max_span = profile.get("max_span", 3_000_000),
                 )
                 devices.append(dev)
-                log.info(
-                    f"SDR found: {dev.display_name} "
-                    f"TX={dev.can_tx}")
-            return devices
-        except Exception as e:
-            log.warning(f"SDR enumerate: {e}")
-            return []
+                log.info(f"SDR found: {dev.display_name} TX={dev.can_tx}")
+            except Exception as e:
+                log.warning(f"SDR enumerate: skipped a device — {e}")
+        return devices
 
     @staticmethod
     def diagnostics() -> dict:

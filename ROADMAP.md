@@ -225,6 +225,13 @@ Reach URH-class parity for arbitrary digital protocols.
   chokepoint — so the TX path is authorization-gated end to end. Remaining:
   a build/replay UI.
 - Replay: captured IQ → TX (authorization-gated).
+- ✅ **IQ ↔ SigMF codec DONE** (`core/sigmf_io.py`): pure `read_iq()` /
+  `write_iq()` complementing the streaming recorder (`sdr/iq_recorder.py`).
+  `read_iq()` parses `core:datatype` and normalises any common sample format
+  (RTL-SDR cu8, HackRF ci8, ci16, cf32/cf64, LE/BE) to complex64 so foreign
+  captures feed the decode / classify / survey cores; `write_iq()` persists an
+  array (e.g. the encoder's output) as a `.sigmf-meta`+`.sigmf-data` pair for
+  replay. Annotations supported. 16 tests incl. encode→write→read→slice→frame.
 - Targets: ISM-band telemetry, IoT/sensor protocols, and general protocol research.
 
 ### Phase 5 — Transmit chain + Authorization  ·  v0.19–0.21  ·  **P0 for any TX**

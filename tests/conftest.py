@@ -31,6 +31,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+def _set_defaults(fn, defaults) -> bool:
+    """Best-effort set of a function's __defaults__ (used to redirect a bare
+    Config()/SignalStore() to a temp path during the test session)."""
+    try:
+        fn.__defaults__ = defaults
+    except Exception:
+        return False
+    return True
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _guard_user_config_writes():
     """Never let the test suite WRITE the real user config
@@ -63,6 +73,30 @@ def _guard_user_config_writes():
     cfgmod.Config.save = _guarded_save
     yield
     cfgmod.Config.save = orig_save
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_signal_store():
+    """Never let the test suite write the real signal DB (LOG_DIR/signals.db).
+
+    A signal-ID panel test bookmarks 200+ signals through get_signal_store(),
+    which accumulated hundreds of phantom rows in users' real signals.db across
+    qa_check runs (same class of bug as the config one above). Point the
+    process-wide store at an in-memory DB for the whole run, and default any
+    bare SignalStore() to :memory: too.
+    """
+    try:
+        import core.signal_model as sm
+    except Exception:
+        yield
+        return
+    orig_instance = sm._instance
+    orig_defaults = sm.SignalStore.__init__.__defaults__
+    sm._instance = sm.SignalStore(":memory:")
+    _set_defaults(sm.SignalStore.__init__, (":memory:",))
+    yield
+    sm._instance = orig_instance
+    _set_defaults(sm.SignalStore.__init__, orig_defaults)
 
 
 @pytest.fixture(scope="session", autouse=True)

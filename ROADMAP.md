@@ -278,12 +278,13 @@ so we sequence them realistically (not all are quick, and several need hardware)
   active stations (UTC on/off windows incl. midnight wrap). No catalogue data
   bundled — user-downloaded, `source` attribution preserved (sigid_db posture).
   23 tests. Remaining: a UI (import button + spectrum station labels).
-- **FHSS detection** (frequency-hopping emitters) → **first step headless.**
-  A hopping-emitter *detector* over the wideband survey (energy that jumps
-  channels on a regular dwell and revisits them) is squarely the hound mission —
-  hopping bugs / trackers / unauthorised devices. Full hop-*following* (fast
-  retune to stay on the signal) needs hardware + a control path. P1 (detector),
-  P2 (follow).
+- ✅ **FHSS detection — detector DONE** (`core/fhss_detect.py`): over the survey
+  output `[(t, freq), …]`, channelises → counts channel transitions → measures
+  peak *simultaneity* (a hopper is on ~one channel at a time; N static signals
+  are all present at once) → returns a `HopSet` (channels, hop rate, dwell,
+  span) with a `to_signal()` bridge (source='fhss'). Cleanly separates a hopper
+  from several static carriers. 15 tests. Full hop-*following* (retune to stay
+  on it) still needs hardware + control path (P2).
 - **DSSS detection / despread** → **research-tier.** Detecting below-noise
   spread-spectrum energy is feasible; despreading needs the PN code. Later. P2.
 - **Trunk voice following** (P25 / DMR trunked control-channel → voice, like

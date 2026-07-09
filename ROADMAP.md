@@ -271,11 +271,13 @@ feature ships.
 ### SDR-app parity — user-requested (from an SDR Console session, 2026-07-05)
 Feature targets inspired by SDR Console v3.3, with an honest feasibility read
 so we sequence them realistically (not all are quick, and several need hardware):
-- **Frequency database** (like SDR Console's Aoki / EiBi / HFCC / FMLIST /
-  ILGRadio / MWLIST loaders) → **headless-buildable now.** Extends
-  `core/sigid_db.py`: import user-downloaded public schedule catalogues
-  (attribution preserved, not bundled — same posture as SigIDWiki/Artemis) so
-  the survey / signal-ID can name a channel. P1.
+- ✅ **Frequency database core DONE** (`core/freq_database.py`): schedule-aware
+  "who's on this channel?" lookup. `FreqDatabase` of `FreqEntry` rows;
+  `import_eibi()` parses the EiBi shortwave CSV, `import_csv()` maps arbitrary
+  catalogues (Aoki/HFCC/FMLIST/custom); `lookup(freq, utc)` returns nearby
+  active stations (UTC on/off windows incl. midnight wrap). No catalogue data
+  bundled — user-downloaded, `source` attribution preserved (sigid_db posture).
+  23 tests. Remaining: a UI (import button + spectrum station labels).
 - **FHSS detection** (frequency-hopping emitters) → **first step headless.**
   A hopping-emitter *detector* over the wideband survey (energy that jumps
   channels on a regular dwell and revisits them) is squarely the hound mission —

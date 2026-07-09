@@ -304,8 +304,14 @@ lost — not all wanted, listed as inspiration; ✓ = Squelch already has some f
   (WWV/RWM). Quick-dial exists for rig ✓; add an SDR band-jump bar. P2.
 - **Multiple simultaneous receivers** (Multi-Band / Matrix) — several demods on
   one device at once. Bigger DSP/UI lift. P2.
-- **RDS decode** for FM broadcast (station name/PS/RT). Headless DSP core is
-  doable. P2.
+- ✅ **RDS decode — protocol core DONE** (`core/rds.py`): the RDS/RBDS data on
+  FM broadcast. `make_block`/`check_block` (CRC-10 g(x)=x^10+x^8+x^7+x^5+x^4+
+  x^3+1 + A/B/C/C'/D offset words), `bits_to_groups` synchroniser,
+  `decode_group`, and `RDSDecoder` accumulating PS name / RadioText / PI / PTY
+  (RBDS table). Round-trip tested (encode groups → sync → decode). 15 tests.
+  Remaining (live): recover the RDS bitstream from FM IQ (FM-demod → 57 kHz
+  bandpass → biphase DBPSK @1187.5 bps → differential) and feed
+  `bits_to_groups`.
 - **Built-in digital decoder** — Squelch bridges DSD+/OP25 ✓; SDR Console has an
   integrated one. Keep bridging.
 - **Display modes** — spectrum persistence/histogram, 3D waterfall, audio

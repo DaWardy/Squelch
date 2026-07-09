@@ -60,6 +60,15 @@ class LaunchButton(QPushButton):
         self.clicked.connect(self._launch)
         self._refresh()
 
+    def _integration_note(self) -> str:
+        try:
+            from core.launcher import app_is_integrated
+            if app_is_integrated(self._app):
+                return "↔ Integrated — Squelch uses this tool's data."
+        except Exception as exc:
+            log.debug("integration note failed: %s", exc)
+        return "▷ Opens as a separate app (runs independently of Squelch)."
+
     def _refresh(self):
         launcher = get_launcher(self._cfg)
         self._avail = launcher.is_available(self._app.key)
@@ -75,6 +84,7 @@ class LaunchButton(QPushButton):
             self.setToolTip(
                 f"{self._app.name}\n"
                 f"{self._app.description}\n"
+                f"{self._integration_note()}\n"
                 f"Click to launch")
         else:
             self.setStyleSheet("""
@@ -88,6 +98,7 @@ class LaunchButton(QPushButton):
             """)
             self.setToolTip(
                 f"{self._app.name} — not found\n"
+                f"{self._integration_note()}\n"
                 f"Click to download or set its path\n"
                 f"Download: {self._app.download_url}")
 

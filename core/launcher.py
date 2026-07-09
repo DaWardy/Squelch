@@ -683,6 +683,31 @@ for _app in APPS:
     _BY_TAB.setdefault(_app.tab, []).append(_app)
 
 
+# Apps whose OUTPUT Squelch actually consumes / that Squelch controls — decodes
+# flow back into the app (rig control, FT8/PSK/DV decodes, ADS-B, Winlink,
+# LoTW). Everything else in the launcher is a plain "open this external app"
+# shortcut that runs fully independently of Squelch (SDR#, SDRuno, HDSDR, SDR
+# Console, GNU Radio, radio-programming tools, third-party loggers). The
+# distinction drives clearer button tooltips so users know what a launch does.
+INTEGRATED_KEYS = frozenset({
+    "paths.rigctld", "paths.flrig",               # rig control
+    "paths.wsjtx", "paths.js8call",               # weak-signal decode → log
+    "paths.fldigi",                               # digital-mode decode
+    "paths.vara_hf", "paths.vara_fm",
+    "paths.pat", "paths.rms_express",             # Winlink
+    "paths.dsdplus", "paths.op25",                # digital voice decode
+    "paths.dump1090",                             # ADS-B → map
+    "paths.direwolf",                             # APRS TNC
+    "paths.tqsl",                                 # LoTW upload
+})
+
+
+def app_is_integrated(app) -> bool:
+    """True when Squelch uses the app's data / controls it (vs. just opening
+    it as a standalone program)."""
+    return getattr(app, "key", "") in INTEGRATED_KEYS
+
+
 class Launcher:
     """
     Auto-detects and launches external applications.

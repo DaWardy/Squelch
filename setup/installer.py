@@ -542,11 +542,23 @@ def setup_config():
 # ── Step 6: Launch scripts ────────────────────────────────────────────────
 
 def _write_windows_launch_scripts() -> None:
+    # Console python (NOT pythonw) + a keep-open banner. pythonw gives a blank/
+    # silent window and hides the live log; the banner also warns against
+    # closing the window or hitting Ctrl+C (which force-kills Squelch).
     _write("run_squelch.bat",
            "@echo off\n"
            "cd /d \"%~dp0\"\n"
+           "title Squelch console  -  KEEP OPEN (closing this window stops Squelch)\n"
            "call venv\\Scripts\\activate.bat\n"
-           "pythonw main.py %*\n")
+           "echo ============================================================\n"
+           "echo   Squelch is starting - this is its live console and logs.\n"
+           "echo.\n"
+           "echo   ** KEEP THIS WINDOW OPEN - closing it stops Squelch. **\n"
+           "echo   To quit, close the Squelch app window instead.\n"
+           "echo   Do NOT press Ctrl+C here - it force-kills the program.\n"
+           "echo ============================================================\n"
+           "echo.\n"
+           "python main.py %*\n")
     ok("run_squelch.bat")
     _write("run_squelch_debug.bat",
            "@echo off\n"

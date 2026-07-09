@@ -112,37 +112,68 @@ def _get_venv_site_packages() -> Path:
     return _VENV_DIR / "Lib" / "site-packages"
 
 
+# Native SoapySDR device-module stem → hardware it supports. On Windows conda
+# these are DLLs under <conda>/Library/lib/SoapySDR/modules*/, e.g.
+# rtlsdrSupport.dll — NOT .pyd files in site-packages.
+_NATIVE_MODULE_HW = {
+    "rtlsdr":  "RTL-SDR dongles",
+    "hackrf":  "HackRF One",
+    "sdrplay": "SDRplay RSP family",
+    "uhd":     "USRP B200/B210",
+    "airspy":  "Airspy R2/Mini",
+    "lms7":    "LimeSDR",
+    "bladerf": "BladeRF",
+}
+
+
+def _conda_root_of(src_dir: Path):
+    """Walk up from a conda site-packages path to the env root that holds
+    Library/lib/SoapySDR."""
+    for anc in [src_dir] + list(src_dir.parents):
+        if (anc / "Library" / "lib" / "SoapySDR").exists():
+            return anc
+    return None
+
+
+def _native_soapy_modules(conda_root: Path) -> list:
+    """Native device-module DLLs present in a conda env (the real Windows
+    plugins, loaded at runtime via the app's DLL-dir injection). Returns the
+    friendly hardware names found."""
+    base = conda_root / "Library" / "lib" / "SoapySDR"
+    if not base.exists():
+        return []
+    dll_names = []
+    for mdir in base.glob("modules*"):
+        for dll in mdir.glob("*.dll"):
+            dll_names.append(dll.stem.lower())
+    hw = []
+    for frag, name in _NATIVE_MODULE_HW.items():
+        if any(frag in d for d in dll_names):
+            hw.append(name)
+    return sorted(set(hw))
+
+
 def _install_soapy_plugins(site_pkgs: Path):
-    """Copy SoapySDR device plugins from conda into venv site-packages."""
-    PLUGIN_STEMS = {
-        "SoapyRTLSDR":   "RTL-SDR dongles",
-        "SoapyHackRF":   "HackRF One",
-        "SoapySDRPlay":  "SDRplay RSP family",
-        "SoapyUHD":      "USRP B200/B210",
-        "SoapyAirspy":   "Airspy R2/Mini",
-        "SoapyLMS7":     "LimeSDR",
-        "SoapyBladeRF":  "BladeRF",
-    }
+    """Report SoapySDR device plugins. On Windows conda these are native module
+    DLLs loaded at runtime (not copied), so we detect + report them accurately
+    rather than false-alarming 'none found' as the old .pyd scan did."""
     soapy_src = _find_soapy_anywhere()
     if not soapy_src:
         return
     src_dir = Path(soapy_src)
     if src_dir.name == "SoapySDR":
         src_dir = src_dir.parent
-    found = False
-    for stem, hw in PLUGIN_STEMS.items():
-        for pyd in src_dir.glob(f"{stem}*.pyd"):
-            try:
-                shutil.copy2(pyd, site_pkgs / pyd.name)
-                ok(f"  Plugin: {pyd.name}  ({hw})")
-                found = True
-            except Exception as e:
-                info(f"  Could not copy {pyd.name}: {e}")
-    if not found:
-        info("No device plugins found in conda.")
-        info("Install: conda install -c conda-forge "
-             "soapysdr-module-rtlsdr soapysdr-module-hackrf")
-        info("Then re-run: python installer.py")
+
+    conda_root = _conda_root_of(src_dir)
+    native = _native_soapy_modules(conda_root) if conda_root else []
+    if native:
+        ok(f"  Device modules in conda: {', '.join(native)}")
+        return
+    info("No SoapySDR device modules found in conda.")
+    info("Install: conda install -c conda-forge "
+         "soapysdr-module-rtlsdr soapysdr-module-hackrf")
+    info("  (SDRplay/Airspy also need their vendor SDK installed first.)")
+    info("Then re-run: python installer.py")
 
 
 def _copy_soapy_to_venv(soapy_src: str, site: Path) -> None:

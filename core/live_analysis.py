@@ -64,6 +64,8 @@ class SurveyEngine:
         self.baseline = None                # accumulating core.rf_baseline.Baseline
         self.frames_seen = 0
         self.last_detections: list = []
+        self._observations: list = []       # (t, freq) log for hop detection
+        self._signals: list = []            # every detected Signal (for correlation)
 
     # ── geometry ──────────────────────────────────────────────────────────
     @staticmethod
@@ -76,8 +78,12 @@ class SurveyEngine:
 
     # ── main entry ────────────────────────────────────────────────────────
     def offer_frame(self, powers_db, center_hz: int, sample_rate: int,
-                    *, lat: float = 0.0, lon: float = 0.0) -> list:
-        """Process one spectrum frame → list[Detection]. Never raises."""
+                    *, lat: float = 0.0, lon: float = 0.0,
+                    t: float | None = None) -> list:
+        """Process one spectrum frame → list[Detection]. Never raises.
+
+        `t` is the frame's timestamp (seconds); it defaults to the frame index
+        and feeds frequency-hopping detection over the whole sweep."""
         try:
             powers = list(powers_db)
             if len(powers) < 4 or sample_rate <= 0:
@@ -86,12 +92,32 @@ class SurveyEngine:
                                                    sample_rate)
             dets = self._detect(powers, start_hz, bin_hz)
             self._accumulate(powers, start_hz, bin_hz, lat, lon)
+            tv = float(self.frames_seen if t is None else t)
+            for d in dets:
+                self._observations.append((tv, int(d.signal.freq_hz)))
+                self._signals.append(d.signal)
             self.frames_seen += 1
             self.last_detections = dets
             return dets
         except Exception as exc:                # pragma: no cover
             log.debug("offer_frame failed: %s", exc)
             return []
+
+    # ── findings (compose the correlation cores over the sweep) ───────────
+    def detect_hoppers(self, **kw):
+        """Run frequency-hopping detection over the whole sweep's observations
+        → a HopSet or None (see core.fhss_detect.detect_hopping)."""
+        from core.fhss_detect import detect_hopping
+        return detect_hopping(self._observations, **kw)
+
+    def correlate_emitters(self, **kw) -> list:
+        """Group the sweep's detections into emitters (core.emitter_correlate).
+        Uses the shared store when present, else the in-engine signal log."""
+        from core.emitter_correlate import (
+            correlate_from_store, correlate_emitters)
+        if self._store is not None:
+            return correlate_from_store(self._store, **kw)
+        return correlate_emitters(self._signals, **kw)
 
     def _detect(self, powers, start_hz, bin_hz) -> list:
         from core.occupancy import detect_segments
@@ -157,3 +183,5 @@ class SurveyEngine:
         self.baseline = None
         self.frames_seen = 0
         self.last_detections = []
+        self._observations = []
+        self._signals = []

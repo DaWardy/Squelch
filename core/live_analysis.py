@@ -51,12 +51,16 @@ class SurveyEngine:
 
     def __init__(self, *, store=None, watchlist=None,
                  threshold_db: float = 6.0, min_width_bins: int = 2,
-                 ingest: bool = True):
+                 ingest: bool = True, sigid_db=None, freq_db=None,
+                 utc_hhmm=None):
         self._store = store
         self._watchlist = watchlist
         self._threshold_db = float(threshold_db)
         self._min_width_bins = int(min_width_bins)
         self._ingest = bool(ingest)
+        self._sigid_db = sigid_db      # optional SigIdDatabase for identity
+        self._freq_db = freq_db        # optional FreqDatabase for station name
+        self._utc_hhmm = utc_hhmm
         self.baseline = None                # accumulating core.rf_baseline.Baseline
         self.frames_seen = 0
         self.last_detections: list = []
@@ -102,10 +106,21 @@ class SurveyEngine:
             if verdict == SNOI:
                 continue                        # signals-not-of-interest: ignore
             sig = signal_from_occupancy(seg)
+            self._enrich(sig)
             if self._ingest and self._store is not None:
                 ingest(sig, self._store)
             dets.append(Detection(sig, SOI if verdict == SOI else "other"))
         return dets
+
+    def _enrich(self, sig) -> None:
+        """Attach an offline signal-ID identity + frequency-database station
+        name to a fresh detection, when those catalogues are provided."""
+        if self._sigid_db is not None:
+            from core.sigid_db import apply_sigid
+            apply_sigid(sig, self._sigid_db)
+        if self._freq_db is not None:
+            from core.freq_database import apply_freq_database
+            apply_freq_database(sig, self._freq_db, utc_hhmm=self._utc_hhmm)
 
     def _accumulate(self, powers, start_hz, bin_hz, lat, lon) -> None:
         from core.rf_baseline import baseline_from_spectrum

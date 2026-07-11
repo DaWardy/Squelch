@@ -149,6 +149,41 @@ class SigIdDatabase:
         return hits[0] if hits else None
 
 
+def apply_sigid(sig, db: "SigIdDatabase", *, min_score: float = 0.4):
+    """Enrich a Signal record in place with the best offline signal-ID match.
+
+    Only overrides a generic/blank classification (e.g. "occupied"); always adds
+    the match category as a tag and lifts confidence. Chainable, never raises.
+    """
+    if sig is None or db is None:
+        return sig
+    try:
+        m = db.best_match(int(getattr(sig, "freq_hz", 0) or 0),
+                          int(getattr(sig, "bandwidth_hz", 0) or 0),
+                          str(getattr(sig, "modulation", "") or ""))
+        if m is not None and m.score >= min_score:
+            cur = str(getattr(sig, "classification", "") or "")
+            if cur in ("", "occupied"):
+                sig.classification = m.entry.name
+            if m.entry.category:
+                sig.tags = _add_tag(getattr(sig, "tags", ""), m.entry.category)
+            if m.score > float(getattr(sig, "confidence", 0) or 0):
+                sig.confidence = round(float(m.score), 3)
+    except Exception as exc:                       # pragma: no cover
+        log.debug("apply_sigid failed: %s", exc)
+    return sig
+
+
+def _add_tag(tags: str, tag: str) -> str:
+    tag = (tag or "").strip()
+    if not tag:
+        return tags or ""
+    have = [t.strip() for t in (tags or "").split(",") if t.strip()]
+    if tag not in have:
+        have.append(tag)
+    return ",".join(have)
+
+
 def _score(e: SigIdEntry, freq_hz: int, bw: int, mod: str, tol: int):
     """(score, reasons). A frequency given but outside the entry's range is a
     hard exclusion (it is not that signal); everything else is additive."""

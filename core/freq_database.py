@@ -166,6 +166,29 @@ class FreqDatabase:
         return cls.from_dicts(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
+def apply_freq_database(sig, db: "FreqDatabase", *, utc_hhmm: str | None = None,
+                        tol_hz: int = DEFAULT_FREQ_TOL_HZ):
+    """Enrich a Signal record in place with the station name from a frequency
+    database (schedule-aware). Fills `decoded` when blank; tags 'freqdb'.
+    Chainable, never raises."""
+    if sig is None or db is None:
+        return sig
+    try:
+        e = db.best(int(getattr(sig, "freq_hz", 0) or 0),
+                    tol_hz=tol_hz, utc_hhmm=utc_hhmm)
+        if e is not None and e.station:
+            if not str(getattr(sig, "decoded", "") or ""):
+                sig.decoded = e.station
+            tags = [t.strip() for t in
+                    (str(getattr(sig, "tags", "") or "")).split(",") if t.strip()]
+            if "freqdb" not in tags:
+                tags.append("freqdb")
+            sig.tags = ",".join(tags)
+    except Exception as exc:                       # pragma: no cover
+        log.debug("apply_freq_database failed: %s", exc)
+    return sig
+
+
 # ── helpers ───────────────────────────────────────────────────────────────
 
 def _to_hz(value, unit: str) -> int:

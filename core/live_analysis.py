@@ -115,7 +115,10 @@ class SurveyEngine:
         Uses the shared store when present, else the in-engine signal log."""
         from core.emitter_correlate import (
             correlate_from_store, correlate_emitters)
-        if self._store is not None:
+        # Use the store only when we're actually writing to it; a store passed
+        # with ingest=False stays empty, so fall back to the engine's own
+        # accumulated detections instead of correlating nothing.
+        if self._store is not None and self._ingest:
             return correlate_from_store(self._store, **kw)
         return correlate_emitters(self._signals, **kw)
 

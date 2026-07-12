@@ -193,34 +193,19 @@ def identify_crc(data_bits, crc_bits) -> list:
 
 # ── top-level inspector ───────────────────────────────────────────────────────
 
-def inspect_frame(bits, *, sync_word=None, crc_bits: int = 0,
-                  preamble_min: int = 8) -> FrameReport:
-    """Parse a bit stream into preamble / sync / payload / CRC.
-
-    sync_word    — known sync as bits/bytes/hex; located after the preamble.
-    crc_bits     — width of a trailing CRC to split off and identify.
-    preamble_min — minimum alternating run to count as a preamble.
-    """
-    bits = [1 if b else 0 for b in bits]
-    report = FrameReport(total_bits=len(bits))
-    pos = 0
-
+def _preamble_end(bits, report, preamble_min: int) -> int:
+    """Set report.preamble to the leading alternating run and return where it
+    ends (0 if none)."""
     pre = find_preamble(bits, min_len=preamble_min)
     if pre:
         s, length = pre
         report.preamble = _field("preamble", bits, s, length)
-        pos = s + length
+        return s + length
+    return 0
 
-    if sync_word is not None:
-        pat = _normalize_pattern(sync_word)
-        offs = find_sync(bits[pos:], pat)
-        if offs:
-            s = pos + offs[0]
-            report.sync = _field("sync", bits, s, len(pat))
-            pos = s + len(pat)
-        else:
-            report.notes.append("sync word not found")
 
+def _apply_payload(report, bits, pos: int, crc_bits: int) -> None:
+    """Split bits[pos:] into payload (+ trailing CRC) on `report`."""
     rest = bits[pos:]
     if crc_bits and len(rest) > crc_bits:
         payload_bits = rest[:-crc_bits]
@@ -232,4 +217,53 @@ def inspect_frame(bits, *, sync_word=None, crc_bits: int = 0,
             report.notes.append("no known CRC matched")
     else:
         report.payload = _field("payload", bits, pos, len(rest))
+
+
+def inspect_frame(bits, *, sync_word=None, crc_bits: int = 0,
+                  preamble_min: int = 8) -> FrameReport:
+    """Parse a bit stream into preamble / sync / payload / CRC.
+
+    sync_word    — known sync as bits/bytes/hex.
+    crc_bits     — width of a trailing CRC to split off and identify.
+    preamble_min — minimum alternating run to count as a preamble.
+
+    When a sync word is given it is the reliable anchor — located anywhere in
+    the stream — and the preamble is simply whatever precedes it; this avoids
+    the alternating-run detector bleeding across the preamble/sync boundary when
+    the sync word's first bit continues the alternation. With no sync word and a
+    CRC, if stripping a leading alternating run breaks the CRC but keeping it
+    validates (e.g. a preamble-less frame whose payload starts 0x55), the
+    validating interpretation is kept.
+    """
+    bits = [1 if b else 0 for b in bits]
+    report = FrameReport(total_bits=len(bits))
+    sync_pat = _normalize_pattern(sync_word) if sync_word is not None else None
+
+    if sync_pat is not None:
+        offs = find_sync(bits, sync_pat)          # sync is the anchor
+        if offs:
+            s = offs[0]
+            if s > 0:
+                report.preamble = _field("preamble", bits, 0, s)
+            report.sync = _field("sync", bits, s, len(sync_pat))
+            pos = s + len(sync_pat)
+        else:
+            report.notes.append("sync word not found")
+            pos = _preamble_end(bits, report, preamble_min)
+    else:
+        pos = _preamble_end(bits, report, preamble_min)
+
+    _apply_payload(report, bits, pos, crc_bits)
+
+    # No sync anchor + CRC still failing: the stripped "preamble" may be real
+    # payload data. Retry without stripping and keep it if the CRC validates.
+    if (crc_bits and not report.crc_ok and sync_pat is None
+            and report.preamble is not None):
+        retry = FrameReport(total_bits=len(bits))
+        _apply_payload(retry, bits, 0, crc_bits)
+        if retry.crc_ok:
+            report.preamble = None
+            report.payload, report.crc = retry.payload, retry.crc
+            report.crc_matches, report.crc_ok = retry.crc_matches, True
+            report.notes = [n for n in report.notes if "CRC" not in n]
     return report

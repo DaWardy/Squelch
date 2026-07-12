@@ -89,7 +89,13 @@ def _binarize(soft: np.ndarray, kind: str) -> np.ndarray:
     if soft.size == 0:
         return np.zeros(0, dtype=np.int8)
     if kind == "level":
-        lo, hi = float(soft.min()), float(soft.max())
+        # Robust OOK level: midpoint of the 10th/90th percentiles, NOT min/max —
+        # a single impulse-noise spike (routine in real ASK/OOK captures) would
+        # otherwise drag (min+max)/2 above the true 'on' level and zero the
+        # whole stream. Percentiles ignore a few outliers while still separating
+        # the off/on clusters for any reasonable duty cycle.
+        lo = float(np.percentile(soft, 10))
+        hi = float(np.percentile(soft, 90))
         thr = (lo + hi) / 2.0
     else:
         # 'zero' (FSK/PSK): the mean sits strictly BETWEEN the two symbol

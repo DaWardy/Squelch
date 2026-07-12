@@ -106,6 +106,16 @@ def detect_hopping(observations, *, freq_tol_hz: int = DEFAULT_FREQ_TOL_HZ,
     """Detect a frequency-hopping emitter in `[(t_s, freq_hz), …]`.
 
     Returns a `HopSet`, or None if the observations don't look like hopping.
+
+    ASSUMES A STARING OBSERVATION MODEL: every timestamp reflects all channels
+    concurrently active in the receiver's view (e.g. one wide FFT frame at a
+    fixed centre — SurveyEngine.offer_frame at a fixed tune). Under that model
+    the simultaneity test cleanly separates a hopper (≈1 channel at a time) from
+    several static carriers (all present at once). It is NOT valid for a
+    *frequency-swept* survey (centre moving between frames): there each static
+    emitter is only seen while the sweep passes its channel, so static signals
+    look one-at-a-time and can masquerade as a hopper. A swept survey needs
+    per-channel occupancy-fraction analysis instead (future work).
     """
     obs = [(float(t), int(f)) for t, f in (observations or []) if f]
     if len(obs) < max(min_hops, 2):

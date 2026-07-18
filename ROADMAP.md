@@ -758,6 +758,52 @@ pump. Left unbounded, the store and Signal Log degrade.
 
 ---
 
+## 14. SDR-Console parity (new scope — 2026-07-18 pass)
+
+Benchmarked against **SDR Console V3** (SDR-Radio.com, Simon Brown G4ELI) — the
+most feature-complete Windows SDR receiver app — to find what a best-in-class
+receiver has that Squelch lacks. SDR Console headline features: up to **24
+parallel receivers** (matrix view), **Signal History** (band-power sampled every
+50 ms, 3-speed scroll-back display, CSV export), multi-format **recording +
+playback** (IQ RAW, WAV/MP3/MP4) with a **scheduler** and reverse/fast-forward,
+full DSP chain (NB/NR/AGC/notch, per-mode filter sets), **markers/annotations**,
+memories/favourites, satellite tracking, external-radio (CAT) control, and a
+**Console Server** for remote operation.
+Sources: [sdr-radio.com/console](https://www.sdr-radio.com/console) ·
+[rtl-sdr.com — Signal History & Receiver Panes](https://www.rtl-sdr.com/sdr-console-v3-latest-update-signal-history-receiver-panes/).
+
+**Gap analysis** (✅ have · 🟡 partial · ❌ gap). Squelch already matches most of
+the single-receiver surface: wideband spectrum+waterfall (MHz axis, palettes,
+click-tune, span), demod modes + auto-demod + IF-BW + draggable passband, NB/NR/
+AGC/squelch, LO offset, scanner, IQ record + scheduled record, signal-ID panel,
+S-meter, memories, satellite Doppler, demod profiles.
+
+| # | SDR-Console feature | Squelch today | Action | Build w/o SDR? | Pri |
+|---|---------------------|---------------|--------|:---:|:---:|
+| 14.1 | **Universal IQ playback** (play any capture) | 🟡 playback wired into the full pipeline, but cf32-only (`IQPlayer` hardcodes complex64) | make playback datatype-aware via `sigmf_io` (cu8/ci8/ci16/cf32/cf64, LE/BE) → the whole app runs on **downloaded sample files** | **YES** | **P0** |
+| 14.2 | Reverse / fast-forward playback | 🟡 FF via speed≤4×; no reverse | add reverse + scrub in the playback transport | YES (core) | P1 |
+| 14.3 | **Signal History** (band-power over time, scroll-back) | 🟡 survey pump samples spectrum; no continuous strength-vs-time recorder w/ scroll-back + CSV | a low-rate history recorder (rolling, timestamped) + CSV export; the "what happened overnight" view. Pairs with survey. Data layer headless | data layer YES | **P1** |
+| 14.4 | **Multiple receivers** (N parallel demodulators, matrix) | ❌ single VFO | a multi-demodulator engine (N channels tap one IQ buffer; each own freq/mode/BW/squelch/record). Engine headless-testable w/ synthetic IQ; matrix UI needs launch | engine YES | **P1** |
+| 14.5 | Auto-notch + manual notch filters | 🟡 have NR/NB; no notch | notch DSP cores (auto-notch = adaptive; manual = fixed bins), testable w/ synthetic audio | YES | P2 |
+| 14.6 | Markers / annotations (peak, delta, channel power, OBW) | 🟡 `core/measure.py` exists, not wired | wire markers onto the spectrum (peak/delta, channel-power, occupied-BW readouts) | core YES, UI launch | P2 |
+| 14.7 | Audio (demod) recording → WAV/FLAC | ❌ (IQ only) | record demod audio to WAV; small logic + toolbar button | mostly YES | P2 |
+| 14.8 | Per-mode filter sets / bandwidth presets | 🟡 demod profiles exist | extend profiles into full per-mode filter sets | YES | P3 |
+| 14.9 | **Console Server** — remote receiver over network | ❌ | maps to `NODE-SENSOR` (Phase 6): stream IQ/spectrum from a headless node to a client. Large, network | partial | P2 |
+| 14.10 | MIDI / hardware controller tuning | ❌ | optional: map a MIDI controller to VFO/gain | YES | P3 |
+
+**Sequencing:** 14.1 first (it's the enabler — turns "no SDR" into a non-issue and
+lets the flagship survey/hound view be exercised on real captures). Then 14.3
+(signal history) and 14.4 (multi-VFO engine) as the two biggest capability adds,
+both with headless-buildable cores. 14.5–14.7 are self-contained depth items.
+14.9 (server) is the Phase-6 `NODE-SENSOR` story.
+
+> **No-hardware development note:** with 14.1 done, Squelch is fully developable
+> and demonstrable on downloaded SigMF / RTL-SDR sample captures — every core
+> (survey, signal-ID, decode, classify, DF-from-file) can be exercised without a
+> dongle. This is the key that unlocks headless progress on the whole platform.
+
+---
+
 *Supersedes the v0.7–v1.0 milestone roadmap. Update the status line and
 phase markers each sprint; do a full reconciliation every 5th (housekeeping)
 sprint.*

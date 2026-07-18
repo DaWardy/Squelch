@@ -257,6 +257,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._survey_tick_n  = 0
         self._alert_monitor  = None    # core.survey_alert.AlertMonitor (lazy)
         self._survey_alerts  = []      # recent Alert ring (view reads this)
+        self._signal_history = None    # core.signal_history.SignalHistory (lazy)
 
     # ── Build UI ──────────────────────────────────────────────────────────
 

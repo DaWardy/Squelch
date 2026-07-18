@@ -68,7 +68,28 @@ class _SDRSurveyMixin:
             self._survey = self._build_survey_engine()
         if on and getattr(self, "_alert_monitor", None) is None:
             self._alert_monitor = self._build_alert_monitor()
+        if on and getattr(self, "_signal_history", None) is None:
+            self._signal_history = self._build_signal_history()
         log.info("SDR survey %s", "enabled" if on else "disabled")
+
+    def _build_signal_history(self):
+        """Signal History recorder (§14.3), seeded with the watch-list's SOI
+        windows as tracked channels (plus the implicit wideband channel)."""
+        try:
+            from core.signal_history import SignalHistory
+            hist = SignalHistory()
+            try:
+                from core.soi_snoi import WatchList, SOI
+                for r in WatchList.from_cfg(self.cfg).rules:
+                    if getattr(r, "kind", None) == SOI:
+                        hist.add_channel(getattr(r, "label", "") or "SOI",
+                                         int(r.freq_lo_hz), int(r.freq_hi_hz))
+            except Exception as exc:                # pragma: no cover
+                log.debug("survey: history channels unavailable: %s", exc)
+            return hist
+        except Exception as exc:                    # pragma: no cover
+            log.debug("survey: signal history unavailable: %s", exc)
+            return None
 
     def _build_alert_monitor(self):
         """Live-alert policy from cfg 'survey.alert.*' (safe defaults)."""
@@ -123,6 +144,18 @@ class _SDRSurveyMixin:
         dets = survey.offer_frame(fft, int(self._center_hz),
                                   int(self._sample_rate), lat=lat, lon=lon)
         self._survey_run_alerts(dets)
+        self._survey_feed_history(fft)
+
+    def _survey_feed_history(self, fft) -> None:
+        """Feed the same frame to the Signal History recorder (band-power over
+        time). Geometry matches the survey engine's frame_geometry."""
+        hist = getattr(self, "_signal_history", None)
+        if hist is None:
+            return
+        rate = int(self._sample_rate)
+        start_hz = int(self._center_hz) - rate // 2
+        bin_hz = rate / len(fft) if len(fft) else 0.0
+        hist.offer_frame(fft, start_hz, bin_hz, t=time.monotonic())
 
     def _survey_run_alerts(self, detections) -> None:
         """Feed a frame's detections to the alert policy; collect + log fires."""
@@ -165,11 +198,30 @@ class _SDRSurveyMixin:
         mon = getattr(self, "_alert_monitor", None)
         if mon is not None:
             mon.reset()
+        hist = getattr(self, "_signal_history", None)
+        if hist is not None:
+            hist.reset()
         self._survey_alerts = []
 
     def survey_recent_alerts(self, limit: int = 50) -> list:
         """The most recent live-survey alerts (newest last), for the view."""
         return list(getattr(self, "_survey_alerts", []))[-int(limit):]
+
+    # ── signal history (§14.3) ────────────────────────────────────────────
+    def survey_history_series(self, channel: str = "wideband") -> list:
+        """Strength-over-time [(t, peak_db, mean_db), …] for one channel."""
+        hist = getattr(self, "_signal_history", None)
+        return [] if hist is None else hist.series(channel)
+
+    def survey_history_channels(self) -> list:
+        """Channel labels present in the history (for a plot's series picker)."""
+        hist = getattr(self, "_signal_history", None)
+        return [] if hist is None else hist.channel_labels()
+
+    def survey_history_export_csv(self, path) -> bool:
+        """Export the signal history to CSV. False if no history / write fails."""
+        hist = getattr(self, "_signal_history", None)
+        return False if hist is None else hist.export_csv(path)
 
     # ── saved-baseline library (cross-session/location compare) ───────────
     def _survey_store(self):

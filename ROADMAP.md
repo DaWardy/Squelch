@@ -725,11 +725,14 @@ off.
 ### 13.3 Live alerting — **P1**
 The counter-surveillance and monitoring use cases want to be *told* when
 something changes, not to stare at a waterfall.
-- [ ] **Alert when a SOI appears** or **an anomaly is detected** during a live
-  survey (new emitter vs baseline, a watch-list SOI going active): visual banner
-  + optional sound, logged to the Signal Log. Debounced; user-configurable.
-- [ ] Reuses `live_analysis.compare_to` + `soi_snoi.classify` — this is an alert
-  policy + a notification surface on top of the pump.
+- 🟡 **Alert policy DONE** (2026-07-18, `2a10853`): `core/survey_alert.py`
+  `AlertMonitor` — SOI-active (watch-list), novel-emitter (off by default), and
+  anomaly-vs-baseline triggers, each toggleable; per-(kind, freq-bucket) cooldown
+  debounce + optional min-peak gate; `from_cfg` (`survey.alert.*`); pure, never
+  raises. Wired into the survey pump (`_survey_tick` runs detections through it,
+  logs + rings fires into `survey_recent_alerts()`). 19 tests.
+- [ ] **Notification surface** — a visual banner + optional sound on the SDR/
+  survey view reading `survey_recent_alerts()` (needs the view / launch-test).
 
 ### 13.4 Waterfall-shape fingerprinting for signal ID — **P2, real gap**
 `sigid_db` matches on (frequency, bandwidth, modulation) only. SigIDWiki/Artemis

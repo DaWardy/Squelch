@@ -88,6 +88,45 @@ def _to_complex64(raw: np.ndarray, dt: DataType) -> np.ndarray:
     return flt.astype(np.complex64)
 
 
+# ── streaming helpers (chunk-at-a-time playback of any datatype) ──────────────
+
+def bytes_per_sample(datatype: str) -> int:
+    """On-disk bytes for ONE output (complex) sample of `datatype`.
+
+    e.g. cf32→8, ci16→4, cu8/ci8→2, cf64→16, rf32 (real)→4. Falls back to 8
+    (cf32) on an unrecognised datatype so a streaming reader never divides by a
+    bad width. Never raises."""
+    try:
+        dt = parse_datatype(datatype)
+        return int(dt.np_dtype.itemsize) * (2 if dt.is_complex else 1)
+    except Exception:
+        return 8
+
+
+def decode_iq_bytes(raw: bytes, datatype: str) -> np.ndarray:
+    """Decode a raw byte chunk of `datatype` → complex64 (in ~[-1, 1)).
+
+    Trailing bytes that don't complete a whole sample are dropped, so a reader
+    can pass fixed-size chunks straight from a file without aligning to sample
+    boundaries. Returns an empty complex64 array on any error (never raises)."""
+    try:
+        dt = parse_datatype(datatype)
+    except Exception:                              # unknown → assume cf32_le
+        dt = DataType(np.dtype("<f4"), True, "f", 32)
+    try:
+        group = int(dt.np_dtype.itemsize) * (2 if dt.is_complex else 1)
+        if group <= 0:
+            return np.empty(0, dtype=np.complex64)
+        usable = (len(raw) // group) * group
+        if usable <= 0:
+            return np.empty(0, dtype=np.complex64)
+        arr = np.frombuffer(raw[:usable], dtype=dt.np_dtype)
+        return _to_complex64(arr, dt)
+    except Exception as exc:                        # pragma: no cover
+        log.debug("decode_iq_bytes failed (%s): %s", datatype, exc)
+        return np.empty(0, dtype=np.complex64)
+
+
 # ── metadata ──────────────────────────────────────────────────────────────────
 
 @dataclass

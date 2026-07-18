@@ -82,9 +82,11 @@ class Recording:
             size     = data_path.stat().st_size
             sr       = int(g.get("core:sample_rate", 0))
             dtype    = g.get("core:datatype", "cf32_le")
-            # Calculate duration from file size
-            bytes_per_sample = 8  # cf32 = 2 * float32
-            samples  = size / bytes_per_sample if sr else 0
+            # Duration from file size — bytes/sample depends on the datatype
+            # (cf32=8, ci16=4, cu8=2, …), not always cf32.
+            from core.sigmf_io import bytes_per_sample as _bps
+            bps      = _bps(dtype)
+            samples  = size / bps if (sr and bps) else 0
             duration = samples / sr if sr else 0
             return cls(
                 name        = meta_path.stem,
@@ -301,10 +303,18 @@ class IQPlayer:
                 if self._recording else 0.0)
 
     def _play_loop(self):
-        """Read and deliver samples at correct rate."""
+        """Read and deliver samples at correct rate.
+
+        Datatype-aware: honours the recording's `datatype` (cf32/ci16/cu8/…)
+        via core.sigmf_io so ANY SigMF or foreign IQ capture plays back, not
+        just Squelch's own cf32 recordings. Bytes-per-sample and the → complex64
+        conversion both come from the tested sigmf_io codec."""
         if not self._recording:
             return
 
+        from core.sigmf_io import bytes_per_sample, decode_iq_bytes
+        dtype    = getattr(self._recording, "datatype", "cf32_le")
+        bps      = bytes_per_sample(dtype)          # bytes per complex sample
         chunk    = 16384
         sr       = self._recording.sample_rate
         interval = chunk / sr / self._speed
@@ -312,16 +322,17 @@ class IQPlayer:
         try:
             with open(self._recording.data_path,
                       "rb") as f:
-                f.seek(self._position * 8)  # 8 bytes/sample
+                f.seek(self._position * bps)
                 while self._running:
                     if self._paused:
                         time.sleep(0.05)
                         continue
-                    raw = f.read(chunk * 8)
+                    raw = f.read(chunk * bps)
                     if not raw:
                         break
-                    samples = np.frombuffer(
-                        raw, dtype=np.complex64)
+                    samples = decode_iq_bytes(raw, dtype)
+                    if len(samples) == 0:
+                        break
                     self._position += len(samples)
                     if self._on_samples:
                         try:

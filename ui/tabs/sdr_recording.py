@@ -100,20 +100,37 @@ class _SDRRecordingMixin:
                 2_400_000, 8_000, 100_000_000, 1)
             if not ok:
                 return None
+            # Raw files carry no format header — ask (unless the extension
+            # already implies cf32). RTL-SDR dumps are cu8; HackRF ci8.
+            dtype = "cf32_le"
+            if p.suffix.lower() != ".cf32":
+                choices = ["cf32_le (complex float32)",
+                           "cu8 (RTL-SDR 8-bit)",
+                           "ci8 (HackRF 8-bit)",
+                           "ci16_le (16-bit)"]
+                pick, ok2 = QInputDialog.getItem(
+                    self, self.tr("Sample format"),
+                    self.tr("IQ sample format:"), choices, 0, False)
+                if not ok2:
+                    return None
+                dtype = pick.split()[0]
+            from core.sigmf_io import bytes_per_sample
             try:
-                duration = p.stat().st_size / 8 / sr
+                duration = p.stat().st_size / bytes_per_sample(dtype) / sr
             except Exception:
                 duration = 0.0
             return Recording(
                 name=p.stem, data_path=p, meta_path=p,
                 center_hz=getattr(self, "_center_hz", 0),
-                sample_rate=sr, datatype="cf32_le",
+                sample_rate=sr, datatype=dtype,
                 duration_s=duration, file_size=p.stat().st_size)
         QMessageBox.information(
             self, self.tr("Unsupported format"),
             self.tr(
                 f"'{p.suffix}' files are not currently supported.\n"
-                "Supported: .sigmf-meta, .sigmf-data, .cf32, .iq, .bin\n\n"
+                "Supported: .sigmf-meta, .sigmf-data, .cf32, .iq, .bin\n"
+                "(SigMF carries its own format; raw .iq/.bin let you pick "
+                "cf32 / cu8 / ci8 / ci16.)\n\n"
                 "WAV audio is not IQ data — use Squelch's Record button "
                 "or a SigMF-compliant capture tool."))
         return None

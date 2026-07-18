@@ -20,6 +20,7 @@ config.json
 logs/
 recordings/
 voice_clips/
+baselines/
 profiles/
 offline_packages/
 assets/artemis_signals.json

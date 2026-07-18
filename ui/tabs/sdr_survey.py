@@ -129,3 +129,36 @@ class _SDRSurveyMixin:
         survey = getattr(self, "_survey", None)
         if survey is not None:
             survey.reset()
+
+    # ── saved-baseline library (cross-session/location compare) ───────────
+    def _survey_store(self):
+        """The on-disk baseline library — default %APPDATA%/Squelch/baselines,
+        overridable via cfg 'paths.baselines'."""
+        from core.survey_session import SurveyStore
+        base = self.cfg.get("paths.baselines", "") if self.cfg else ""
+        if not base:
+            from core.config import USER_DIR
+            base = USER_DIR / "baselines"
+        return SurveyStore(base)
+
+    def survey_save_baseline(self, label: str = ""):
+        """Save the current accumulated baseline to the library for later
+        compare. Returns a SurveyEntry, or None if no survey data yet."""
+        snap = self.survey_snapshot(label)
+        if snap is None:
+            return None
+        return self._survey_store().save(snap, label)
+
+    def survey_saved_baselines(self):
+        """List saved baselines (metadata rows, newest first) for a picker."""
+        return self._survey_store().list()
+
+    def survey_compare_saved(self, entry_id):
+        """Compare the LIVE baseline against a SAVED reference → BaselineDiff.
+
+        Routed through the engine so the watch-list's SNOI ranges are honoured;
+        `diff.new` are signals present now that the saved reference lacked."""
+        ref = self._survey_store().load(entry_id)
+        if ref is None:
+            return None
+        return self.survey_compare(ref)

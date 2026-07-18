@@ -203,6 +203,56 @@ def test_real_engine_detects_peak(tmp_path):
     assert diff is not None
 
 
+# ── saved-baseline library via the tab methods ──────────────────────────────
+def _host_with_baselines(tmp_path):
+    """A host whose survey store points at a temp dir (never the real
+    %APPDATA%/Squelch/baselines — see the session's data-isolation lessons)."""
+    cfg = _cfg(tmp_path)
+    cfg.set("paths.baselines", str(tmp_path / "baselines"))
+    return _Host(cfg, fft=_frame_with_peak(), rate=2_400_000,
+                 center=100_000_000)
+
+
+def _accumulate(host, n=None):
+    from core.live_analysis import SurveyEngine
+    host._survey = SurveyEngine(store=None, ingest=False)
+    host._survey_enabled = True
+    for _ in range(n or _SDRSurveyMixin._SURVEY_STRIDE):
+        host._survey_tick()
+
+
+def test_save_baseline_none_without_data(tmp_path):
+    h = _host_with_baselines(tmp_path)
+    assert h.survey_save_baseline("x") is None      # no engine/data yet
+
+
+def test_save_and_list_baseline(tmp_path):
+    h = _host_with_baselines(tmp_path)
+    _accumulate(h)
+    entry = h.survey_save_baseline("kitchen")
+    assert entry is not None and entry.label == "kitchen"
+    rows = h.survey_saved_baselines()
+    assert [e.label for e in rows] == ["kitchen"]
+
+
+def test_compare_saved_against_live(tmp_path):
+    h = _host_with_baselines(tmp_path)
+    _accumulate(h)
+    ref = h.survey_save_baseline("ref")
+    # keep sweeping — live baseline still matches the saved ref (no new signals)
+    for _ in range(_SDRSurveyMixin._SURVEY_STRIDE):
+        h._survey_tick()
+    diff = h.survey_compare_saved(ref.id)
+    assert diff is not None
+    assert diff.anomaly_count == 0                   # nothing new appeared
+
+
+def test_compare_saved_unknown_id(tmp_path):
+    h = _host_with_baselines(tmp_path)
+    _accumulate(h)
+    assert h.survey_compare_saved("no-such-id") is None
+
+
 # ── Qt smoke (skipped without PyQt6) ─────────────────────────────────────────
 try:
     import PyQt6  # noqa: F401

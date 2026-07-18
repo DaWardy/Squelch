@@ -34,8 +34,14 @@ survey state (``_survey`` / ``_survey_enabled``). The host calls
 """
 
 import logging
+from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
+
+
+def _utc_now_str() -> str:
+    """UTC timestamp for report headers, e.g. '2026-07-18 14:22:05 UTC'."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 class _SDRSurveyMixin:
@@ -162,3 +168,30 @@ class _SDRSurveyMixin:
         if ref is None:
             return None
         return self.survey_compare(ref)
+
+    def survey_export_report(self, path, diff=None, *, fmt: str = "html",
+                             location: str = ""):
+        """Write a shareable report of a baseline comparison to `path`.
+
+        `diff` defaults to the last-computed compare; pass a BaselineDiff (e.g.
+        from `survey_compare_saved`) to report a specific one. Returns the
+        written Path or None."""
+        if diff is None:
+            return None
+        from core.survey_report import write_report
+        loc = location or self._survey_location_str()
+        return write_report(diff, path, fmt=fmt, location=loc,
+                            when=_utc_now_str())
+
+    def _survey_location_str(self) -> str:
+        """Human-readable current location for a report header (grid/lat-lon)."""
+        try:
+            loc = self.location_mgr.location if self.location_mgr else None
+            if loc is not None:
+                if getattr(loc, "grid", ""):
+                    return str(loc.grid)
+                if loc.lat or loc.lon:
+                    return f"{loc.lat:.4f}, {loc.lon:.4f}"
+        except Exception:                           # pragma: no cover
+            pass
+        return ""

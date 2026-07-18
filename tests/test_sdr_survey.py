@@ -253,6 +253,20 @@ def test_compare_saved_unknown_id(tmp_path):
     assert h.survey_compare_saved("no-such-id") is None
 
 
+def test_export_report_writes_file(tmp_path):
+    h = _host_with_baselines(tmp_path)
+    _accumulate(h)
+    diff = h.survey_compare(h.survey_snapshot())      # self-diff (0 anomalies)
+    out = h.survey_export_report(tmp_path / "sweep.html", diff, fmt="html")
+    assert out is not None and Path(out).exists()
+    assert "<!doctype html>" in Path(out).read_text(encoding="utf-8")
+
+
+def test_export_report_none_diff(tmp_path):
+    h = _host_with_baselines(tmp_path)
+    assert h.survey_export_report(tmp_path / "x.html", None) is None
+
+
 # ── Qt smoke (skipped without PyQt6) ─────────────────────────────────────────
 try:
     import PyQt6  # noqa: F401

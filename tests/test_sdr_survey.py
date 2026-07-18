@@ -267,6 +267,47 @@ def test_export_report_none_diff(tmp_path):
     assert h.survey_export_report(tmp_path / "x.html", None) is None
 
 
+# ── live alerts via the tab ──────────────────────────────────────────────────
+def test_toggle_builds_alert_monitor(tmp_path):
+    h = _Host(_cfg(tmp_path))
+    h._survey_alerts = []
+    h._alert_monitor = None
+    h._on_survey_toggle(True)
+    from core.survey_alert import AlertMonitor
+    assert isinstance(h._alert_monitor, AlertMonitor)
+
+
+def test_run_alerts_collects_soi(tmp_path):
+    from dataclasses import dataclass
+    from core.survey_alert import AlertMonitor, SOI
+
+    @dataclass
+    class _Sig:
+        freq_hz: int
+        rssi_dbm: float = -30.0
+        classification: str = "target"
+
+    @dataclass
+    class _Det:
+        signal: _Sig
+        interest: str = SOI
+
+    h = _Host(_cfg(tmp_path))
+    h._survey_alerts = []
+    h._alert_monitor = AlertMonitor()
+    h._survey_run_alerts([_Det(_Sig(146_520_000))])
+    assert len(h._survey_alerts) == 1
+    assert h.survey_recent_alerts()[-1].kind == "soi"
+
+
+def test_run_alerts_noop_without_monitor(tmp_path):
+    h = _Host(_cfg(tmp_path))
+    h._survey_alerts = []
+    h._alert_monitor = None
+    h._survey_run_alerts([object()])          # must not raise
+    assert h._survey_alerts == []
+
+
 # ── Qt smoke (skipped without PyQt6) ─────────────────────────────────────────
 try:
     import PyQt6  # noqa: F401

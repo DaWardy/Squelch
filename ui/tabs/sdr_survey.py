@@ -34,9 +34,12 @@ survey state (``_survey`` / ``_survey_enabled``). The host calls
 """
 
 import logging
+import time
 from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
+
+_MAX_ALERTS = 200        # cap the in-memory alert ring the view reads
 
 
 def _utc_now_str() -> str:
@@ -63,7 +66,18 @@ class _SDRSurveyMixin:
         self._survey_enabled = bool(on)
         if on and getattr(self, "_survey", None) is None:
             self._survey = self._build_survey_engine()
+        if on and getattr(self, "_alert_monitor", None) is None:
+            self._alert_monitor = self._build_alert_monitor()
         log.info("SDR survey %s", "enabled" if on else "disabled")
+
+    def _build_alert_monitor(self):
+        """Live-alert policy from cfg 'survey.alert.*' (safe defaults)."""
+        try:
+            from core.survey_alert import AlertMonitor
+            return AlertMonitor.from_cfg(self.cfg)
+        except Exception as exc:                    # pragma: no cover
+            log.debug("survey: alert monitor unavailable: %s", exc)
+            return None
 
     def _build_survey_engine(self):
         """A SurveyEngine bound to the shared Signal store + the cfg watch-list.
@@ -106,8 +120,21 @@ class _SDRSurveyMixin:
         lat, lon = self._survey_latlon()
         # Geometry: fft is FFT_SIZE bins spanning _sample_rate, centred on the
         # tuned _center_hz — exactly what SurveyEngine.frame_geometry expects.
-        survey.offer_frame(fft, int(self._center_hz), int(self._sample_rate),
-                           lat=lat, lon=lon)
+        dets = survey.offer_frame(fft, int(self._center_hz),
+                                  int(self._sample_rate), lat=lat, lon=lon)
+        self._survey_run_alerts(dets)
+
+    def _survey_run_alerts(self, detections) -> None:
+        """Feed a frame's detections to the alert policy; collect + log fires."""
+        mon = getattr(self, "_alert_monitor", None)
+        if mon is None or not detections:
+            return
+        for a in mon.offer_detections(detections, t=time.monotonic()):
+            log.info("Survey alert: %s @ %.4f MHz (%.1f dB)",
+                     a.message, a.freq_mhz, a.peak_db)
+            self._survey_alerts.append(a)
+        if len(self._survey_alerts) > _MAX_ALERTS:
+            del self._survey_alerts[:-_MAX_ALERTS]
 
     def _survey_latlon(self):
         """Current RX position for tagging detections; (0.0, 0.0) if unknown."""
@@ -135,6 +162,14 @@ class _SDRSurveyMixin:
         survey = getattr(self, "_survey", None)
         if survey is not None:
             survey.reset()
+        mon = getattr(self, "_alert_monitor", None)
+        if mon is not None:
+            mon.reset()
+        self._survey_alerts = []
+
+    def survey_recent_alerts(self, limit: int = 50) -> list:
+        """The most recent live-survey alerts (newest last), for the view."""
+        return list(getattr(self, "_survey_alerts", []))[-int(limit):]
 
     # ── saved-baseline library (cross-session/location compare) ───────────
     def _survey_store(self):

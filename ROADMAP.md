@@ -2,7 +2,12 @@
 
 > Canonical planning document. Read alongside `CLAUDE.md` (engineering
 > context) before scoping any new work.
-> Last updated: 2026-06-21 · Current build: v0.12.0-alpha · 1933 tests passing
+> Last updated: 2026-07-18 · Current build: v0.12.0-alpha · 2894 tests passing
+>
+> **State of play in one line:** the *engine* is largely built and tested
+> (~20 headless analysis cores); the *cockpit* is not. The critical path is now
+> the **Integration Layer (§4.5)** — surfacing those cores in the GUI — not more
+> cores. See the Engine-vs-Cockpit status in §2/§3.
 
 ---
 
@@ -41,19 +46,26 @@ Every feature maps to one of these verbs, and each pillar feeds a single
 **unified Signal record** (see Phase 1). This is the architecture going
 forward.
 
-| Pillar | Meaning | Status today |
-|--------|---------|--------------|
-| **SEARCH** | Wideband scan, energy detection, occupancy survey | 🟡 Scanner exists; no persistent survey/occupancy DB |
-| **IDENTIFY** | Classify a signal (DB match + modulation classifier) | 🟡 SigID-wiki DB match (`network/signal_id.py`); no modulation classifier |
-| **CORRELATE** | Tie signals together by ID/time/location; fingerprint emitters | ❌ No correlation store |
-| **DECODE** | Voice + generic digital + weak-signal | 🟢 Voice (DSD+/OP25), FT8/WSPR done; 🟡 generic OOK/ASK/FSK/PSK bit-slicer core done (`core/bitslicer.py`) |
-| **PLAYBACK** | Record & replay IQ, scrub captures | 🟢 `IQRecorder`/`IQPlayer` done |
-| **ENCODE** | Build a waveform to transmit | ❌ No modulators/frame builders |
-| **TRANSMIT** | Key a TX-capable SDR / rig | 🟡 `transmit_iq()` plumbing only; no encode chain, no authorization layer |
-| **GEOLOCATE** | Direction finding, RSSI→GPS, TDOA, emitter mapping | ❌ `digital/rfdf.py` is an empty stub — **keystone gap** |
+Status is now tracked on **two axes** because they have diverged sharply:
+- **Engine** = the tested, headless core logic (`core/…`, `digital/…`).
+- **Cockpit** = the user-facing GUI that drives that core in the running app.
+
+| Pillar | Meaning | Engine | Cockpit |
+|--------|---------|--------|---------|
+| **SEARCH** | Wideband scan, energy detection, occupancy survey | 🟢 `occupancy` + `live_analysis.SurveyEngine` (rolling baseline) | 🔴 no survey view; `offer_frame` not called from the SDR stream |
+| **IDENTIFY** | Classify a signal (allocation + modulation + DB match) | 🟢 `signal_classify` + `modulation_classify` + `sigid_db` + `freq_database` | 🔴 not wired to the live IQ/spectrum; no ID panel beyond the legacy sigid bookmark list |
+| **CORRELATE** | Tie signals by ID/time/location; fingerprint emitters | 🟢 `emitter_correlate` + `signal_model.record()` merge | 🔴 no emitter view/overlay |
+| **DECODE** | Voice + weak-signal + generic digital | 🟢 Voice (DSD+/OP25), FT8/WSPR (with UI); 🟢 generic `bitslicer`+`framing`+`linecoding`+`rds`+`ctcss` cores | 🟡 voice/FT8 have UI; 🔴 generic protocol workbench does not exist |
+| **PLAYBACK** | Record & replay IQ, scrub captures | 🟢 `IQRecorder`/`IQPlayer` + `sigmf_io` codec | 🟢 record/scheduled-record in SDR tab; 🟡 no SigMF import/scrub UI |
+| **ENCODE** | Build a waveform to transmit | 🟢 `encoder` (frame build + modulate → IQ) | 🔴 no build/replay UI |
+| **TRANSMIT** | Key a TX-capable SDR / rig | 🟢 `transmit_iq()` + `authorize_tx` chokepoint (default-deny) | 🟢 TX Authorization settings tab; 🔴 no encode→TX pipeline surface; unvalidated on real TX hardware |
+| **GEOLOCATE** | Direction finding, RSSI→GPS, TDOA, emitter mapping | 🟢 `digital/rfdf.py` (real, 195 L) + `df_track` + `emitter_correlate` | 🔴 no foxhunt panel, no RSSI heatmap / bearing / emitter map overlay |
 
 Cross-cutting: **QUERY** (online "what's near here" + spot networks — 🟡
 partial via PSKReporter/RBN/DX/SOTA-POTA) and **EDUCATE** (🟢 RF Lab mode).
+
+**Read this table as:** the engine columns are almost all 🟢; the cockpit
+columns are almost all 🔴. That gap *is* the roadmap now (§4.5).
 
 ---
 
@@ -74,10 +86,21 @@ The original amateur-radio platform requirements are **complete**:
 - ✅ TX safety (AppState FSM, `operating_callsign()`, Demo/Guest modes)
 
 SDR **receive** support is broad (RTL-SDR, HackRF, USRP B200/B210, SDRplay,
-Airspy, LimeSDR, BladeRF, Pluto via SoapySDR). **The broadened vision is
-~50% delivered**: the receive/decode/playback/propagation half is mature;
-geolocation, generic decode/encode, correlation, and the TX chain are
-greenfield.
+Airspy, LimeSDR, BladeRF, Pluto via SoapySDR — RTL-SDR is the validated path;
+SDRplay/RSP still needs the vendor SDK + `soapysdr-module-sdrplay`).
+
+**Where the broadened vision actually stands (updated 2026-07-18):** the
+*logic* for every pillar now exists and is tested — geolocation
+(`rfdf`/`df_track`/`emitter_correlate`), generic decode + encode
+(`bitslicer`/`framing`/`linecoding`/`encoder`), correlation
+(`emitter_correlate`), survey/baseline (`occupancy`/`live_analysis`/
+`rf_baseline`/`soi_snoi`), offline signal-ID (`sigid_db`/`freq_database`), and
+the authorization-gated TX chokepoint (`authorize_tx` inside `transmit_iq`). So
+the earlier "~50% delivered / greenfield" framing is obsolete. **The remaining
+half is almost entirely integration and hardware:** none of the ~20 new cores
+is imported by any `ui/` file yet (verified 2026-07-18 — zero GUI wiring), and
+the TX chain is unvalidated on real transmit hardware. The work left is to
+*surface* a finished engine, not to build more of it (see §4.5).
 
 ---
 
@@ -85,6 +108,13 @@ greenfield.
 
 Phases are ordered so each one unlocks the next. Version bands are targets,
 not commitments.
+
+> **⚠ The build order changed.** Phases 1–5 below built their *engine* cores
+> ahead of their cockpits. That was the right call while working headlessly, but
+> it has produced a large, tested engine with almost no GUI. **Do not start a new
+> pillar core before its predecessors have a usable surface.** The Integration
+> Layer (§4.5) is the P0 critical path; the per-phase "Cockpit remaining" notes
+> below are its work-list.
 
 ### Phase 1 — Foundation: Unified Signal model + Survey  ·  v0.13–0.14  ·  **P0**
 The prerequisite for correlate / geolocate / query. Without it those
@@ -268,6 +298,39 @@ feature ships.
   classroom/lab deployment story).
 - Optional crowd/shared sensor map (much later).
 
+---
+
+## 4.5 Integration Layer — surface the engine  ·  **P0 critical path**
+
+This is where the next several sprints should go. ~20 tested cores exist with
+**zero** GUI wiring (verified 2026-07-18). Each item below turns finished engine
+logic into a usable feature. Ordered by value × unblocking. Every item needs a
+**launch-test session** (running app + RTL-SDR) — offscreen Qt cannot verify
+pyqtgraph render or feel, and blind UME builds have twice corrupted real user
+data (see CLAUDE.md conftest guards). Build them build → user-screenshots → fix.
+
+| # | Integration item | Cores surfaced | Priority | Notes |
+|---|------------------|----------------|----------|-------|
+| **I-1** | **Survey / Baseline "hound" panel** (flagship) — a survey toggle in the SDR tab that calls `SurveyEngine.offer_frame(fft_db, center_hz, sample_rate)` from `sdr_tab._on_samples`; a Survey view (live occupancy + Signal records streaming in); baseline **snapshot / save / load**; **compare → anomaly table** (appeared / vanished / power-shifted), SNOI-filtered. | `live_analysis`, `occupancy`, `rf_baseline`, `soi_snoi`, `signal_model` | **P0** | The founding counter-surveillance workflow; first vertical slice that makes the whole stack demonstrable. Signal Log tab already exists to receive records. |
+| **I-2** | **SOI / SNOI watch-list editor** — add/edit frequency rules (watch vs ignore, modulation narrowing); feeds I-1's compare + partitions the Signal Log. | `soi_snoi` | P0 | Small; unblocks I-1's noise suppression being user-controllable. |
+| **I-3** | **Foxhunt / DF panel + map overlays** — live GPS (`core/gps.py`) + SDR RSSI → `DFTrack`; bearing readout, RSSI→GPS **heatmap overlay**, estimated-emitter markers, **emitter map overlay** from `correlate_from_store`. | `df_track`, `rfdf`, `emitter_correlate`, `gps` | **P0** | Phase-3 flagship; the biggest differentiator (KrakenSDR-class single-RX DF). |
+| **I-4** | **Decode / Encode workbench** — one panel that chains `modulation_classify → bitslicer → linecoding → framing` on a live/loaded IQ selection (preamble/sync/payload/CRC visualised), and the inverse `encoder` build → (auth-gated) replay/TX. | `bitslicer`, `framing`, `linecoding`, `encoder`, `modulation_classify`, `sigmf_io` | P1 | URH-class surface; the "flag a freq → record → decode by talkgroup/time/freq" north-star the user restated. |
+| **I-5** | **Live signal-ID on the spectrum** — wire `modulation_classify`+`sigid_db`+`freq_database` to the live IQ/spectrum so clicking/annotating a signal shows candidate identity + who's scheduled on that channel; replaces the legacy static bookmark list. | `sigid_db`, `freq_database`, `signal_classify`, `modulation_classify` | P1 | Needs the live feature-extraction path (the stream). |
+| **I-6** | **SigMF import / scrub** — load a foreign `.sigmf`/`.wav`/`cu8` capture, scrub it, and run it through I-4/I-5 offline (no hardware needed to demo the whole decode/ID stack). | `sigmf_io` | P1 | Also the easiest way to launch-test I-4/I-5 without live RF. |
+| **I-7** | **Frequency-database overlay + RDS/CTCSS readouts** — import EiBi/Aoki/HFCC, label the spectrum by station; live RDS (FM) and CTCSS (FM audio) readouts where the demod path already exists. | `freq_database`, `rds`, `ctcss` | P2 | RDS/CTCSS still need the last-mile live bitstream/audio tap. |
+
+**Sequencing:** I-1 → I-2 first (they make the flagship real and are the origin
+"hound" spec). I-3 next (Phase-3 flagship). I-4/I-5/I-6 form the decode/ID
+workbench cluster — I-6 is the cheapest launch-test harness for the other two.
+I-7 is polish.
+
+**Definition of done for an integration item:** the core is imported and driven
+from a `ui/` surface; save/restore where stateful; theme tokens (no dark hex);
+launch-verified by the user against real hardware or a real capture; a Qt smoke
+test that skips clean headlessly.
+
+---
+
 ### SDR-app parity — user-requested (from an SDR Console session, 2026-07-05)
 Feature targets inspired by SDR Console v3.3, with an honest feasibility read
 so we sequence them realistically (not all are quick, and several need hardware):
@@ -341,13 +404,17 @@ lost — not all wanted, listed as inspiration; ✓ = Squelch already has some f
 
 | Priority | Definition | Items |
 |----------|------------|-------|
-| **P0** | Foundational or flagship; unblocks the vision | Phase 1 (Signal model + survey), Phase 3 (DF/geolocation), Authorization layer (Phase 5 gate) |
-| **P1** | High value, depends on P0 | Phase 2 (classifier), Phase 4 (generic decode/encode) |
-| **P2** | Valuable, later | Phase 6 (online query, multi-node), crowd sensor map |
-| **Ongoing** | Continuous | SDR breadth, filters UX, education labs, code health |
+| **P0 — now** | The critical path; unblocks everything user-visible | **Integration Layer §4.5** (surface the finished cores — Survey/Baseline I-1, SOI/SNOI editor I-2, Foxhunt/DF I-3) |
+| **P0 — gate** | Hard prerequisite already met | Authorization layer (Phase 5 gate — DONE; keeps blocking any TX feature) |
+| **P1** | High value, follows the P0 integration | Decode/Encode workbench (I-4), live signal-ID (I-5), SigMF scrub (I-6) |
+| **P2** | Valuable, later | Freq-DB/RDS/CTCSS surfacing (I-7), Phase 6 (online query, multi-node), SDR-parity extras, crowd sensor map |
+| **Ongoing** | Continuous | SDR breadth + real-TX validation, filters UX, education labs, code health, security hardening |
 
-Sequencing rule: **do not start a phase whose data dependency isn't built.**
-Phase 1 first, always.
+Sequencing rule (revised 2026-07-18): the engine got ahead of the cockpit, so
+the rule is now **surface before you build.** Do not start a new pillar *core*
+until the previous pillar has a usable GUI surface. The one exception is a pure
+core with no live dependency that is genuinely blocking a launch-test — but
+those are exhausted (§3). When in doubt, wire something up.
 
 ---
 
@@ -613,6 +680,67 @@ in §4.
   gating permitted frequencies, plus an **"Other / Emergency"** override (buried,
   disclaimer-gated, every keying logged). Legal onus on the operator, stated at
   the gate. Use cases are left to the user — not enumerated in-app.
+
+---
+
+## 13. Best-in-class gaps (new scope — 2026-07-18 pass)
+
+To be *the* tool for RF exploration + counter-surveillance (not just a bag of
+capable cores), these are missing and worth adding. They are curated, not
+speculative — each closes a real workflow gap the current backlog doesn't cover.
+
+### 13.1 Capture sessions / project files — **P1, high leverage**
+The hound workflow is inherently multi-artifact and comparative: baseline +
+Signal records + IQ captures + watch-list + notes, captured at a place/time, and
+**compared against another place/time**. Today these live in separate stores
+with no way to snapshot "the survey I did at location A" as one thing.
+- [ ] A **`.squelch` session/project file** (or a session table) bundling:
+  baseline(s), the Signal records for that run, referenced IQ captures (SigMF
+  paths), the active watch-list, GPS track, and free-text notes.
+- [ ] **Save / load / name** sessions; **compare two sessions** (drives
+  `compare_baselines` + emitter diff) → "what's here now that wasn't at A."
+- [ ] Reuses existing cores (`rf_baseline` JSON, `signal_model`, `df_track`
+  save/load, `soi_snoi` persistence) — mostly a container + a compare view.
+
+### 13.2 Sweep / anomaly report export — **P1**
+A survey that finds something should produce an artifact a user can keep or hand
+off. Currently there is no report output at all.
+- [ ] **HTML/PDF report** of a baseline-compare or session: anomalies found
+  (freq, strength, first/last seen, candidate ID), the SOI/SNOI context, a
+  waterfall/occupancy thumbnail, location + timestamp. CSV export already exists
+  for the raw table (`signal_browser`) — this is the human-readable narrative.
+- [ ] Ties to 13.1 (report a session) and the Signal Log CSV export.
+
+### 13.3 Live alerting — **P1**
+The counter-surveillance and monitoring use cases want to be *told* when
+something changes, not to stare at a waterfall.
+- [ ] **Alert when a SOI appears** or **an anomaly is detected** during a live
+  survey (new emitter vs baseline, a watch-list SOI going active): visual banner
+  + optional sound, logged to the Signal Log. Debounced; user-configurable.
+- [ ] Reuses `live_analysis.compare_to` + `soi_snoi.classify` — this is an alert
+  policy + a notification surface on top of the pump.
+
+### 13.4 Waterfall-shape fingerprinting for signal ID — **P2, real gap**
+`sigid_db` matches on (frequency, bandwidth, modulation) only. SigIDWiki/Artemis
+identification — and the origin spec — key heavily on the **visual waterfall
+shape** (sweep, ticks, hash marks, hop pattern). This is the single biggest
+accuracy gap in IDENTIFY.
+- [ ] Extract shape features (bandwidth profile, symbol/tick cadence, hop
+  structure via `fhss_detect`, on/off duty) into the `sigid_db` fingerprint so
+  matches use shape, not just freq/bw/mod. Optional: a small template/thumbnail
+  match. Keeps the "original factual data only, no bundled catalogue" posture.
+
+### 13.5 Retention / scale hygiene for long surveys — **P2**
+A multi-hour survey streams a large number of Signal records into SQLite via the
+pump. Left unbounded, the store and Signal Log degrade.
+- [ ] Configurable **retention / dedup / decimation** policy on `SignalStore`
+  (age-out, merge near-duplicates harder, cap rows) so a long hound run stays
+  responsive. `record()` already merges repeats — extend with a retention pass.
+
+> These join the §12 operator-vision backlog and the §4.5 Integration Layer.
+> Priority order across all three: finish §4.5 I-1…I-3 first (surface what
+> exists), then 13.1–13.3 (make the hound workflow complete and shareable),
+> then the P2 depth items.
 
 ---
 

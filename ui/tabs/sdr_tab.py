@@ -172,13 +172,14 @@ from ui.tabs.sdr_controls import _SDRControlsMixin
 from ui.tabs.sdr_toolbar import _SDRToolbarMixin
 from ui.tabs.sdr_device_connect import _SDRDeviceConnectMixin
 from ui.tabs.sdr_bottom_bar import _SDRBottomBarMixin
+from ui.tabs.sdr_survey import _SDRSurveyMixin
 
 
 class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
              _SDRRecordingMixin, _SDRScannerMixin, _SDRSignalIDMixin,
              _SDRProfileMixin, _SDRAudioSourceMixin, _SDRControlsMixin,
              _SDRToolbarMixin, _SDRDeviceConnectMixin, _SDRBottomBarMixin,
-             QWidget):
+             _SDRSurveyMixin, QWidget):
     panel_id    = "sdr"
     panel_title = "SDR"
 
@@ -248,6 +249,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # spectrum/waterfall plots, updated in _update_axes)
         self._passband = None
         self._legend   = None
+        # Live wideband survey (ROADMAP §4.5 I-1) — see _SDRSurveyMixin.
+        # Engine built lazily on first enable; the pump runs (throttled) from
+        # the plot timer so the RX thread stays pristine.
+        self._survey         = None
+        self._survey_enabled = False
+        self._survey_tick_n  = 0
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -951,6 +958,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
 
     @pyqtSlot()
     def _update_plots(self):
+        # Survey pump runs off the plot timer (main thread), independent of
+        # plotting, so the RX thread is never loaded and it works headless-ish.
+        if self._survey_enabled:
+            self._survey_tick()
         if not HAS_PG or self._latest_fft is None:
             return
 
@@ -1089,6 +1100,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             "demod_bw":        self._demod_bw.currentText(),
             "demod_auto":      self._auto_demod_cb.isChecked(),
             "wheel_vert_bw":   getattr(self, "_scroll_vert_bw", False),
+            "survey_enabled":  self._survey_enabled,
         }
 
     def restore_state(self, state: dict) -> None:
@@ -1131,6 +1143,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._agc_cb.setChecked(bool(state["agc"]))
         if "wheel_vert_bw" in state:
             self._wheel_bw_cb.setChecked(bool(state["wheel_vert_bw"]))
+        if "survey_enabled" in state and hasattr(self, "_survey_btn"):
+            self._survey_btn.setChecked(bool(state["survey_enabled"]))
 
     # IQ Recorder, Scanner, Signal ID, ADS-B, and public API methods
     # are in the mixin classes: _SDRRecordingMixin, _SDRScannerMixin,

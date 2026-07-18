@@ -141,6 +141,18 @@ class _SDRToolbarMixin:
             rig_btn.setToolTip(self.tr("Tune SDR to current rig frequency"))
             rig_btn.clicked.connect(self._tune_to_rig)
             lay.addWidget(rig_btn)
+        # Live wideband survey toggle (ROADMAP §4.5 I-1). When on, each spectrum
+        # frame is analysed: detected signals are logged to the Signal Log and
+        # folded into a baseline for later snapshot/compare (anomaly detection).
+        self._survey_btn = QPushButton(self.tr("🔍 Survey"))
+        self._survey_btn.setCheckable(True)
+        self._survey_btn.setFixedWidth(84)
+        self._survey_btn.setToolTip(self.tr(
+            "Live wideband survey — log detected signals to the Signal Log and\n"
+            "build a baseline as the spectrum runs. Snapshot/compare (anomaly\n"
+            "detection) arrives with the Survey view."))
+        self._survey_btn.toggled.connect(self._on_survey_toggle)
+        lay.addWidget(self._survey_btn)
 
     def _save_screenshot(self) -> None:
         """Grab the visible SDR tab and save as a timestamped PNG."""

@@ -790,6 +790,7 @@ S-meter, memories, satellite Doppler, demod profiles.
 | 14.8 | Per-mode filter sets / bandwidth presets | 🟡 demod profiles exist | extend profiles into full per-mode filter sets | YES | P3 |
 | 14.9 | **Console Server** — remote receiver over network | ❌ | maps to `NODE-SENSOR` (Phase 6): stream IQ/spectrum from a headless node to a client. Large, network | partial | P2 |
 | 14.10 | MIDI / hardware controller tuning | ❌ | optional: map a MIDI controller to VFO/gain | YES | P3 |
+| 14.11 | **Simulated signal source** (no-hardware demo) | ✅ **DONE** (2026-07-18, `5606697`) — `sdr/sim_source.py` `SimSource`: synthetic wideband IQ (noise floor + offset signals, one pulsing on/off) on the SoapyManager `on_samples` interface; offered as a "Simulated signal (no hardware)" virtual device (Connect → live waterfall + survey/history/alerts react). 12 tests | **YES** | **P1** |
 
 **Sequencing:** 14.1 first (it's the enabler — turns "no SDR" into a non-issue and
 lets the flagship survey/hound view be exercised on real captures). Then 14.3
@@ -797,10 +798,14 @@ lets the flagship survey/hound view be exercised on real captures). Then 14.3
 both with headless-buildable cores. 14.5–14.7 are self-contained depth items.
 14.9 (server) is the Phase-6 `NODE-SENSOR` story.
 
-> **No-hardware development note:** with 14.1 done, Squelch is fully developable
-> and demonstrable on downloaded SigMF / RTL-SDR sample captures — every core
-> (survey, signal-ID, decode, classify, DF-from-file) can be exercised without a
-> dongle. This is the key that unlocks headless progress on the whole platform.
+> **No-hardware development note:** with 14.1 (universal playback) and 14.11
+> (simulated source) done, Squelch is fully usable, demonstrable, and
+> launch-testable with **zero hardware** — either play a downloaded SigMF /
+> RTL-SDR capture, or pick the built-in "Simulated signal" device for a live
+> synthetic spectrum. Every core (survey, signal-ID, decode, classify,
+> DF-from-file) can be exercised without a dongle. This is the key that unlocks
+> the whole platform for a no-SDR user AND makes the flagship survey view
+> demoable end-to-end.
 
 ---
 

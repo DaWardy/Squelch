@@ -33,6 +33,10 @@ from sdr.soapy_device import SoapyManager, HAS_SOAPY
 
 log = logging.getLogger(__name__)
 
+# Sentinel for the always-available synthetic source (like the RTL-TCP None
+# sentinel). Lets a no-hardware user bring the whole SDR stack alive.
+SIM_DEVICE = "__SIM__"
+
 
 class _SDRDeviceConnectMixin:
     """Enumerate, select, and connect/disconnect SDR hardware."""
@@ -59,7 +63,7 @@ class _SDRDeviceConnectMixin:
 
     def _populate_devices(self, devices: list):
         from ui.tabs.sdr_tab import HAS_RTLTCP, rtltcp_is_running
-        self._devices = devices
+        self._devices = list(devices)
         self._dev_combo.clear()
         if hasattr(self, "_dev_type_lbl"):
             self._dev_type_lbl.setText("")
@@ -72,18 +76,13 @@ class _SDRDeviceConnectMixin:
             self._dev_combo.addItem(
                 self.tr("RTL-TCP server  (127.0.0.1:1234)"))
             self._devices = [None]
-            self._dev_combo.setCurrentIndex(0)
             if hasattr(self, "_dev_type_lbl"):
                 self._dev_type_lbl.setText("RTL-TCP")
             log.info("SDR: SoapySDR found 0 devices, rtl_tcp running — using RTL-TCP")
-            return
-        if not devices:
-            self._dev_combo.addItem(
-                self.tr("No SDR devices found — use 🎙 Rig Audio or click ⟳"))
-            if hasattr(self, "_dev_type_lbl"):
-                self._dev_type_lbl.setText("none")
+        elif not devices:
             # Surface *why* nothing was found (e.g. missing rtlsdr module) as a
-            # tooltip on the device combo, and log it to the console.
+            # tooltip on the device combo, and log it to the console. The
+            # Simulated source below is always offered as a no-hardware option.
             try:
                 from sdr.soapy_device import SoapyManager
                 hint = SoapyManager.diagnostics().get("hint", "")
@@ -92,12 +91,17 @@ class _SDRDeviceConnectMixin:
                     log.info("SDR: no devices — %s", hint.replace("\n", " "))
             except Exception as exc:
                 log.debug("device diagnostics hint failed: %s", exc)
-            return
-        for dev in devices:
-            self._dev_combo.addItem(dev.display_name)
-        self._dev_combo.setCurrentIndex(0)
-        # Show driver type for first device
-        self._update_dev_type_label(0)
+        else:
+            for dev in devices:
+                self._dev_combo.addItem(dev.display_name)
+            self._update_dev_type_label(0)
+        # Always offer the simulated source last — a no-hardware user can bring
+        # the whole SDR stack (waterfall, survey, history, alerts) alive.
+        self._dev_combo.addItem(self.tr("Simulated signal (no hardware)"))
+        self._devices.append(SIM_DEVICE)
+        if self._dev_combo.currentIndex() < 0:
+            self._dev_combo.setCurrentIndex(0)
+        self._update_dev_type_label(self._dev_combo.currentIndex())
 
     def _update_dev_type_label(self, index: int) -> None:
         """Show driver/hardware type for selected device."""
@@ -107,6 +111,9 @@ class _SDRDeviceConnectMixin:
             self._dev_type_lbl.setText("")
             return
         dev = self._devices[index]
+        if dev == SIM_DEVICE:
+            self._dev_type_lbl.setText("Simulated")
+            return
         if dev is None:
             self._dev_type_lbl.setText("RTL-TCP")
             return
@@ -138,6 +145,11 @@ class _SDRDeviceConnectMixin:
             dev = self._devices[idx]
             if dev is None:
                 return   # RTL-TCP sentinel — no SoapySDR device object
+            if dev == SIM_DEVICE:
+                # Synthetic source — no TX, no hardware panel.
+                self._tx_grp.setVisible(False)
+                self._tx_indicator.setVisible(False)
+                return
             # Show TX controls only for TX hardware
             self._tx_grp.setVisible(getattr(dev, "can_tx", False))
             self._tx_indicator.setVisible(getattr(dev, "can_tx", False))
@@ -192,8 +204,12 @@ class _SDRDeviceConnectMixin:
         if not self._devices or idx >= len(self._devices):
             return
         if self._connect_btn.text() == self.tr("Disconnect"):
-            self._manager.stop_rx()
-            self._manager.close()
+            sim = getattr(self, "_sim_source", None)
+            if sim is not None and sim.is_running:
+                sim.stop()
+            else:
+                self._manager.stop_rx()
+                self._manager.close()
             self._connect_btn.setText(self.tr("Connect"))
             self._sdr_status.setText("● Disconnected")
             self._sdr_status.setStyleSheet(
@@ -204,6 +220,11 @@ class _SDRDeviceConnectMixin:
         dev = self._devices[idx]
         self._connect_btn.setEnabled(False)
         self._connect_btn.setText(self.tr("Connecting…"))
+
+        # Synthetic source — bring the whole stack alive with no hardware.
+        if dev == SIM_DEVICE:
+            self._start_sim_source()
+            return
 
         # Sentinel from _populate_devices: connect to the local rtl_tcp
         # server instead of opening a SoapySDR device.
@@ -233,6 +254,37 @@ class _SDRDeviceConnectMixin:
             QTimer.singleShot(0,
                 lambda o=ok, d=dev: self._on_connected(o, d))
         threading.Thread(target=_do, daemon=True).start()
+
+    def _start_sim_source(self):
+        """Start the synthetic source feeding the stream path, and show the
+        connected state (no SoapySDR device / manager RX involved)."""
+        try:
+            from sdr.sim_source import SimSource
+            if getattr(self, "_sim_source", None) is None:
+                self._sim_source = SimSource(
+                    sample_rate=int(self._sample_rate),
+                    get_center=lambda: int(self._center_hz))
+            self._sim_source.on_samples(self._on_samples)
+            self._sim_source.start()
+            ok = True
+        except Exception as exc:
+            log.error("sim source start failed: %s", exc)
+            ok = False
+        self._connect_btn.setEnabled(True)
+        if ok:
+            self._connect_btn.setText(self.tr("Disconnect"))
+            self._sdr_status.setText("● Simulated signal")
+            self._sdr_status.setStyleSheet(
+                "color:#3fbe6f;font-family:'Courier New';")
+            from types import SimpleNamespace
+            self._current = SimpleNamespace(display_name="Simulated signal")
+            self._update_axes()
+            self._draw_band_segments()
+        else:
+            self._connect_btn.setText(self.tr("Connect"))
+            self._sdr_status.setText("● Error")
+            self._sdr_status.setStyleSheet(
+                "color:#cc4444;font-family:'Courier New';")
 
     def _on_connected(self, ok: bool, dev: "SDRDevice"):
         self._connect_btn.setEnabled(True)

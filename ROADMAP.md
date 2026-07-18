@@ -694,13 +694,20 @@ The hound workflow is inherently multi-artifact and comparative: baseline +
 Signal records + IQ captures + watch-list + notes, captured at a place/time, and
 **compared against another place/time**. Today these live in separate stores
 with no way to snapshot "the survey I did at location A" as one thing.
-- [ ] A **`.squelch` session/project file** (or a session table) bundling:
-  baseline(s), the Signal records for that run, referenced IQ captures (SigMF
-  paths), the active watch-list, GPS track, and free-text notes.
-- [ ] **Save / load / name** sessions; **compare two sessions** (drives
-  `compare_baselines` + emitter diff) → "what's here now that wasn't at A."
-- [ ] Reuses existing cores (`rf_baseline` JSON, `signal_model`, `df_track`
-  save/load, `soi_snoi` persistence) — mostly a container + a compare view.
+- 🟡 **Baseline library DONE** (2026-07-18, `ee29b1c`): `core/survey_session.py`
+  `SurveyStore` — a folder of saved `Baseline` JSON files with save / list /
+  load / delete + `compare(ref_id, live)` / `compare_ids(a, b)` (path-traversal
+  guarded, never-raises); wired to `SDRTab` as `survey_save_baseline` /
+  `survey_saved_baselines` / `survey_compare_saved`. This is the persistence the
+  I-1 compare view drives; 22 tests. **This delivers the "compare location A
+  (saved) vs here (live)" core** of the hound workflow.
+- [ ] Extend to a full **`.squelch` session/project file** bundling not just the
+  baseline but the run's Signal records, referenced IQ captures (SigMF paths),
+  the active watch-list, GPS track, and free-text notes — one savable/loadable
+  unit.
+- [ ] **Compare two whole sessions** (baseline diff + emitter diff + notes).
+- [ ] Reuses existing cores (`survey_session`/`rf_baseline` JSON, `signal_model`,
+  `df_track` save/load, `soi_snoi` persistence) — a container + a compare view.
 
 ### 13.2 Sweep / anomaly report export — **P1**
 A survey that finds something should produce an artifact a user can keep or hand

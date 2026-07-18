@@ -711,12 +711,16 @@ with no way to snapshot "the survey I did at location A" as one thing.
 
 ### 13.2 Sweep / anomaly report export — **P1**
 A survey that finds something should produce an artifact a user can keep or hand
-off. Currently there is no report output at all.
-- [ ] **HTML/PDF report** of a baseline-compare or session: anomalies found
-  (freq, strength, first/last seen, candidate ID), the SOI/SNOI context, a
-  waterfall/occupancy thumbnail, location + timestamp. CSV export already exists
-  for the raw table (`signal_browser`) — this is the human-readable narrative.
-- [ ] Ties to 13.1 (report a session) and the Signal Log CSV export.
+off.
+- 🟡 **HTML / text report DONE** (2026-07-18, `17db00d`): `core/survey_report.py`
+  turns a `BaselineDiff` into a self-contained HTML or plain-text/markdown report
+  (header: title / when / location / reference→current / floor delta / anomaly
+  count; sections: appeared / power-changed / vanished with freq / BW / peak / Δ /
+  label / category). All RF-derived strings HTML-escaped at the render chokepoint
+  (map-XSS lesson). `diff_rows()` also feeds CSV/table consumers. Wired to
+  `SDRTab.survey_export_report(path, diff, fmt, location)`; 12 tests.
+- [ ] PDF output + an occupancy/waterfall thumbnail (needs the render surface).
+- [ ] Ties to 13.1 (report a whole session) and the Signal Log CSV export.
 
 ### 13.3 Live alerting — **P1**
 The counter-surveillance and monitoring use cases want to be *told* when

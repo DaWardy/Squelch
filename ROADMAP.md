@@ -780,7 +780,7 @@ S-meter, memories, satellite Doppler, demod profiles.
 
 | # | SDR-Console feature | Squelch today | Action | Build w/o SDR? | Pri |
 |---|---------------------|---------------|--------|:---:|:---:|
-| 14.1 | **Universal IQ playback** (play any capture) | 🟡 playback wired into the full pipeline, but cf32-only (`IQPlayer` hardcodes complex64) | make playback datatype-aware via `sigmf_io` (cu8/ci8/ci16/cf32/cf64, LE/BE) → the whole app runs on **downloaded sample files** | **YES** | **P0** |
+| 14.1 | **Universal IQ playback** (play any capture) | ✅ **DONE** (2026-07-18, `196357a`) — `IQPlayer` datatype-aware via `sigmf_io.bytes_per_sample`/`decode_iq_bytes` (cu8/ci8/ci16/cf32/cf64, LE/BE); raw `.iq/.bin` format picker; fixed `Recording.from_meta_file` duration bug (was cf32-only). The whole app now runs on **downloaded SigMF/RTL-SDR captures — no dongle**. 12 tests | **YES** | **P0** |
 | 14.2 | Reverse / fast-forward playback | 🟡 FF via speed≤4×; no reverse | add reverse + scrub in the playback transport | YES (core) | P1 |
 | 14.3 | **Signal History** (band-power over time, scroll-back) | 🟡 survey pump samples spectrum; no continuous strength-vs-time recorder w/ scroll-back + CSV | a low-rate history recorder (rolling, timestamped) + CSV export; the "what happened overnight" view. Pairs with survey. Data layer headless | data layer YES | **P1** |
 | 14.4 | **Multiple receivers** (N parallel demodulators, matrix) | ❌ single VFO | a multi-demodulator engine (N channels tap one IQ buffer; each own freq/mode/BW/squelch/record). Engine headless-testable w/ synthetic IQ; matrix UI needs launch | engine YES | **P1** |

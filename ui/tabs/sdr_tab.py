@@ -383,15 +383,26 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         sc_lay.setContentsMargins(0, 0, 0, 0)
         sc_lay.addWidget(self._spec_plot)
         wf_container = QWidget()
-        wc_lay = QHBoxLayout(wf_container)   # waterfall | vertical colour key
+        wc_lay = QHBoxLayout(wf_container)   # waterfall | [Auto + colour key]
         wc_lay.setContentsMargins(0, 0, 0, 0)
         wc_lay.setSpacing(2)
         wc_lay.addWidget(self._wf_plot, 1)
+        key_col = QVBoxLayout()
+        key_col.setContentsMargins(0, 0, 0, 0)
+        key_col.setSpacing(2)
+        self._wf_auto_btn = QPushButton("Auto")
+        self._wf_auto_btn.setFixedWidth(52)
+        self._wf_auto_btn.setFixedHeight(20)
+        self._wf_auto_btn.setToolTip(
+            "Auto-scale the waterfall colour range (floor/ceiling) to the signal")
+        self._wf_auto_btn.clicked.connect(self._auto_range_set)
+        key_col.addWidget(self._wf_auto_btn, 0)
         self._legend = _PaletteLegend()
         self._legend.set_palette(self._palette_combo.currentText()
                                  if hasattr(self, "_palette_combo") else "Jet")
         self._legend.set_range(self._floor_db, self._ceiling_db)
-        wc_lay.addWidget(self._legend, 0)
+        key_col.addWidget(self._legend, 1)
+        wc_lay.addLayout(key_col, 0)
         wf_splitter.addWidget(spec_container)
         wf_splitter.addWidget(wf_container)
         wf_splitter.setSizes([120, 280])   # spectrum 30%, waterfall 70%
@@ -422,11 +433,13 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             angle=90, movable=False,
             pen=pg.mkPen("#ff4444", width=1, style=Qt.PenStyle.DashLine))
         self._spec_plot.addItem(self._cf_line)
+        # Floor/ceiling shading — NOT movable: it's a full-width band that would
+        # otherwise swallow drags meant for the IF passband below. Floor/ceiling
+        # are set via the Display spin-boxes and the waterfall "Auto" button.
         self._level_region = pg.LinearRegionItem(
             values=[self._floor_db, self._ceiling_db],
-            orientation='horizontal', movable=True,
+            orientation='horizontal', movable=False,
             brush=pg.mkBrush(255, 255, 255, 8))
-        self._level_region.sigRegionChanged.connect(self._on_level_region)
         self._spec_plot.addItem(self._level_region)
         self._squelch_line = pg.InfiniteLine(
             angle=0, movable=False,
@@ -442,10 +455,15 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._passband = pg.LinearRegionItem(
             values=[0, 0], movable=True,
             brush=pg.mkBrush(0, 204, 204, 36),
-            pen=pg.mkPen("#00cccc", width=1, style=Qt.PenStyle.DashLine))
-        self._passband.setZValue(5)
+            pen=pg.mkPen("#00cccc", width=1, style=Qt.PenStyle.DashLine),
+            hoverBrush=pg.mkBrush(0, 204, 204, 64))
+        self._passband.setZValue(20)          # above the (non-movable) level band
         self._passband.setToolTip(
             "IF passband — drag an edge to change bandwidth")
+        # Fatter, brighter edges that highlight on hover so they're easy to grab.
+        for _ln in self._passband.lines:
+            _ln.setPen(pg.mkPen("#00e5e5", width=2))
+            _ln.setHoverPen(pg.mkPen("#7fffff", width=4))
         self._passband.sigRegionChangeFinished.connect(self._on_passband_drag)
         self._spec_plot.addItem(self._passband)
 

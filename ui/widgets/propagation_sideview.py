@@ -223,12 +223,15 @@ class PropagationSideView(QWidget):
             col_dim = QColor(col1.red(), col1.green(), col1.blue(), 80)
             p.setPen(QPen(col_dim, 1, Qt.PenStyle.DashLine))
             p.drawLine(x0, y_top, x1, y_top)
-            if h_px >= 10:
-                p.setPen(QColor(col1.red(), col1.green(), col1.blue(), 160))
+            if h_px >= 16:
+                p.setPen(QColor(col1.red(), col1.green(), col1.blue(), 170))
                 p.setFont(QFont("", 7))
                 mid_y = y_top + h_px // 2 + 4
-                p.drawText(x0 + 4, mid_y,
-                           f"{name}-layer  ({lo_km}-{hi_km} km)")
+                # Right-align so layer names don't collide with the left-side
+                # TX marker / groundwave / NVIS / status text near the ground.
+                label = f"{name}-layer  ({lo_km}-{hi_km} km)"
+                tw = p.fontMetrics().horizontalAdvance(label)
+                p.drawText(x1 - tw - 6, mid_y, label)
             if name == "F2":
                 f2_top, f2_bot = y_top, y_bot
         return f2_top, f2_bot

@@ -329,7 +329,15 @@ class BandConditionsTab(SquelchPanel, QWidget):
         rl2.addWidget(self._build_sideview_group())
         rl2.addWidget(self._build_pskreporter_group())
         rl2.addStretch()
-        return right
+        # Scroll the right column so the many groups (incl. the 240px side-view)
+        # keep their full height instead of being compressed to overlap.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setWidget(right)
+        return scroll
 
     def _build_path_reliability_group(self) -> QGroupBox:
         """Band-by-band reliability chart for the entered TX→RX path."""

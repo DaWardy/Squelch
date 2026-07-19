@@ -114,17 +114,17 @@ def _make_colormap(palette_name: str):
 
 
 class _PaletteLegend(QWidget):
-    """Horizontal colour key for the waterfall.
+    """Vertical colour key for the waterfall, shown on its right-hand side.
 
-    Shows the active palette as a left-to-right gradient (weak → strong) with
-    the current floor/ceiling dB values at each end, so the colours on the
+    Shows the active palette as a top-to-bottom gradient (strong → weak) with
+    the current ceiling/floor dB values labelled, so the colours on the
     waterfall have a legible meaning — the way other SDR programs do.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(22)
-        self.setToolTip("Waterfall colour key — left = weak, right = strong")
+        self.setFixedWidth(52)
+        self.setToolTip("Waterfall colour key — top = strong, bottom = weak")
         self._colors = PALETTES["Jet"]
         self._lo_db  = -100.0
         self._hi_db  = -20.0
@@ -142,20 +142,32 @@ class _PaletteLegend(QWidget):
         p = QPainter(self)
         try:
             w, h  = self.width(), self.height()
-            bar_h = 11
-            grad  = QLinearGradient(0, 0, w, 0)
+            bar_w = 14
+            top, bot = 8, h - 8            # leave room for end labels
+            grad  = QLinearGradient(0, top, 0, bot)   # vertical
             n = len(self._colors)
             for i, c in enumerate(self._colors):
-                grad.setColorAt(i / (n - 1) if n > 1 else 0.0, QColor(*c))
-            p.fillRect(0, 0, w, bar_h, grad)
+                # invert so the strongest colour is at the top
+                pos = 1.0 - (i / (n - 1) if n > 1 else 0.0)
+                grad.setColorAt(pos, QColor(*c))
+            p.fillRect(2, top, bar_w, max(1, bot - top), grad)
             f = p.font()
             f.setPointSize(7)
             p.setFont(f)
-            p.setPen(QPen(QColor("#aaaaaa")))
-            p.drawText(2, h - 1, f"weak  {self._lo_db:.0f} dB")
-            txt = f"{self._hi_db:.0f} dB  strong"
-            adv = p.fontMetrics().horizontalAdvance(txt)
-            p.drawText(max(0, w - adv - 2), h - 1, txt)
+            p.setPen(QPen(QColor("#bbbbbb")))
+            x = bar_w + 5
+            mid = (self._hi_db + self._lo_db) / 2.0
+            p.drawText(x, top + 4, f"{self._hi_db:.0f}")
+            p.drawText(x, (top + bot) // 2 + 3, f"{mid:.0f}")
+            p.drawText(x, bot, f"{self._lo_db:.0f}")
+            # unit, rotated up the right edge
+            p.save()
+            p.translate(w - 2, (top + bot) // 2)
+            p.rotate(-90)
+            p.setPen(QPen(QColor("#888888")))
+            adv = p.fontMetrics().horizontalAdvance("dB")
+            p.drawText(-adv // 2, 0, "dB")
+            p.restore()
         finally:
             p.end()
 
@@ -371,15 +383,15 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         sc_lay.setContentsMargins(0, 0, 0, 0)
         sc_lay.addWidget(self._spec_plot)
         wf_container = QWidget()
-        wc_lay = QVBoxLayout(wf_container)
+        wc_lay = QHBoxLayout(wf_container)   # waterfall | vertical colour key
         wc_lay.setContentsMargins(0, 0, 0, 0)
-        wc_lay.setSpacing(0)
-        wc_lay.addWidget(self._wf_plot)
+        wc_lay.setSpacing(2)
+        wc_lay.addWidget(self._wf_plot, 1)
         self._legend = _PaletteLegend()
         self._legend.set_palette(self._palette_combo.currentText()
                                  if hasattr(self, "_palette_combo") else "Jet")
         self._legend.set_range(self._floor_db, self._ceiling_db)
-        wc_lay.addWidget(self._legend)
+        wc_lay.addWidget(self._legend, 0)
         wf_splitter.addWidget(spec_container)
         wf_splitter.addWidget(wf_container)
         wf_splitter.setSizes([120, 280])   # spectrum 30%, waterfall 70%

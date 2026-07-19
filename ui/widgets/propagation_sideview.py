@@ -238,8 +238,11 @@ class PropagationSideView(QWidget):
         """Draw curved Earth surface with terrain relief."""
         n = 60
         max_tp = max(8, int((H - ground) * 0.6 + 12))
-        if self._terrain_elev and len(self._terrain_elev) >= n:
-            elev = self._terrain_elev[:n + 1]
+        if self._terrain_elev and len(self._terrain_elev) >= 2:
+            # Resample to exactly n+1 points so _tp(i) is always in-bounds even
+            # if the fetch returned a different count (was an IndexError risk).
+            raw = list(self._terrain_elev)
+            elev = [raw[min(i, len(raw) - 1)] for i in range(n + 1)]
             e_min, e_rng = min(elev), max(max(elev) - min(elev), 1.0)
             def _tp(i):
                 t = i / n

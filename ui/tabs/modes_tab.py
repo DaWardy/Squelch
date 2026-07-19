@@ -297,7 +297,10 @@ class ModesTab(_ModesSSTVMixin, _ModesRBNMixin, _ModesSOTAMixin, _ModesDXMixin,
             "the rig to the standard digital mode calling frequency\n"
             "and sets USB-Digital (PKTUSB) mode.")
         band_gl.addWidget(self._auto_tune_cb, 3, 0, 1, 2)
-        band_grp.setMinimumHeight(80)
+        # Fit all four rows (combo + frequency + 26px Tune button + checkbox +
+        # title); the old 80px minimum let the rows squish and overlap.
+        band_grp.setMinimumHeight(150)
+        self._band_combo.setMinimumHeight(24)
         self._left_layout.addWidget(band_grp)
         
         # ── Cycle timer ───────────────────────────────────────────────

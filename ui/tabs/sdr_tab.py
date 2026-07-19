@@ -259,6 +259,7 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._survey_alerts  = []      # recent Alert ring (view reads this)
         self._signal_history = None    # core.signal_history.SignalHistory (lazy)
         self._sim_source     = None    # sdr.sim_source.SimSource (no-hardware demo)
+        self._audio_rec      = None    # core.audio_record.AudioRecorder (demod→WAV)
 
     # ── Build UI ──────────────────────────────────────────────────────────
 
@@ -946,6 +947,11 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         # Record if active
         if self._recorder.is_recording:
             self._recorder.write_samples(iq)
+
+        # Record demodulated audio to WAV if armed (§14.7)
+        arec = self._audio_rec
+        if arec is not None and arec.is_recording:
+            arec.feed(iq, sample_rate, center_hz)
 
         # Squelch gate — update open/closed state from peak FFT power
         if self._squelch_enabled:

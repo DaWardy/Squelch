@@ -153,6 +153,17 @@ class _SDRToolbarMixin:
             "detection) arrives with the Survey view."))
         self._survey_btn.toggled.connect(self._on_survey_toggle)
         lay.addWidget(self._survey_btn)
+        # Record the tuned VFO's demodulated audio to a WAV you can play in any
+        # media player — the simplest way to *hear* a signal (no audio device).
+        self._audio_rec_btn = QPushButton(self.tr("🎧 Rec Audio"))
+        self._audio_rec_btn.setCheckable(True)
+        self._audio_rec_btn.setFixedWidth(96)
+        self._audio_rec_btn.setToolTip(self.tr(
+            "Record the tuned signal's demodulated audio to a .wav file\n"
+            "(uses the current demod mode + bandwidth). Play it in any media\n"
+            "player — works with the Simulated source or a played capture."))
+        self._audio_rec_btn.toggled.connect(self._on_audio_record_toggle)
+        lay.addWidget(self._audio_rec_btn)
 
     def _save_screenshot(self) -> None:
         """Grab the visible SDR tab and save as a timestamped PNG."""

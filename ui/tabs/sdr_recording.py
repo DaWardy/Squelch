@@ -48,6 +48,47 @@ class _SDRRecordingMixin:
                     "background:#cc2222;color:#fff;"
                     "border:1px solid #ff4444;border-radius:4px;")
 
+    def _on_audio_record_toggle(self, on: bool) -> None:
+        """Start/stop recording the tuned VFO's demod audio to a WAV (§14.7)."""
+        if on:
+            mode = self._demod_combo.currentText()
+            if mode == "Raw IQ":
+                self._audio_rec_btn.setChecked(False)
+                self._sdr_status_msg(self.tr(
+                    "Pick a demod mode (AM/FM/SSB/CW) to record audio"))
+                return
+            from core.audio_record import AudioRecorder
+            self._audio_rec = AudioRecorder(
+                mode=mode, offset_hz=0.0,
+                bandwidth_hz=float(getattr(self, "_bw_hz", 0) or 0))
+            self._audio_rec.start()
+            self._audio_rec_btn.setText(self.tr("■ Stop Audio"))
+        else:
+            self._audio_rec_btn.setText(self.tr("🎧 Rec Audio"))
+            rec = getattr(self, "_audio_rec", None)
+            if rec is None or not rec.is_recording:
+                return
+            from pathlib import Path
+            from PyQt6.QtCore import QDateTime
+            ts = QDateTime.currentDateTime().toString("yyyyMMdd_HHmmss")
+            out_dir = _safe_recordings_path(self.cfg)
+            path = Path(out_dir) / f"audio_{ts}.wav"
+            written = rec.stop(path)
+            if written is not None:
+                self._sdr_status_msg(self.tr(
+                    f"Audio saved: {written.name}  ({rec.duration_s:.1f}s)"))
+            else:
+                self._sdr_status_msg(self.tr("No audio captured"))
+            self._audio_rec = None
+
+    def _sdr_status_msg(self, text: str) -> None:
+        """Best-effort status message (window status bar, else the SDR label)."""
+        try:
+            self.window().statusBar().showMessage(text, 5000)
+        except Exception:
+            if hasattr(self, "_sdr_status"):
+                self._sdr_status.setText(text)
+
     def _toggle_play(self):
         if self._player.is_playing:
             self._player.pause()

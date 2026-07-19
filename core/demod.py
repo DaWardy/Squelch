@@ -110,6 +110,8 @@ def demodulate(iq, sample_rate: float, mode: str = "FM", *,
         if iq.size == 0:
             return np.zeros(0, dtype=np.float32)
         m = (mode or "FM").upper()
+        if m == "NFM":
+            m = "NBFM"                              # SDR-tab combo alias
         bw = float(bandwidth_hz) or float(_DEFAULT_BW.get(m, 12_500))
         # Shift the wanted carrier to baseband (0 Hz). Audio frequency is then
         # (RF − carrier), which is what SSB/CW recovery expects.

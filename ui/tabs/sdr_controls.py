@@ -172,6 +172,10 @@ class _SDRControlsMixin:
         self._demod_bw.addItems([
             "200 Hz", "500 Hz", "1 kHz", "2.5 kHz",
             "5 kHz", "10 kHz", "15 kHz", "200 kHz"])
+        # Editable so any CUSTOM bandwidth works — type a value ("3.2 kHz") or
+        # drag a passband edge; _bw_hz parses arbitrary "N Hz/kHz/MHz" text.
+        self._demod_bw.setEditable(True)
+        self._demod_bw.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self._demod_bw.setCurrentText("10 kHz")
         self._demod_bw.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)

@@ -113,6 +113,16 @@ def _make_colormap(palette_name: str):
     return pg.ColorMap(pos, rgba)
 
 
+def _fmt_bw(hz: int) -> str:
+    """Human bandwidth label the editable BW combo + _bw_hz round-trip,
+    e.g. 137400 → '137.4 kHz', 2700 → '2.7 kHz', 500 → '500 Hz'."""
+    if hz >= 1_000_000:
+        return f"{hz / 1_000_000:g} MHz"
+    if hz >= 1_000:
+        return f"{hz / 1_000:g} kHz"
+    return f"{int(hz)} Hz"
+
+
 class _PaletteLegend(QWidget):
     """Vertical colour key for the waterfall, shown on its right-hand side.
 
@@ -555,7 +565,12 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             self._update_axes()
 
     def _on_passband_drag(self) -> None:
-        """User dragged a passband edge → snap IF bandwidth to the new width."""
+        """User dragged a passband edge → set IF bandwidth to the new width.
+
+        Any custom bandwidth is honoured (not just the combo presets): the
+        dragged width is rounded to a readable value and written to the editable
+        BW combo, which _bw_hz parses back. Setting it fires currentTextChanged
+        → _on_bw_change → _update_axes, which redraws the passband at that width."""
         if not (HAS_PG and getattr(self, "_passband", None) is not None):
             return
         lo_mhz, hi_mhz = self._passband.getRegion()
@@ -563,16 +578,9 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         if new_bw <= 0:
             self._update_axes()
             return
-        from core.auto_demod import nearest_bw_label
-        labels = [self._demod_bw.itemText(i)
-                  for i in range(self._demod_bw.count())]
-        label = nearest_bw_label(new_bw, labels)
-        if label and label != self._demod_bw.currentText():
-            # setCurrentText fires currentTextChanged → _on_bw_change → redraw,
-            # which re-snaps the region to the chosen (quantised) bandwidth.
-            self._demod_bw.setCurrentText(label)
-        else:
-            self._update_axes()
+        # Round to the nearest 100 Hz for a clean label; still fully custom.
+        new_bw = max(100, int(round(new_bw / 100.0) * 100))
+        self._demod_bw.setCurrentText(_fmt_bw(new_bw))
         self._on_manual_demod_pick()   # a hand-drag pauses Auto demod
 
     def _apply_auto_demod(self, hz: int) -> None:

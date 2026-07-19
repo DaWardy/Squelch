@@ -246,6 +246,7 @@ class IQPlayer:
         self._paused     = False
         self._position   = 0    # sample offset
         self._speed      = 1.0
+        self._reverse    = False
         self._thread:    threading.Thread | None = None
 
         self._on_samples: Callable | None = None
@@ -260,17 +261,31 @@ class IQPlayer:
         self._position  = 0
         return True
 
-    def play(self, speed: float = 1.0):
-        """Start or resume playback."""
+    def play(self, speed: float = 1.0, reverse: bool = False):
+        """Start or resume playback. `speed` up to 8× (fast-forward); `reverse`
+        plays the capture backwards (starting from the end if at the start)."""
         if not self._recording:
             return
-        self._speed   = max(0.1, min(4.0, speed))
+        self._speed   = max(0.1, min(8.0, speed))
+        self._reverse = bool(reverse)
+        if self._reverse and self._position <= 0:
+            self._position = self._total_samples()
         self._paused  = False
         self._running = True
         self._thread  = threading.Thread(
             target=self._play_loop,
             daemon=True, name="IQPlayer")
         self._thread.start()
+
+    def set_speed(self, speed: float):
+        """Change playback speed live (takes effect on the next frame)."""
+        self._speed = max(0.1, min(8.0, float(speed)))
+
+    def set_reverse(self, reverse: bool):
+        """Change direction live. Jumps to the end if reversing from the start."""
+        self._reverse = bool(reverse)
+        if self._reverse and self._position <= 0:
+            self._position = self._total_samples()
 
     def pause(self):
         self._paused = True
@@ -284,6 +299,23 @@ class IQPlayer:
 
     def seek(self, position_samples: int):
         self._position = max(0, position_samples)
+
+    def _total_samples(self) -> int:
+        """Total complex samples in the loaded recording (datatype-aware)."""
+        try:
+            from core.sigmf_io import bytes_per_sample
+            bps = bytes_per_sample(getattr(self._recording, "datatype", "cf32_le"))
+            return self._recording.data_path.stat().st_size // max(1, bps)
+        except Exception:
+            return 0
+
+    @property
+    def speed(self) -> float:
+        return self._speed
+
+    @property
+    def is_reverse(self) -> bool:
+        return self._reverse
 
     @property
     def is_playing(self) -> bool:
@@ -317,23 +349,33 @@ class IQPlayer:
         bps      = bytes_per_sample(dtype)          # bytes per complex sample
         chunk    = 16384
         sr       = self._recording.sample_rate
-        interval = chunk / sr / self._speed
 
         try:
-            with open(self._recording.data_path,
-                      "rb") as f:
-                f.seek(self._position * bps)
+            with open(self._recording.data_path, "rb") as f:
                 while self._running:
                     if self._paused:
                         time.sleep(0.05)
                         continue
-                    raw = f.read(chunk * bps)
-                    if not raw:
-                        break
-                    samples = decode_iq_bytes(raw, dtype)
-                    if len(samples) == 0:
-                        break
-                    self._position += len(samples)
+                    # Seek per-iteration so direction/seek can change live.
+                    if self._reverse:
+                        start = self._position - chunk
+                        if start < 0:
+                            break                    # reached the beginning
+                        f.seek(start * bps)
+                        samples = decode_iq_bytes(f.read(chunk * bps), dtype)
+                        if len(samples) == 0:
+                            break
+                        samples = samples[::-1]      # time-reverse the chunk
+                        self._position = start
+                    else:
+                        f.seek(self._position * bps)
+                        raw = f.read(chunk * bps)
+                        if not raw:
+                            break
+                        samples = decode_iq_bytes(raw, dtype)
+                        if len(samples) == 0:
+                            break
+                        self._position += len(samples)
                     if self._on_samples:
                         try:
                             self._on_samples(
@@ -348,7 +390,7 @@ class IQPlayer:
                                 self.duration_seconds)
                         except Exception:
                             pass
-                    time.sleep(interval)
+                    time.sleep(chunk / sr / max(0.1, self._speed))
         except Exception as e:
             log.error(f"IQ playback: {e}")
 

@@ -104,6 +104,17 @@ class _SDRRecordingMixin:
         self._stop_btn.setEnabled(False)
         self._play_bar.setValue(0)
 
+    def _on_playback_reverse(self, on: bool) -> None:
+        """Reverse toggle → play the capture backwards (live if playing)."""
+        self._player.set_reverse(bool(on))
+
+    def _on_playback_speed(self, text: str) -> None:
+        """Speed combo ('2×') → set playback speed (live if playing)."""
+        try:
+            self._player.set_speed(float(text.replace("×", "").strip()))
+        except (ValueError, AttributeError):
+            pass
+
     def _load_recording(self):
         idx = self._rec_combo.currentIndex()
         recs = list_recordings(_safe_recordings_path(self.cfg))

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.sigmf_io import bytes_per_sample, decode_iq_bytes
 
@@ -137,6 +138,95 @@ def test_player_plays_cu8(tmp_path):
     expected = decode_iq_bytes(p.read_bytes(), "cu8")
     assert len(out) == 30_000
     assert np.allclose(out, expected, atol=1e-4)
+
+
+def _ramp_recording(tmp_path, n):
+    """A cf32 recording whose sample values are 0,1,2,… so order is checkable."""
+    from sdr.iq_recorder import Recording
+    data = np.arange(n, dtype=np.float32).astype(np.complex64)
+    p = tmp_path / "ramp.cf32"
+    data.tofile(p)
+    return Recording(name="ramp", data_path=p, meta_path=p,
+                     center_hz=100_000_000, sample_rate=2_400_000,
+                     datatype="cf32_le", file_size=p.stat().st_size)
+
+
+def _collect(player, timeout=6.0):
+    got, done = [], {"end": False}
+    player.on_samples(lambda s, sr, c: got.append(np.asarray(s).copy()))
+    player.on_end(lambda: done.__setitem__("end", True))
+    t0 = time.time()
+    while not done["end"] and (time.time() - t0) < timeout:
+        time.sleep(0.02)
+    player.stop()
+    return np.concatenate(got) if got else np.empty(0, np.complex64)
+
+
+def test_reverse_playback_plays_backwards(tmp_path):
+    from sdr.iq_recorder import IQPlayer
+    n = 16384 * 4
+    p = IQPlayer()
+    assert p.load(_ramp_recording(tmp_path, n))
+    p.play(speed=8.0, reverse=True)               # auto-jumps to the end
+    out = _collect(p)
+    assert len(out) > 0
+    # first delivered samples are the highest indices, last are the lowest
+    assert out[0].real > out[-1].real
+    assert out[0].real >= n * 0.7                  # started near the end
+
+
+def test_reverse_hits_start_and_ends(tmp_path):
+    from sdr.iq_recorder import IQPlayer
+    p = IQPlayer()
+    p.load(_ramp_recording(tmp_path, 16384 * 3))
+    done = {"end": False}
+    p.on_end(lambda: done.__setitem__("end", True))
+    p.play(speed=8.0, reverse=True)
+    t0 = time.time()
+    while not done["end"] and time.time() - t0 < 6.0:
+        time.sleep(0.02)
+    p.stop()
+    assert done["end"] is True                     # reached the beginning
+
+
+def test_set_speed_and_reverse_live():
+    from sdr.iq_recorder import IQPlayer
+    p = IQPlayer()
+    p.set_speed(4.0)
+    assert p.speed == 4.0
+    p.set_speed(99)                                # clamped to 8×
+    assert p.speed == 8.0
+    p.set_reverse(True)
+    assert p.is_reverse is True
+
+
+try:
+    import PyQt6  # noqa: F401
+    _HAS_QT = True
+except ImportError:
+    _HAS_QT = False
+
+
+@pytest.mark.skipif(not _HAS_QT, reason="PyQt6 not installed")
+def test_transport_controls_wire_to_player():
+    import sys
+    import tempfile
+    from unittest.mock import MagicMock
+    from PyQt6.QtWidgets import QApplication
+    from core.config import Config
+    from ui.tabs.sdr_tab import SDRTab, HAS_PG
+    if not HAS_PG:
+        pytest.skip("pyqtgraph not installed")
+    QApplication.instance() or QApplication(sys.argv)
+    cfg = Config(Path(tempfile.mkdtemp()) / "config.json")
+    rig = MagicMock(); rig.is_connected = False; rig.state = MagicMock()
+    tab = SDRTab(cfg, rig)
+    if not hasattr(tab, "_rev_btn"):
+        pytest.skip("recorder group not built")
+    tab._rev_btn.setChecked(True)
+    assert tab._player.is_reverse is True
+    tab._speed_combo.setCurrentText("4×")
+    assert tab._player.speed == 4.0
 
 
 def test_from_meta_duration_uses_datatype(tmp_path):

@@ -518,7 +518,9 @@ class ModesTab(_ModesSSTVMixin, _ModesRBNMixin, _ModesSOTAMixin, _ModesDXMixin,
         tx_gl.setSpacing(4)
         self._build_tx_freq_controls(tx_gl)
         self._build_tx_checkboxes(tx_gl)
-        tx_grp.setMinimumHeight(80)
+        # ~7 rows (Power, TX Freq + 5 checkboxes) — the old 80px minimum let the
+        # scroll area compress them into an overlapping stack.
+        tx_grp.setMinimumHeight(230)
         self._left_layout.addWidget(tx_grp)
         
 

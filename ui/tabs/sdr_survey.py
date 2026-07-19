@@ -119,7 +119,27 @@ class _SDRSurveyMixin:
             watch = WatchList.from_cfg(self.cfg)
         except Exception as exc:                    # pragma: no cover
             log.debug("survey: watch-list unavailable: %s", exc)
-        return SurveyEngine(store=store, watchlist=watch, ingest=True)
+        return SurveyEngine(store=store, watchlist=watch, ingest=True,
+                            sigid_db=self._build_sigid_db())
+
+    def _build_sigid_db(self):
+        """Signal-ID database for enriching detections with an identity: the
+        built-in factual allocations, plus a user-supplied SigIDWiki/Artemis
+        export if one is configured (cfg 'sdr.sigid_db_path' → a JSON list of
+        {freq_hz, bandwidth_hz, modulation, name, …} entries). None on failure."""
+        try:
+            from core.sigid_db import SigIdDatabase
+            db = SigIdDatabase.builtin()
+            path = self.cfg.get("sdr.sigid_db_path", "") if self.cfg else ""
+            if path:
+                import json
+                from pathlib import Path
+                entries = json.loads(Path(path).read_text(encoding="utf-8"))
+                db.import_entries(entries, source="user")
+            return db
+        except Exception as exc:                    # pragma: no cover
+            log.debug("survey: sigid db unavailable: %s", exc)
+            return None
 
     # ── the pump ──────────────────────────────────────────────────────────
     def _survey_tick(self) -> None:

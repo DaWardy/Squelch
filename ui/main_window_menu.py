@@ -43,10 +43,54 @@ class _MainWindowMenuMixin:
         pa.triggered.connect(self._open_paths)
         fm.addAction(pa)
         fm.addSeparator()
+        ex = QAction(self.tr("Export Settings…"), self)
+        ex.setToolTip(self.tr("Save all settings to a file for backup / transfer"))
+        ex.triggered.connect(self._export_settings)
+        fm.addAction(ex)
+        im = QAction(self.tr("Import Settings…"), self)
+        im.setToolTip(self.tr("Load settings from a previously exported file"))
+        im.triggered.connect(self._import_settings)
+        fm.addAction(im)
+        fm.addSeparator()
         qa = QAction(self.tr("Quit"), self)
         qa.setShortcut("Ctrl+Q")
         qa.triggered.connect(self.close)
         fm.addAction(qa)
+
+    def _export_settings(self):
+        """File → Export Settings: write all settings to a JSON backup file."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        self.cfg.save_if_dirty()          # flush pending changes before export
+        path, _ = QFileDialog.getSaveFileName(
+            self, self.tr("Export Settings"),
+            "squelch_settings.json", self.tr("JSON (*.json)"))
+        if not path:
+            return
+        if self.cfg.export_to(path):
+            QMessageBox.information(
+                self, self.tr("Settings Exported"),
+                self.tr(f"All settings saved to:\n{path}\n\n"
+                        "Copy this file to another device and use "
+                        "File → Import Settings."))
+        else:
+            QMessageBox.warning(self, self.tr("Export Failed"),
+                                self.tr("Could not write the settings file."))
+
+    def _import_settings(self):
+        """File → Import Settings: load settings from a backup file."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("Import Settings"), "", self.tr("JSON (*.json)"))
+        if not path:
+            return
+        if self.cfg.import_from(path):
+            QMessageBox.information(
+                self, self.tr("Settings Imported"),
+                self.tr("Settings imported. Restart Squelch for all of them "
+                        "to take effect."))
+        else:
+            QMessageBox.warning(self, self.tr("Import Failed"),
+                                self.tr("Could not read that settings file."))
 
     def _build_rig_menu(self, mb) -> None:
         rm = mb.addMenu(self.tr("&Rig"))

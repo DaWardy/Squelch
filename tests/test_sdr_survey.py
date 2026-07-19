@@ -176,6 +176,21 @@ def test_snapshot_compare_none_without_engine(tmp_path):
     h.survey_reset()                  # must not raise with no engine
 
 
+def test_build_sigid_db_identifies_known_signal(tmp_path):
+    """The survey wires a signal-ID database so detections can be identified."""
+    h = _Host(_cfg(tmp_path))
+    db = h._build_sigid_db()
+    assert db is not None
+    # a builtin factual allocation (NOAA weather radio) resolves
+    assert db.identify(162_550_000, 15_000, "FM")
+
+
+def test_survey_engine_has_sigid(tmp_path):
+    h = _Host(_cfg(tmp_path))
+    h._on_survey_toggle(True)
+    assert h._survey._sigid_db is not None      # enrichment enabled
+
+
 def test_snapshot_compare_delegate_to_engine(tmp_path):
     h = _Host(_cfg(tmp_path))
     h._survey = _SpyEngine()

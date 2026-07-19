@@ -175,6 +175,45 @@ class Config:
         if self._dirty:
             self.save()
 
+    # ── backup / transfer ─────────────────────────────────────────────────
+    def export_to(self, path) -> bool:
+        """Write the current settings to `path` as JSON — a portable backup you
+        can copy to another device. Never raises."""
+        try:
+            data = {k: v for k, v in self._data.items() if not k.startswith("_")}
+            p = Path(path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            log.error(f"Config export failed: {e}")
+            return False
+
+    def import_from(self, path, *, merge: bool = True) -> bool:
+        """Load settings from a prior export at `path` and persist them.
+
+        merge=True overlays the file's keys onto the current settings (the file
+        wins on conflicts); merge=False replaces wholesale. Returns True on
+        success. Never raises."""
+        try:
+            with open(Path(path), "r", encoding="utf-8") as f:
+                incoming = json.load(f)
+            if not isinstance(incoming, dict):
+                return False
+            incoming = {k: v for k, v in incoming.items()
+                        if not k.startswith("_")}
+            if merge:
+                self._data.update(incoming)
+            else:
+                self._data = incoming
+            self._dirty = True
+            self.save()
+            return True
+        except Exception as e:
+            log.error(f"Config import failed: {e}")
+            return False
+
     # ── Access ────────────────────────────────────────────────────────────
 
     def get(self, key: str, default: Any = None) -> Any:

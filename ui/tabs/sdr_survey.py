@@ -243,6 +243,55 @@ class _SDRSurveyMixin:
         hist = getattr(self, "_signal_history", None)
         return False if hist is None else hist.export_csv(path)
 
+    # ── signal workbench (right-click identify / decode / save) ────────────
+    def workbench_capture(self, t0: float, t1: float):
+        """Raw IQ (iq, sr, center) for a past waterfall time-window, or None."""
+        ring = getattr(self, "_iq_ring", None)
+        return None if ring is None else ring.extract(t0, t1)
+
+    def workbench_capture_recent(self, seconds: float = 2.0):
+        """The most recent `seconds` of raw IQ, or None."""
+        ring = getattr(self, "_iq_ring", None)
+        return None if ring is None else ring.extract_recent(seconds)
+
+    def workbench_analyze(self, iq, sample_rate, center_hz, *,
+                          freq_hz: int = 0, bandwidth_hz: int = 0):
+        """Identify + decode an IQ slice → WorkbenchResult (see
+        core.decode_workbench). Uses the survey's signal-ID database."""
+        from core.decode_workbench import analyze
+        sigdb = None
+        try:
+            sigdb = self._build_sigid_db()
+        except Exception:                           # pragma: no cover
+            sigdb = None
+        return analyze(iq, sample_rate, center_hz, freq_hz=freq_hz,
+                       bandwidth_hz=bandwidth_hz, sigid_db=sigdb)
+
+    def workbench_analyze_recent(self, seconds: float = 2.0, *,
+                                 freq_hz: int = 0, bandwidth_hz: int = 0):
+        """Grab the recent IQ and analyse it in one call, or None if empty."""
+        cap = self.workbench_capture_recent(seconds)
+        if cap is None:
+            return None
+        iq, sr, center = cap
+        return self.workbench_analyze(iq, sr, center, freq_hz=freq_hz,
+                                      bandwidth_hz=bandwidth_hz)
+
+    def workbench_save_iq(self, path, t0: float, t1: float):
+        """Write a past time-window's IQ to a SigMF clip. Returns Path or None."""
+        cap = self.workbench_capture(t0, t1)
+        if cap is None:
+            return None
+        iq, sr, center = cap
+        try:
+            from core.sigmf_io import write_iq
+            from pathlib import Path
+            write_iq(iq, path, sample_rate=sr, center_hz=center)
+            return Path(str(path))
+        except Exception as exc:                    # pragma: no cover
+            log.debug("workbench save iq failed: %s", exc)
+            return None
+
     # ── saved-baseline library (cross-session/location compare) ───────────
     def _survey_store(self):
         """The on-disk baseline library — default %APPDATA%/Squelch/baselines,

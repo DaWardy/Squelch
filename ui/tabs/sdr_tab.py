@@ -28,6 +28,7 @@ Digital tab.
 
 import logging
 import threading
+import time
 import numpy as np
 from pathlib import Path
 
@@ -281,6 +282,11 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         self._survey_alerts  = []      # recent Alert ring (view reads this)
         self._signal_history = None    # core.signal_history.SignalHistory (lazy)
         self._sim_source     = None    # sdr.sim_source.SimSource (no-hardware demo)
+        # Rolling raw-IQ buffer so a past waterfall selection can be re-analysed
+        # / saved (right-click signal workbench — see _SDRSurveyMixin).
+        from core.iq_ring import IQRing
+        self._iq_ring = IQRing(
+            max_seconds=float(config.get("sdr.iq_buffer_seconds", 20) or 20))
         self._audio_rec      = None    # core.audio_record.AudioRecorder (demod→WAV)
 
     # ── Build UI ──────────────────────────────────────────────────────────
@@ -947,6 +953,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         """Called from SDR RX thread with IQ samples."""
         self._sample_rate = sample_rate
         self._center_hz   = center_hz
+        # Retain raw IQ so a past waterfall selection can be re-analysed/saved.
+        self._iq_ring.add(iq, sample_rate, center_hz, t=time.monotonic())
         # Noise blanker — clamp impulsive samples in the time domain first.
         if self._nb_enabled:
             try:

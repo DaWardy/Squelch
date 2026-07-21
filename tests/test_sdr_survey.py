@@ -176,6 +176,41 @@ def test_snapshot_compare_none_without_engine(tmp_path):
     h.survey_reset()                  # must not raise with no engine
 
 
+def test_workbench_analyze_recent_decodes(tmp_path):
+    """A signal in the IQ ring is analysed + decoded via the workbench methods."""
+    from core.iq_ring import IQRing
+    from core.encoder import encode_iq
+    h = _Host(_cfg(tmp_path))
+    h._iq_ring = IQRing(max_seconds=10)
+    iq = encode_iq(b"\xA5\x3C", 200_000, family="OOK", preamble_bits=16,
+                   sync_word="2D", crc="CRC-8", samples_per_symbol=20,
+                   carrier_hz=0).iq
+    h._iq_ring.add(iq, 200_000, 146_000_000, t=1.0)
+    res = h.workbench_analyze_recent(2.0)
+    assert res is not None and res.decodable
+    assert "a53c" in res.payload_hex.lower()
+
+
+def test_workbench_save_iq_writes_sigmf(tmp_path):
+    from core.iq_ring import IQRing
+    import numpy as np
+    h = _Host(_cfg(tmp_path))
+    h._iq_ring = IQRing(max_seconds=10)
+    h._iq_ring.add(np.ones(2000, np.complex64), 1_000_000, 100_000_000, t=1.0)
+    out = h.workbench_save_iq(tmp_path / "clip", 0.5, 1.5)
+    assert out is not None
+    assert (tmp_path / "clip.sigmf-meta").exists()
+    assert (tmp_path / "clip.sigmf-data").exists()
+
+
+def test_workbench_empty_ring_is_none(tmp_path):
+    from core.iq_ring import IQRing
+    h = _Host(_cfg(tmp_path))
+    h._iq_ring = IQRing()
+    assert h.workbench_analyze_recent(2.0) is None
+    assert h.workbench_save_iq(tmp_path / "x", 0.0, 1.0) is None
+
+
 def test_build_sigid_db_identifies_known_signal(tmp_path):
     """The survey wires a signal-ID database so detections can be identified."""
     h = _Host(_cfg(tmp_path))

@@ -292,6 +292,58 @@ class _SDRSurveyMixin:
             log.debug("workbench save iq failed: %s", exc)
             return None
 
+    def workbench_capture_and_log(self, t0: float, t1: float, *,
+                                  freq_hz: int = 0, bandwidth_hz: int = 0,
+                                  save_iq: bool = True):
+        """The whole right-click action: pull the selected window from the ring,
+        identify + decode it, optionally save its IQ as a SigMF clip, and add a
+        Signal record (modulation / identity / decoded / iq_ref) to the shared
+        store so it appears in the Signal Log. Returns (result, signal) or None."""
+        cap = self.workbench_capture(t0, t1)
+        if cap is None:
+            return None
+        iq, sr, center = cap
+        res = self.workbench_analyze(iq, sr, center, freq_hz=freq_hz,
+                                     bandwidth_hz=bandwidth_hz)
+        iq_ref = ""
+        if save_iq:
+            clip = self._workbench_clip_path()
+            try:
+                from core.sigmf_io import write_iq
+                write_iq(iq, clip, sample_rate=sr, center_hz=center)
+                iq_ref = str(clip)
+            except Exception as exc:                # pragma: no cover
+                log.debug("workbench clip save failed: %s", exc)
+        sig = self._workbench_signal(res, int(freq_hz or center), iq_ref)
+        try:
+            from core.signal_model import get_signal_store
+            get_signal_store().add(sig)
+        except Exception as exc:                    # pragma: no cover
+            log.debug("workbench store add failed: %s", exc)
+        return res, sig
+
+    def _workbench_signal(self, res, freq_hz: int, iq_ref: str):
+        """Build a Signal record from a WorkbenchResult."""
+        from core.signal_model import Signal
+        decoded = res.payload_hex if (res.decodable and res.payload_hex) else ""
+        tags = "workbench" + (",decoded" if decoded else "")
+        return Signal(
+            freq_hz=int(freq_hz),
+            bandwidth_hz=int(res.bandwidth_hz or res.occupied_bw_hz or 0),
+            modulation=res.modulation or "",
+            classification=res.best_identity or "unknown",
+            confidence=float(res.mod_confidence or 0.0),
+            decoded=decoded,
+            source="workbench",
+            iq_ref=iq_ref,
+            tags=tags)
+
+    def _workbench_clip_path(self):
+        from pathlib import Path
+        from ui.tabs.sdr_paths import _safe_recordings_path
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        return Path(_safe_recordings_path(self.cfg)) / "clips" / f"signal_{ts}"
+
     # ── saved-baseline library (cross-session/location compare) ───────────
     def _survey_store(self):
         """The on-disk baseline library — default %APPDATA%/Squelch/baselines,

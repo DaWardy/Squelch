@@ -203,6 +203,31 @@ def test_workbench_save_iq_writes_sigmf(tmp_path):
     assert (tmp_path / "clip.sigmf-data").exists()
 
 
+def test_workbench_capture_and_log(tmp_path):
+    """Full right-click flow: window → decode → save clip → Signal in the store."""
+    from core.iq_ring import IQRing
+    from core.encoder import encode_iq
+    from core.signal_model import get_signal_store
+    cfg = _cfg(tmp_path)
+    cfg.set("paths.iq_recordings", str(tmp_path))
+    h = _Host(cfg)
+    h._iq_ring = IQRing(max_seconds=10)
+    iq = encode_iq(b"\xA5\x3C", 200_000, family="OOK", preamble_bits=16,
+                   sync_word="2D", crc="CRC-8", samples_per_symbol=20,
+                   carrier_hz=0).iq
+    h._iq_ring.add(iq, 200_000, 146_000_000, t=1.0)
+    before = len(get_signal_store().recent(500))
+    out = h.workbench_capture_and_log(0.5, 1.5, freq_hz=146_000_000,
+                                      bandwidth_hz=20_000)
+    assert out is not None
+    res, sig = out
+    assert sig.source == "workbench"
+    assert sig.modulation and sig.freq_hz == 146_000_000
+    assert "a53c" in sig.decoded.lower()          # decoded payload persisted
+    assert sig.iq_ref and (tmp_path / "clips").exists()   # IQ clip saved
+    assert len(get_signal_store().recent(500)) == before + 1
+
+
 def test_workbench_empty_ring_is_none(tmp_path):
     from core.iq_ring import IQRing
     h = _Host(_cfg(tmp_path))

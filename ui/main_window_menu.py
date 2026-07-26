@@ -51,6 +51,11 @@ class _MainWindowMenuMixin:
         im.setToolTip(self.tr("Load settings from a previously exported file"))
         im.triggered.connect(self._import_settings)
         fm.addAction(im)
+        rs = QAction(self.tr("Reset All Settings…"), self)
+        rs.setToolTip(self.tr("Restore all settings, tabs, and layouts to "
+                              "defaults (current config is backed up first)"))
+        rs.triggered.connect(self._reset_settings)
+        fm.addAction(rs)
         fm.addSeparator()
         qa = QAction(self.tr("Quit"), self)
         qa.setShortcut("Ctrl+Q")
@@ -75,6 +80,27 @@ class _MainWindowMenuMixin:
         else:
             QMessageBox.warning(self, self.tr("Export Failed"),
                                 self.tr("Could not write the settings file."))
+
+    def _reset_settings(self):
+        """File → Reset All Settings: restore defaults (with a backup)."""
+        from PyQt6.QtWidgets import QMessageBox
+        r = QMessageBox.warning(
+            self, self.tr("Reset All Settings"),
+            self.tr("This restores all settings, tabs, and layouts to their "
+                    "defaults.\nYour current settings are backed up to "
+                    "config.backup.json first.\n\nContinue?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        if self.cfg.reset_to_defaults():
+            QMessageBox.information(
+                self, self.tr("Settings Reset"),
+                self.tr("Settings restored to defaults. Restart Squelch to "
+                        "apply."))
+        else:
+            QMessageBox.warning(self, self.tr("Reset Failed"),
+                                self.tr("Could not reset settings."))
 
     def _import_settings(self):
         """File → Import Settings: load settings from a backup file."""

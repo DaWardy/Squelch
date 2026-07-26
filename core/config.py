@@ -190,6 +190,23 @@ class Config:
             log.error(f"Config export failed: {e}")
             return False
 
+    def reset_to_defaults(self, *, backup: bool = True) -> bool:
+        """Restore all settings, tabs, and layouts to the shipped defaults.
+
+        The current config is copied to `config.backup.json` first (so a reset
+        is recoverable). Returns True on success. Never raises."""
+        try:
+            if backup and self._path.exists():
+                import shutil
+                shutil.copy2(self._path, self._path.with_suffix(".backup.json"))
+            self._data = self._load_example()
+            self._dirty = True
+            self.save()
+            return True
+        except Exception as e:
+            log.error(f"Config reset failed: {e}")
+            return False
+
     def import_from(self, path, *, merge: bool = True) -> bool:
         """Load settings from a prior export at `path` and persist them.
 

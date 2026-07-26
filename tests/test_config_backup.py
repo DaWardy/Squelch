@@ -66,3 +66,20 @@ def test_export_omits_internal_keys(tmp_path):
     import json
     data = json.loads(out.read_text(encoding="utf-8"))
     assert "_comment" not in data
+
+
+def test_reset_to_defaults_backs_up_and_clears(tmp_path):
+    c = _cfg(tmp_path)
+    c.set("callsign", "N0CALL")
+    c.set("ui.saved_tab_layouts", {"mine": ["rig", "sdr"]})
+    c.save()
+    assert c.reset_to_defaults() is True
+    # user customisation gone (reset to shipped defaults)
+    assert c.get("callsign") != "N0CALL"
+    # a backup was written
+    assert (tmp_path / "config.backup.json").exists()
+
+
+def test_reset_safe_when_no_file(tmp_path):
+    c = _cfg(tmp_path, "fresh.json")
+    assert c.reset_to_defaults() is True          # no existing file → no raise

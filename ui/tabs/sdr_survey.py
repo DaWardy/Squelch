@@ -344,6 +344,65 @@ class _SDRSurveyMixin:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         return Path(_safe_recordings_path(self.cfg)) / "clips" / f"signal_{ts}"
 
+    def workbench_capture_and_log_recent(self, seconds: float = 2.0, *,
+                                         freq_hz: int = 0, bandwidth_hz: int = 0,
+                                         save_iq: bool = True):
+        """`workbench_capture_and_log` over the most recent `seconds` of IQ —
+        what the right-click 'Identify + decode' menu action uses (no region-
+        select needed). Returns (result, signal) or None if the ring is empty."""
+        ring = getattr(self, "_iq_ring", None)
+        span = ring.span() if ring is not None else None
+        if span is None:
+            return None
+        t1 = span[1]
+        return self.workbench_capture_and_log(
+            t1 - float(seconds), t1 + 1e-9, freq_hz=freq_hz,
+            bandwidth_hz=bandwidth_hz, save_iq=save_iq)
+
+    # ── right-click menu handlers (thin UI over the tested backend) ────────
+    def _workbench_identify_decode(self, freq_hz: int, bandwidth_hz: int) -> None:
+        from PyQt6.QtWidgets import QMessageBox
+        out = self.workbench_capture_and_log_recent(
+            2.0, freq_hz=int(freq_hz), bandwidth_hz=int(bandwidth_hz))
+        if out is None:
+            QMessageBox.information(
+                self, self.tr("Identify + decode"),
+                self.tr("No recent IQ captured yet — connect a source (or the "
+                        "Simulated device) and let it run for a second."))
+            return
+        res, sig = out
+        lines = [f"Modulation:  {res.modulation or '?'}  "
+                 f"({res.mod_confidence:.0%})"]
+        if res.identities:
+            lines.append("Likely:  " + ",  ".join(
+                f"{i['name']} ({i['score']:.2f})" for i in res.identities[:3]))
+        if res.decodable:
+            lines.append(f"Decoded {res.n_symbols} symbols"
+                         + ("  — CRC OK" if res.frame_ok else ""))
+            if res.payload_hex:
+                lines.append(f"Payload:  {res.payload_hex[:48]}")
+        if sig.iq_ref:
+            lines.append("IQ clip saved.")
+        lines.append("Added to the Signal Log.")
+        QMessageBox.information(
+            self, self.tr(f"Signal @ {freq_hz / 1e6:.4f} MHz"),
+            "\n".join(lines))
+
+    def _workbench_save_recent(self, freq_hz: int) -> None:
+        from PyQt6.QtWidgets import QMessageBox
+        ring = getattr(self, "_iq_ring", None)
+        span = ring.span() if ring is not None else None
+        if span is None:
+            QMessageBox.information(self, self.tr("Save IQ"),
+                                   self.tr("No recent IQ captured yet."))
+            return
+        out = self.workbench_save_iq(self._workbench_clip_path(),
+                                     span[1] - 2.0, span[1] + 1e-9)
+        QMessageBox.information(
+            self, self.tr("Save IQ"),
+            self.tr(f"Saved IQ clip:\n{out}") if out
+            else self.tr("Nothing to save."))
+
     # ── saved-baseline library (cross-session/location compare) ───────────
     def _survey_store(self):
         """The on-disk baseline library — default %APPDATA%/Squelch/baselines,

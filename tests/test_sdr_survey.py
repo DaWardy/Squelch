@@ -228,6 +228,35 @@ def test_workbench_capture_and_log(tmp_path):
     assert len(get_signal_store().recent(500)) == before + 1
 
 
+def test_workbench_capture_and_log_recent(tmp_path):
+    """The right-click 'last 2s' path: recent IQ → decode → clip → Signal Log."""
+    from core.iq_ring import IQRing
+    from core.encoder import encode_iq
+    from core.signal_model import get_signal_store
+    cfg = _cfg(tmp_path)
+    cfg.set("paths.iq_recordings", str(tmp_path))
+    h = _Host(cfg)
+    h._iq_ring = IQRing(max_seconds=10)
+    iq = encode_iq(b"\xA5\x3C", 200_000, family="OOK", preamble_bits=16,
+                   sync_word="2D", crc="CRC-8", samples_per_symbol=20,
+                   carrier_hz=0).iq
+    h._iq_ring.add(iq, 200_000, 146_000_000, t=5.0)
+    before = len(get_signal_store().recent(500))
+    out = h.workbench_capture_and_log_recent(2.0, freq_hz=146_000_000,
+                                             bandwidth_hz=20_000)
+    assert out is not None
+    _res, sig = out
+    assert sig.source == "workbench" and "a53c" in sig.decoded.lower()
+    assert len(get_signal_store().recent(500)) == before + 1
+
+
+def test_workbench_capture_and_log_recent_empty(tmp_path):
+    from core.iq_ring import IQRing
+    h = _Host(_cfg(tmp_path))
+    h._iq_ring = IQRing()
+    assert h.workbench_capture_and_log_recent(2.0) is None
+
+
 def test_workbench_empty_ring_is_none(tmp_path):
     from core.iq_ring import IQRing
     h = _Host(_cfg(tmp_path))

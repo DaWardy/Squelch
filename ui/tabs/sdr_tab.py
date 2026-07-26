@@ -923,6 +923,8 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
         menu = QMenu(self)
         mhz = freq_hz / 1e6
         id_act = menu.addAction(f"Identify Signal at {mhz:.3f} MHz")
+        dec_act = menu.addAction("Identify + decode (last 2s) → Signal Log")
+        saveiq_act = menu.addAction("Save IQ (last 2s)")
         tune_act = menu.addAction(f"Tune to {mhz:.3f} MHz")
         menu.addSeparator()
         clr_act = menu.addAction("Clear annotations at this frequency")
@@ -939,6 +941,10 @@ class SDRTab(SquelchPanel, _SDRSetupGuideMixin, _SDRDevicePanelsMixin,
             else self.mapToGlobal(self.rect().center()))
         if chosen == id_act:
             self._identify_signal(bw_hz, freq_hz)
+        elif chosen == dec_act:
+            self._workbench_identify_decode(freq_hz, bw_hz)
+        elif chosen == saveiq_act:
+            self._workbench_save_recent(freq_hz)
         elif chosen == tune_act:
             self._set_freq(freq_hz)
         elif chosen == clr_act:

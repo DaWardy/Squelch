@@ -325,8 +325,10 @@ class _SDRSurveyMixin:
     def _workbench_signal(self, res, freq_hz: int, iq_ref: str):
         """Build a Signal record from a WorkbenchResult."""
         from core.signal_model import Signal
-        decoded = res.payload_hex if (res.decodable and res.payload_hex) else ""
-        tags = "workbench" + (",decoded" if decoded else "")
+        decoded = res.text or (res.payload_hex
+                               if (res.decodable and res.payload_hex) else "")
+        tags = "workbench" + (f",{res.decoder}" if res.decoder else
+                              (",decoded" if decoded else ""))
         return Signal(
             freq_hz=int(freq_hz),
             bandwidth_hz=int(res.bandwidth_hz or res.occupied_bw_hz or 0),

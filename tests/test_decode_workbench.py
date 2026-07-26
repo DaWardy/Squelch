@@ -72,3 +72,22 @@ def test_result_summary_string():
     res = analyze(_ook(), 200_000, 146_000_000, sigid_db=SigIdDatabase.builtin())
     s = res.summary()
     assert isinstance(s, str) and len(s) > 0
+
+
+def test_analyze_cw_produces_text():
+    """A Morse-keyed carrier is decoded to text through the workbench."""
+    import numpy as np
+    from core.cw_decode import _MORSE
+    ch = {v: k for k, v in _MORSE.items()}
+    sr, unit, carrier = 8000, int(8000 * 1.2 / 20), 600
+    seq = []
+    for c in "SOS":
+        for el in ch[c]:
+            seq.append((True, unit if el == "." else 3 * unit))
+            seq.append((False, unit))
+        seq[-1] = (False, 3 * unit)
+    env = np.concatenate([np.ones(n) if v else np.zeros(n) for v, n in seq])
+    t = np.arange(len(env)) / sr
+    iq = (env * np.exp(2j * np.pi * carrier * t)).astype(np.complex64)
+    res = analyze(iq, sr, 14_050_000)
+    assert res.text == "SOS" and res.decoder == "CW"

@@ -61,6 +61,8 @@ class WorkbenchResult:
     payload_hex:    str   = ""
     frame_ok:       bool  = False
     crc_matches:    list  = field(default_factory=list)
+    text:           str   = ""     # human-readable decode (CW/RTTY/DTMF)
+    decoder:        str   = ""     # which text decoder produced `text`
     notes:          list  = field(default_factory=list)
 
     @property
@@ -72,7 +74,9 @@ class WorkbenchResult:
         bits = [self.modulation or "?"]
         if self.best_identity:
             bits.append(f"= {self.best_identity}")
-        if self.decodable and self.n_symbols:
+        if self.text:
+            bits.append(f"[{self.decoder}] {self.text[:40]}")
+        elif self.decodable and self.n_symbols:
             bits.append(f"{self.n_symbols} sym"
                         + (" CRC✓" if self.frame_ok else ""))
         return "  ".join(bits)
@@ -100,6 +104,7 @@ def analyze(iq, sample_rate: float, center_hz: int, *,
         _classify(res, x, fs, bandwidth_hz)
         _identify(res, sigid_db, center_used, bandwidth_hz or res.occupied_bw_hz)
         _decode(res, x, fs)
+        _text_decode(res, x, fs)
     except Exception as exc:                        # pragma: no cover
         log.debug("decode_workbench.analyze failed: %s", exc)
         res.notes.append(f"analyze error: {exc}")
@@ -160,3 +165,38 @@ def _decode(res, iq, fs):
         res.notes.extend(rep.notes or [])
     except Exception as exc:                        # pragma: no cover
         log.debug("framing failed: %s", exc)
+
+
+def _readable(text: str) -> bool:
+    t = (text or "").strip()
+    if len(t) < 2:
+        return False
+    alnum = sum(1 for c in t if c.isalnum())
+    return alnum >= 2 and alnum >= 0.4 * len(t)
+
+
+def _text_decode(res, iq, fs):
+    """Try a protocol text decoder matched to the modulation (best-effort):
+    FSK→RTTY, CW/OOK→Morse, AM/FM→DTMF touch-tones."""
+    mod = (res.modulation or "").upper()
+    try:
+        if "FSK" in mod:
+            from core.rtty import decode_rtty
+            t = decode_rtty(iq, fs)
+            if _readable(t):
+                res.text, res.decoder = t.strip(), "RTTY"
+        elif "CW" in mod or "OOK" in mod or "ASK" in mod:
+            from core.cw_decode import decode_cw
+            t = decode_cw(iq, fs)
+            if _readable(t):
+                res.text, res.decoder = t.strip(), "CW"
+        elif "AM" in mod or "FM" in mod:
+            from core.demod import demodulate
+            from core.dtmf import decode_dtmf
+            audio = demodulate(iq, fs, "NBFM" if "FM" in mod else "AM",
+                               audio_rate=8000)
+            d = decode_dtmf(audio, 8000)
+            if d:
+                res.text, res.decoder = d, "DTMF"
+    except Exception as exc:                         # pragma: no cover
+        log.debug("text decode failed: %s", exc)

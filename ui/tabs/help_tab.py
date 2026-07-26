@@ -35,6 +35,47 @@ log = logging.getLogger(__name__)
 
 HELP_ARTICLES = [
     # (title, category, content)
+    ("Signal Workbench & Decoders", "SDR",
+     """# Signal Workbench & Decoders
+
+Squelch can look at an unknown signal, guess what it is, and — when it's a mode
+we can read — decode it. No internet required.
+
+## Try it with no radio
+You don't need an SDR to explore this:
+  1. SDR tab -> Device dropdown -> "Simulated signal (no hardware)" -> Connect.
+     A live waterfall with several signals appears.
+  2. Or load a capture: IQ Recorder -> Browse -> open a .sigmf / .wav-free .iq
+     file (RTL-SDR, HackRF, and SigMF formats all play back).
+
+## Right-click a signal
+Right-click a signal on the spectrum for:
+  - Identify Signal            - offline lookup by frequency / bandwidth / mode
+  - Identify + decode (last 2s) - runs the full workbench and logs the result
+  - Save IQ (last 2s)          - writes a SigMF clip you can re-open later
+
+"Identify + decode" pulls the last couple of seconds of raw IQ at that
+frequency, classifies the modulation, looks up likely identities, decodes the
+content if it's a mode we support, saves an IQ clip, and adds a row to the
+Signal Log (with the modulation, identity, and decoded text).
+
+## What it can decode today
+  - CW / Morse    - keyed carriers -> text
+  - RTTY          - Baudot/ITA2 teletype -> text
+  - POCSAG        - pagers (512/1200/2400) -> address + numeric/alphanumeric
+  - DTMF          - touch-tones -> digits
+Generic OOK / FSK / PSK carriers are also bit-sliced into a hex payload with a
+preamble / sync / CRC frame inspection.
+
+## Hear a signal
+SDR tab -> pick a demod mode (AM/FM/SSB/CW) -> "Rec Audio" -> Stop. It writes a
+.wav in your recordings folder you can play in any media player.
+
+## Identify database (offline)
+Identification uses a built-in table of factual public allocations. You can add
+your own exported SigIDWiki / Artemis database (a JSON file) by setting
+`sdr.sigid_db_path` in the config — no third-party database is bundled.
+"""),
     ("Software Dependencies", "Setup",
      """# Software Dependencies
 

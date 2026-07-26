@@ -181,10 +181,16 @@ def _text_decode(res, iq, fs):
     mod = (res.modulation or "").upper()
     try:
         if "FSK" in mod:
-            from core.rtty import decode_rtty
-            t = decode_rtty(iq, fs)
-            if _readable(t):
-                res.text, res.decoder = t.strip(), "RTTY"
+            from core.pocsag import decode_pocsag
+            msgs = decode_pocsag(iq, fs)
+            if msgs:
+                res.text = "  |  ".join(str(m) for m in msgs)[:200]
+                res.decoder = "POCSAG"
+            else:
+                from core.rtty import decode_rtty
+                t = decode_rtty(iq, fs)
+                if _readable(t):
+                    res.text, res.decoder = t.strip(), "RTTY"
         elif "CW" in mod or "OOK" in mod or "ASK" in mod:
             from core.cw_decode import decode_cw
             t = decode_cw(iq, fs)

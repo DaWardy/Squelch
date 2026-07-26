@@ -91,3 +91,17 @@ def test_analyze_cw_produces_text():
     iq = (env * np.exp(2j * np.pi * carrier * t)).astype(np.complex64)
     res = analyze(iq, sr, 14_050_000)
     assert res.text == "SOS" and res.decoder == "CW"
+
+
+def test_analyze_pocsag_via_workbench():
+    """A POCSAG FSK pager signal is decoded through the workbench."""
+    import numpy as np
+    from core.pocsag import encode_frame
+    bits = encode_frame(1234568, "CALL 911", function=3, alpha=True)
+    fs = 38400
+    stream = np.repeat(np.array(bits), int(fs / 1200))
+    iq = np.exp(1j * 2 * np.pi
+                * np.cumsum(np.where(stream == 1, 4500, -4500)) / fs
+                ).astype(np.complex64)
+    res = analyze(iq, fs, 148_000_000)
+    assert res.decoder == "POCSAG" and "CALL 911" in res.text

@@ -246,3 +246,13 @@ class TestInjectionSafety:
                           decoded="'); DROP TABLE signal;--"))
         assert st.get(sid).decoded == "'); DROP TABLE signal;--"
         assert st.count_total() == 1
+
+
+def test_set_tags_updates_and_reports():
+    from core.signal_model import SignalStore, Signal
+    s = SignalStore(":memory:")
+    sid = s.add(Signal(freq_hz=146_000_000, classification="test"))
+    assert s.set_tags(sid, "suspicious, revisit") is True
+    got = [x for x in s.recent(10) if x.id == sid][0]
+    assert got.tags == "suspicious, revisit"
+    assert s.set_tags(999999, "nope") is False       # unknown id

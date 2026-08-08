@@ -220,6 +220,16 @@ class SignalStore:
             self._conn.commit()
             return cur.rowcount > 0
 
+    def set_tags(self, signal_id: int, tags: str) -> bool:
+        """Set the free-form tags/notes on a signal. Returns True if a row
+        changed. Lets the user annotate finds in the Signal Log."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE signal SET tags=? WHERE id=?",
+                (str(tags), int(signal_id)))
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def clear(self) -> None:
         with self._lock:
             self._conn.execute("DELETE FROM signal")

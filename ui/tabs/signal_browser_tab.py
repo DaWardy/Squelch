@@ -113,10 +113,36 @@ class SignalBrowserTab(SquelchPanel, QWidget):
         h.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         h.setSectionResizeMode(len(COLUMNS) - 1, QHeaderView.ResizeMode.Stretch)
         self._table.doubleClicked.connect(self._on_double_click)
+        from PyQt6.QtCore import Qt as _Qt
+        self._table.setContextMenuPolicy(_Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._row_menu)
         self._table.setStyleSheet(
             "QTableWidget{font-family:'Courier New';}"
             "QHeaderView::section{border:none;}")
         return self._table
+
+    def _row_menu(self, pos) -> None:
+        """Right-click a signal row → tag/note it or delete it."""
+        from PyQt6.QtWidgets import QMenu, QInputDialog
+        row = self._table.rowAt(pos.y())
+        if not (0 <= row < len(self._shown)):
+            return
+        sig = self._shown[row]
+        menu = QMenu(self)
+        tag_act = menu.addAction("Add tag / note…")
+        del_act = menu.addAction("Delete signal")
+        chosen = menu.exec(self._table.viewport().mapToGlobal(pos))
+        if chosen == tag_act:
+            text, ok = QInputDialog.getText(
+                self, "Tag / note",
+                "Tags or note (comma-separated):",
+                text=getattr(sig, "tags", "") or "")
+            if ok:
+                self._store.set_tags(int(getattr(sig, "id", 0) or 0), text)
+                self._refresh()
+        elif chosen == del_act:
+            self._store.delete(int(getattr(sig, "id", 0) or 0))
+            self._refresh()
 
     # ── Wiring ────────────────────────────────────────────────────────────
 

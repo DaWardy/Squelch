@@ -52,6 +52,7 @@ class WorkbenchResult:
     modulation:     str   = ""
     mod_confidence: float = 0.0
     occupied_bw_hz: int   = 0
+    ctcss_hz:       float = 0.0        # sub-audible tone on an FM signal, 0=none
     identities:     list  = field(default_factory=list)   # [{name, score, url}]
     decodable:      bool  = False
     family:         str   = ""
@@ -74,6 +75,8 @@ class WorkbenchResult:
         bits = [self.modulation or "?"]
         if self.best_identity:
             bits.append(f"= {self.best_identity}")
+        if self.ctcss_hz:
+            bits.append(f"CTCSS {self.ctcss_hz:.1f}Hz")
         if self.text:
             bits.append(f"[{self.decoder}] {self.text[:40]}")
         elif self.decodable and self.n_symbols:
@@ -105,6 +108,7 @@ def analyze(iq, sample_rate: float, center_hz: int, *,
         _identify(res, sigid_db, center_used, bandwidth_hz or res.occupied_bw_hz)
         _decode(res, x, fs)
         _text_decode(res, x, fs)
+        _detect_ctcss(res, x, fs)
     except Exception as exc:                        # pragma: no cover
         log.debug("decode_workbench.analyze failed: %s", exc)
         res.notes.append(f"analyze error: {exc}")
@@ -165,6 +169,23 @@ def _decode(res, iq, fs):
         res.notes.extend(rep.notes or [])
     except Exception as exc:                        # pragma: no cover
         log.debug("framing failed: %s", exc)
+
+
+def _detect_ctcss(res, iq, fs):
+    """On an FM signal, detect the sub-audible CTCSS tone (identifies the
+    repeater / talk-group). Coexists with voice/DTMF in the demod audio."""
+    if "FM" not in (res.modulation or "").upper():
+        return
+    try:
+        from core.demod import demodulate
+        from core.ctcss import detect_ctcss
+        audio = demodulate(iq, fs, "NBFM", audio_rate=8000)
+        r = detect_ctcss(audio, 8000)
+        if r is not None:
+            res.ctcss_hz = round(float(r.tone_hz), 1)
+            res.notes.append(f"CTCSS {r.tone_hz:.1f} Hz")
+    except Exception as exc:                          # pragma: no cover
+        log.debug("ctcss detect failed: %s", exc)
 
 
 def _readable(text: str) -> bool:

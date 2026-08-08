@@ -105,3 +105,32 @@ def test_analyze_pocsag_via_workbench():
                 ).astype(np.complex64)
     res = analyze(iq, fs, 148_000_000)
     assert res.decoder == "POCSAG" and "CALL 911" in res.text
+
+
+def _fm_with_ctcss(tone_hz=88.5, fs=240_000, n=240_000, dev=5000):
+    import numpy as np
+    from numpy.fft import rfft, irfft, rfftfreq
+    t = np.arange(n) / fs
+    v = np.random.RandomState(1).randn(n)
+    V = rfft(v); f = rfftfreq(n, 1 / fs); V[f > 3000] = 0
+    v = irfft(V, n); v /= max(1e-9, np.max(np.abs(v)))
+    m = 0.35 * np.sin(2 * np.pi * tone_hz * t) + 0.9 * v
+    ph = 2 * np.pi * dev * np.cumsum(m) / fs
+    return np.exp(1j * ph).astype(np.complex64), fs
+
+
+def test_ctcss_detected_on_fm():
+    from core.decode_workbench import _detect_ctcss, WorkbenchResult
+    iq, fs = _fm_with_ctcss(88.5)
+    res = WorkbenchResult(modulation="FM")
+    _detect_ctcss(res, iq, fs)
+    assert abs(res.ctcss_hz - 88.5) < 1.0
+    assert "CTCSS" in res.summary()
+
+
+def test_ctcss_skipped_for_non_fm():
+    from core.decode_workbench import _detect_ctcss, WorkbenchResult
+    iq, fs = _fm_with_ctcss(88.5)
+    res = WorkbenchResult(modulation="OOK")     # only FM gets CTCSS detection
+    _detect_ctcss(res, iq, fs)
+    assert res.ctcss_hz == 0.0

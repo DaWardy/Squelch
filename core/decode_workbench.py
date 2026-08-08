@@ -53,6 +53,8 @@ class WorkbenchResult:
     mod_confidence: float = 0.0
     occupied_bw_hz: int   = 0
     ctcss_hz:       float = 0.0        # sub-audible tone on an FM signal, 0=none
+    shape:          str   = ""         # time-domain shape: continuous / bursty…
+    duty_cycle:     float = 0.0        # fraction of the slice the signal is "on"
     identities:     list  = field(default_factory=list)   # [{name, score, url}]
     decodable:      bool  = False
     family:         str   = ""
@@ -109,6 +111,7 @@ def analyze(iq, sample_rate: float, center_hz: int, *,
         _decode(res, x, fs)
         _text_decode(res, x, fs)
         _detect_ctcss(res, x, fs)
+        _shape(res, x, fs)
     except Exception as exc:                        # pragma: no cover
         log.debug("decode_workbench.analyze failed: %s", exc)
         res.notes.append(f"analyze error: {exc}")
@@ -169,6 +172,17 @@ def _decode(res, iq, fs):
         res.notes.extend(rep.notes or [])
     except Exception as exc:                        # pragma: no cover
         log.debug("framing failed: %s", exc)
+
+
+def _shape(res, iq, fs):
+    """Time-domain shape (continuous vs bursty, duty cycle) — an ID discriminator."""
+    try:
+        from core.shape_features import analyze_shape
+        s = analyze_shape(iq, fs)
+        res.duty_cycle = s.duty_cycle
+        res.shape = s.label()
+    except Exception as exc:                          # pragma: no cover
+        log.debug("shape analysis failed: %s", exc)
 
 
 def _detect_ctcss(res, iq, fs):

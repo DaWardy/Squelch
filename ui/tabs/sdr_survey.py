@@ -120,7 +120,22 @@ class _SDRSurveyMixin:
         except Exception as exc:                    # pragma: no cover
             log.debug("survey: watch-list unavailable: %s", exc)
         return SurveyEngine(store=store, watchlist=watch, ingest=True,
-                            sigid_db=self._build_sigid_db())
+                            sigid_db=self._build_sigid_db(),
+                            freq_db=self._build_freq_db())
+
+    def _build_freq_db(self):
+        """Optional frequency database (station names / services) for enriching
+        detections — loaded from cfg 'sdr.freq_db_path' (a JSON the user
+        supplies). None if unset / unavailable (there is no bundled default)."""
+        try:
+            path = self.cfg.get("sdr.freq_db_path", "") if self.cfg else ""
+            if not path:
+                return None
+            from core.freq_database import FreqDatabase
+            return FreqDatabase.load(path)
+        except Exception as exc:                    # pragma: no cover
+            log.debug("survey: freq db unavailable: %s", exc)
+            return None
 
     def _build_sigid_db(self):
         """Signal-ID database for enriching detections with an identity: the

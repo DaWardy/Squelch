@@ -93,6 +93,12 @@ class SignalBrowserTab(SquelchPanel, QWidget):
         export.setToolTip("Export the currently shown signals to CSV")
         export.clicked.connect(self._export_csv)
         row.addWidget(export)
+
+        export_map = QPushButton("🗺 Export Map")
+        export_map.setToolTip("Export signals that have a location to KML "
+                              "(Google Earth) or GPX (GPS tools)")
+        export_map.clicked.connect(self._export_map)
+        row.addWidget(export_map)
         return row
 
     def _build_table(self) -> "QTableWidget":
@@ -196,6 +202,31 @@ class SignalBrowserTab(SquelchPanel, QWidget):
             self._summary.setText(f"Exported {len(self._shown)} signals → {path}")
         except Exception as exc:
             QMessageBox.warning(self, "Export CSV", f"Export failed: {exc}")
+
+    def _export_map(self) -> None:
+        located = [s for s in self._shown
+                   if (getattr(s, "lat", 0.0) or getattr(s, "lon", 0.0))]
+        if not located:
+            QMessageBox.information(
+                self, "Export Map",
+                "No shown signals have a location (lat/lon) to export.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export located signals", "signals.kml",
+            "Google Earth KML (*.kml);;GPS Exchange GPX (*.gpx)")
+        if not path:
+            return
+        try:
+            from core.geo_export import signals_to_kml, signals_to_gpx, save
+            content = (signals_to_gpx(located) if path.lower().endswith(".gpx")
+                       else signals_to_kml(located))
+            if save(path, content):
+                self._summary.setText(
+                    f"Exported {len(located)} located signals → {path}")
+            else:
+                QMessageBox.warning(self, "Export Map", "Export failed.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Export Map", f"Export failed: {exc}")
 
     def showEvent(self, event):
         super().showEvent(event)

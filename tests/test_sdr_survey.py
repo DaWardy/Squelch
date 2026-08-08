@@ -471,3 +471,15 @@ class TestSurveyQt:
         for _ in range(_SDRSurveyMixin._SURVEY_STRIDE):
             tab._update_plots()          # must not raise
         assert tab._survey.frames_seen >= 1
+
+
+def test_build_freq_db_none_without_path(tmp_path):
+    """No cfg 'sdr.freq_db_path' → no freq database (no bundled default)."""
+    h = _Host(_cfg(tmp_path))
+    assert h._build_freq_db() is None
+
+
+def test_survey_engine_freq_db_optional(tmp_path):
+    h = _Host(_cfg(tmp_path))
+    h._on_survey_toggle(True)                # builds engine; freq_db stays None
+    assert h._survey is not None            # engine built without a freq db
